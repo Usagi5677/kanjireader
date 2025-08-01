@@ -31,6 +31,9 @@ class DictionaryDownloader:
         
         # GitHub API endpoint
         self.api_url = "https://api.github.com/repos/scriptin/jmdict-simplified/releases/latest"
+        
+        # Direct URL for complete radkfile from Kradical repository
+        self.kradical_radkfile_url = "https://raw.githubusercontent.com/tim-harding/Kradical/master/assets/outputs/radk.json"
     
     def get_latest_release_info(self) -> Optional[Dict]:
         """Get information about the latest release from GitHub API"""
@@ -52,13 +55,93 @@ class DictionaryDownloader:
             print(f"Error parsing release JSON: {e}")
             return None
     
+    def download_kradical_radkfile(self) -> Optional[Path]:
+        """Download radkfile directly from Kradical repository and convert format"""
+        try:
+            print("Downloading complete radkfile from Kradical repository...")
+            response = requests.get(self.kradical_radkfile_url, timeout=30)
+            response.raise_for_status()
+            
+            # Parse the Kradical format (array of objects)
+            kradical_data = response.json()
+            if not isinstance(kradical_data, list):
+                print("❌ Unexpected Kradical radkfile format")
+                return None
+            
+            print(f"   Downloaded {len(kradical_data)} radical entries")
+            
+            # Convert to our expected format using the same logic as the provided code
+            converted_data = self.convert_radicals_to_new_format(kradical_data, "converted-from-kradical")
+            
+            # Save converted data to assets directory as radkfile.json
+            radkfile_path = self.assets_dir / "radkfile.json"
+            with open(radkfile_path, 'w', encoding='utf-8') as f:
+                json.dump(converted_data, f, ensure_ascii=False, separators=(',', ':'))
+            
+            print(f"✅ Downloaded and converted complete radkfile to {radkfile_path}")
+            print(f"   Found {len(converted_data['radicals'])} radicals")
+            
+            # Check for 17-stroke radical
+            stroke_17_radicals = []
+            for radical, info in converted_data["radicals"].items():
+                if info["strokeCount"] == 17:
+                    stroke_17_radicals.append(radical)
+            
+            if stroke_17_radicals:
+                print(f"   ✅ Includes 17-stroke radicals: {stroke_17_radicals}")
+            
+            return radkfile_path
+            
+        except requests.RequestException as e:
+            print(f"❌ Error downloading radkfile from Kradical: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            print(f"❌ Error parsing radkfile JSON: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ Error converting/saving radkfile: {e}")
+            return None
+    
+    def convert_radicals_to_new_format(self, input_data: list, version: str = "3.6.1") -> dict:
+        """
+        Converts a list of radical dictionaries into a new, nested dictionary format.
+        Based on the provided conversion code.
+        
+        Args:
+            input_data (list): A list of dictionaries, where each dictionary
+                               represents a radical with keys 'radical', 'stroke', and 'kanji'.
+            version (str): The version string to be included in the output.
+        
+        Returns:
+            dict: A dictionary in the new format with 'version' and 'radicals' keys.
+        """
+        new_format = {
+            "version": version,
+            "radicals": {}
+        }
+        
+        for radical_entry in input_data:
+            radical_char = radical_entry.get("radical")
+            stroke_count = radical_entry.get("stroke")
+            kanji_list = radical_entry.get("kanji", [])
+            
+            if radical_char:
+                # The 'code' field is set to null as per the desired output format
+                new_format["radicals"][radical_char] = {
+                    "strokeCount": stroke_count,
+                    "code": None,
+                    "kanji": kanji_list
+                }
+        
+        return new_format
+    
     def find_target_assets(self, release_data: Dict) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
-        """Find the jmdict-eng, kanjidic2-en, jmnedict, kradfile, and radkfile ZIP file URLs"""
+        """Find the jmdict-eng, kanjidic2-en, jmnedict, and kradfile ZIP file URLs (radkfile downloaded separately)"""
         jmdict_url = None
         kanjidic_url = None
         jmnedict_url = None
         kradfile_url = None
-        radkfile_url = None
+        radkfile_url = None  # Will be handled separately from Kradical repo
         
         assets = release_data.get('assets', [])
         print(f"Found {len(assets)} assets in release")
@@ -92,10 +175,7 @@ class DictionaryDownloader:
                 kradfile_url = download_url
                 print(f"Found Kradfile file: {name}")
             
-            # Look for radkfile ZIP files
-            elif 'radkfile' in name and name.endswith('.zip'):
-                radkfile_url = download_url
-                print(f"Found Radkfile file: {name}")
+            # Note: radkfile is downloaded separately from Kradical repository
         
         if not jmdict_url:
             print("Warning: No jmdict-eng ZIP file found")
@@ -105,8 +185,7 @@ class DictionaryDownloader:
             print("Warning: No jmnedict ZIP file found")
         if not kradfile_url:
             print("Warning: No kradfile ZIP file found")
-        if not radkfile_url:
-            print("Warning: No radkfile ZIP file found")
+        # Note: radkfile will be downloaded separately from Kradical repository
             
         return jmdict_url, kanjidic_url, jmnedict_url, kradfile_url, radkfile_url
     
@@ -276,11 +355,8 @@ class DictionaryDownloader:
                 kradfile_zip_path = self.downloads_dir / kradfile_filename
                 kradfile_path = self.extract_zip(kradfile_zip_path)
         
-        if radkfile_url:
-            radkfile_filename = radkfile_url.split('/')[-1]
-            if self.download_file(radkfile_url, radkfile_filename):
-                radkfile_zip_path = self.downloads_dir / radkfile_filename
-                radkfile_path = self.extract_zip(radkfile_zip_path)
+        # Download complete radkfile from Kradical repository
+        radkfile_path = self.download_kradical_radkfile()
         
         # Cleanup if requested
         if cleanup:
@@ -310,9 +386,9 @@ class DictionaryDownloader:
             print("Kradfile: Failed to download/extract")
         
         if radkfile_path:
-            print(f"Radkfile: {radkfile_path}")
+            print(f"Radkfile (from Kradical): {radkfile_path}")
         else:
-            print("Radkfile: Failed to download/extract")
+            print("Radkfile (from Kradical): Failed to download")
         
         return jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path
 

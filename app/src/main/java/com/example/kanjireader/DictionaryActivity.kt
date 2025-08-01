@@ -48,6 +48,7 @@ class DictionaryActivity : AppCompatActivity() {
         setupNavigationDrawer()
         setupRecyclerView()
         setupSearchView()
+        setupRadicalSearchButton()
 
         // Initialize ViewModel first
         viewModel.initializeRepository()
@@ -57,6 +58,9 @@ class DictionaryActivity : AppCompatActivity() {
 
         // Show initial empty state
         showEmptyState()
+        
+        // Handle append to search intent
+        handleAppendToSearchIntent()
 
     }
 
@@ -280,6 +284,29 @@ class DictionaryActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupRadicalSearchButton() {
+        binding.radicalSearchButton.setOnClickListener {
+            val intent = Intent(this, RadicalSearchActivity::class.java)
+            startActivity(intent)
+        }
+    }
+
+    private fun handleAppendToSearchIntent() {
+        val appendText = intent.getStringExtra("append_to_search")
+        if (!appendText.isNullOrEmpty()) {
+            // Get current search text
+            val currentQuery = binding.searchView.query.toString()
+            
+            // Append the new text
+            val newQuery = currentQuery + appendText
+            
+            // Set the new query and trigger search
+            binding.searchView.setQuery(newQuery, true)
+            
+            // Clear the intent extra to prevent repeated appending
+            intent.removeExtra("append_to_search")
+        }
+    }
 
     private fun showSearching() {
         binding.emptyStateLayout.visibility = View.GONE

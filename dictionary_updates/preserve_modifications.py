@@ -272,18 +272,18 @@ class ModificationPreserver:
         print(f"Applying modifications to {filename}...")
         
         # Load the file
-        jmdict_data = self.load_json_file(filepath)
-        if jmdict_data is None:
+        file_data = self.load_json_file(filepath)
+        if file_data is None:
             return
         
         # Apply each custom entry
         modifications = self.custom_modifications[filename]
         if "custom_entries" in modifications:
             for custom_entry in modifications["custom_entries"]:
-                jmdict_data = self.apply_custom_entry(jmdict_data, custom_entry)
+                file_data = self.apply_custom_entry(file_data, custom_entry)
         
         # Save the modified file
-        self.save_json_file(filepath, jmdict_data)
+        self.save_json_file(filepath, file_data)
     
     def verify_modifications(self) -> bool:
         """Verify that modifications were applied correctly"""

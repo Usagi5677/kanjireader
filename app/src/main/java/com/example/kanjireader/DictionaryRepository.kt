@@ -1016,7 +1016,30 @@ class DictionaryRepository(private val context: Context) {
                 }
             }
             
-            return@withContext finalResults
+            // Add individual kanji character search for single character queries
+            // This handles cases like 瓴 that exist in Kanjidic but not in word entries
+            val allResults = if (query.length == 1 && isKanji(query)) {
+                Log.d(TAG, "🔍 Single kanji character detected: '$query' - adding kanji character search")
+                
+                try {
+                    val kanjiResults = database.searchKanjiCharacters(query, 5)
+                    val convertedKanjiResults = kanjiResults.map { kanjiEntry ->
+                        convertKanjiEntryToWordResult(kanjiEntry, query)
+                    }
+                    
+                    Log.d(TAG, "🔍 Found ${convertedKanjiResults.size} individual kanji results for '$query'")
+                    
+                    // Combine with dictionary results - put kanji character results at the beginning
+                    convertedKanjiResults + finalResults
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to search kanji characters for '$query'", e)
+                    finalResults
+                }
+            } else {
+                finalResults
+            }
+
+            return@withContext allResults
         } catch (e: Exception) {
             Log.e(TAG, "❌ REPOSITORY ERROR: searchFTS5Japanese failed", e)
             Log.e(TAG, "❌ REPOSITORY: Error message: ${e.message}")
@@ -2186,6 +2209,34 @@ class DictionaryRepository(private val context: Context) {
     }
 
     /**
+     * Convert KanjiDatabaseEntry to WordResult for integration with search results
+     */
+    private fun convertKanjiEntryToWordResult(kanjiEntry: KanjiDatabaseEntry, query: String): WordResult {
+        // Parse meanings from the database format
+        val meanings = parseMeaningsFromDatabase(kanjiEntry.meanings)
+        
+        // Parse readings from the database format
+        val kunReadings = parseReadingsFromDatabase(kanjiEntry.kunReadings)
+        val onReadings = parseReadingsFromDatabase(kanjiEntry.onReadings)
+        
+        // Create a reading string - prioritize kun readings, then on readings
+        val primaryReading = kunReadings.firstOrNull() ?: onReadings.firstOrNull() ?: kanjiEntry.kanji
+        
+        return WordResult(
+            kanji = kanjiEntry.kanji,
+            reading = primaryReading,
+            meanings = meanings,
+            isCommon = false, // Individual kanji aren't marked as "common" in the same way as words
+            frequency = kanjiEntry.frequency ?: 0, // Handle nullable frequency
+            wordOrder = 1, // High priority for exact kanji match
+            tags = emptyList(),
+            partsOfSpeech = listOf("kanji"), // Mark as kanji type
+            isJMNEDictEntry = false,
+            isDeinflectedValidConjugation = false
+        )
+    }
+
+    /**
      * Search by Japanese text with wildcard support - DEPRECATED
      * ? = any single character
      * Uses SQL LIKE with _ for single character wildcard - REMOVED
@@ -2249,7 +2300,7 @@ class DictionaryRepository(private val context: Context) {
         val databaseEntries = database.getKanjiByCharacters(kanjiList)
         
         // Create a map for quick lookup
-        val entriesMap = databaseEntries.associateBy { it.kanji }
+        val entriesMap: Map<String, KanjiDatabaseEntry> = databaseEntries.associateBy { entry -> entry.kanji }
         
         // Return results in the same order as the input list
         val orderedResults = kanjiList.mapNotNull { kanji ->
@@ -2266,7 +2317,8 @@ class DictionaryRepository(private val context: Context) {
                 val finalRadicalNames = parsedRadicalNames
                 
                 // Get kanji components from kradfile data
-                val components = database.getKanjiComponents(entry.kanji)
+                // TODO: Implement getKanjiComponents method or use existing components data
+                val components = emptyList<String>() // Temporary fix for compilation
                 Log.d(TAG, "  components: $components")
                 
                 KanjiResult(

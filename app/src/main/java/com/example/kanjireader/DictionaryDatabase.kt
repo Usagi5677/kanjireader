@@ -1496,6 +1496,104 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
     }
 
     /**
+     * Get all radicals grouped by stroke count for radical search
+     */
+    fun getAllRadicalsByStrokeCount(): Map<Int, List<String>> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_RADICAL_KANJI_MAPPING,
+            arrayOf(COL_RKM_RADICAL, COL_RKM_STROKE_COUNT),
+            null, null, null, null,
+            "$COL_RKM_STROKE_COUNT ASC"
+        )
+        
+        val radicalsByStroke = mutableMapOf<Int, MutableList<String>>()
+        
+        cursor.use {
+            while (it.moveToNext()) {
+                val radical = it.getString(0)
+                val strokeCount = it.getInt(1)
+                
+                radicalsByStroke.getOrPut(strokeCount) { mutableListOf() }.add(radical)
+            }
+        }
+        
+        return radicalsByStroke
+    }
+
+    /**
+     * Get kanji that contain ALL of the specified radicals
+     */
+    fun getKanjiForMultipleRadicals(radicals: List<String>): List<String> {
+        if (radicals.isEmpty()) return emptyList()
+        
+        val db = readableDatabase
+        
+        // Build query to find kanji that appear in all radical lists
+        val placeholders = radicals.joinToString(",") { "?" }
+        val sql = """
+            SELECT $COL_RKM_KANJI_LIST
+            FROM $TABLE_RADICAL_KANJI_MAPPING 
+            WHERE $COL_RKM_RADICAL IN ($placeholders)
+        """
+        
+        val cursor = db.rawQuery(sql, radicals.toTypedArray())
+        
+        return cursor.use {
+            val kanjiSets = mutableListOf<Set<String>>()
+            
+            while (it.moveToNext()) {
+                val kanjiString = it.getString(0)
+                if (!kanjiString.isNullOrBlank()) {
+                    val kanjiSet = kanjiString.split(",").map { kanji -> kanji.trim() }.toSet()
+                    kanjiSets.add(kanjiSet)
+                }
+            }
+            
+            // Find intersection of all sets (kanji that appear in ALL radical lists)
+            if (kanjiSets.isEmpty()) {
+                emptyList()
+            } else {
+                var result = kanjiSets.first()
+                for (i in 1 until kanjiSets.size) {
+                    result = result.intersect(kanjiSets[i])
+                }
+                result.sorted() // Return sorted list
+            }
+        }
+    }
+
+    /**
+     * Get radicals that are present in at least one kanji from the given set
+     */
+    fun getValidRadicalsForKanjiSet(kanjiList: List<String>): Set<String> {
+        if (kanjiList.isEmpty()) return emptySet()
+        
+        val db = readableDatabase
+        val placeholders = kanjiList.joinToString(",") { "?" }
+        val sql = """
+            SELECT $COL_KRM_COMPONENTS
+            FROM $TABLE_KANJI_RADICAL_MAPPING 
+            WHERE $COL_KRM_KANJI IN ($placeholders)
+        """
+        
+        val cursor = db.rawQuery(sql, kanjiList.toTypedArray())
+        val allRadicals = mutableSetOf<String>()
+        
+        cursor.use {
+            while (it.moveToNext()) {
+                val components = it.getString(0)
+                if (!components.isNullOrBlank()) {
+                    val radicals = components.split(",").map { radical -> radical.trim() }
+                    allRadicals.addAll(radicals)
+                }
+            }
+        }
+        
+        return allRadicals
+    }
+
+    /**
      * Get all tag definitions (Unchanged)
      */
     fun getTagDefinitions(): Map<String, String> {
@@ -1538,6 +1636,65 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         }
         return null
     }
+
+    /**
+     * Search individual kanji characters in the kanji_entries table
+     * This enables searching for kanji like 瓴 that exist in Kanjidic but not in common word entries
+     */
+    fun searchKanjiCharacters(kanjiCharacter: String, limit: Int = 10): List<KanjiDatabaseEntry> {
+        if (kanjiCharacter.length != 1) {
+            return emptyList() // Only search single characters
+        }
+        
+        val db = readableDatabase
+        val results = mutableListOf<KanjiDatabaseEntry>()
+        
+        try {
+            // Search for exact kanji character match
+            val cursor = db.query(
+                TABLE_KANJI_ENTRIES,
+                arrayOf(
+                    "id", "kanji", "jlpt_level", "grade", "stroke_count", 
+                    "frequency", "meanings", "kun_readings", "on_readings", 
+                    "nanori_readings", "radical_names", "radical", "radical_number"
+                ),
+                "kanji = ?",
+                arrayOf(kanjiCharacter),
+                null, null,
+                "frequency DESC, jlpt_level ASC", // Order by frequency (if available) and JLPT level
+                limit.toString()
+            )
+            
+            cursor.use {
+                while (it.moveToNext()) {
+                    val entry = KanjiDatabaseEntry(
+                        id = it.getLong(0),
+                        kanji = it.getString(1),
+                        jlptLevel = if (it.isNull(2)) null else it.getInt(2),
+                        grade = if (it.isNull(3)) null else it.getInt(3),
+                        strokeCount = if (it.isNull(4)) null else it.getInt(4),
+                        frequency = if (it.isNull(5)) null else it.getInt(5),
+                        meanings = it.getString(6),
+                        kunReadings = it.getString(7),
+                        onReadings = it.getString(8),
+                        nanoriReadings = it.getString(9),
+                        radicalNames = it.getString(10),
+                        radical = it.getString(11),
+                        radicalNumber = if (it.isNull(12)) null else it.getInt(12)
+                    )
+                    results.add(entry)
+                }
+            }
+            
+            Log.d(TAG, "Found ${results.size} kanji entries for character '$kanjiCharacter'")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error searching kanji characters for '$kanjiCharacter'", e)
+        }
+        
+        return results
+    }
+
 }
 
 // ==================================================================
