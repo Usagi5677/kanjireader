@@ -59,5 +59,6 @@ data class KanjiResult(
     val nanori: List<String>,
     val radicalNames: List<String>,
     val classicalRadical: Int?,
-    val radicalNumber: Int?
+    val radicalNumber: Int?,
+    val components: List<String> = emptyList()
 )

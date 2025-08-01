@@ -831,9 +831,108 @@ class DatabaseBuilder:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_frequency ON kanji_entries(frequency)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_stroke_count ON kanji_entries(stroke_count)")
 
+        # Kanji radical mapping tables (from kradfile.json)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS kanji_radical_mapping (
+                kanji TEXT PRIMARY KEY,
+                components TEXT NOT NULL
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS radical_kanji_mapping (
+                radical TEXT PRIMARY KEY,
+                stroke_count INTEGER,
+                kanji_list TEXT NOT NULL
+            )
+        """)
+
+        # Create indexes for radical tables
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_radical_stroke_count ON radical_kanji_mapping(stroke_count)")
+
         # No FTS5 tables needed for kanji - direct lookup is sufficient
 
         print("✅ KanjiDic database schema created")
+
+    def load_kradfile_data(self, file_path: str) -> Optional[Dict]:
+        """Load kradfile data from JSON file"""
+        print(f"📖 Loading kradfile data from {file_path}...")
+        
+        if not os.path.exists(file_path):
+            print(f"⚠️  kradfile not found: {file_path}")
+            return None
+            
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            kanji_data = data.get('kanji', {})
+            print(f"✅ Loaded {len(kanji_data)} kanji entries from kradfile")
+            return kanji_data
+            
+        except Exception as e:
+            print(f"🚨 Error loading kradfile data: {e}")
+            return None
+
+    def load_radkfile_data(self, file_path: str) -> Optional[Dict]:
+        """Load radkfile data from JSON file"""
+        print(f"📖 Loading radkfile data from {file_path}...")
+        
+        if not os.path.exists(file_path):
+            print(f"⚠️  radkfile not found: {file_path}")
+            return None
+            
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Extract the radicals data
+            radicals_data = data.get('radicals', {})
+            print(f"✅ Loaded {len(radicals_data)} radical entries from radkfile")
+            return radicals_data
+            
+        except Exception as e:
+            print(f"🚨 Error loading radkfile data: {e}")
+            return None
+
+    def populate_kanji_radical_mapping(self, conn: sqlite3.Connection, kradfile_data: Dict) -> None:
+        """Populate kanji_radical_mapping table from kradfile data"""
+        cursor = conn.cursor()
+        
+        print("🔧 Populating kanji radical mapping...")
+        
+        for kanji, components in kradfile_data.items():
+            # Convert list of components to comma-separated string
+            components_str = ", ".join(components) if isinstance(components, list) else str(components)
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO kanji_radical_mapping (kanji, components)
+                VALUES (?, ?)
+            """, (kanji, components_str))
+        
+        conn.commit()
+        print(f"✅ Added {len(kradfile_data)} kanji component mappings")
+
+    def populate_radical_kanji_mapping(self, conn: sqlite3.Connection, radkfile_data: Dict) -> None:
+        """Populate radical_kanji_mapping table from radkfile data"""
+        cursor = conn.cursor()
+        
+        print("🔧 Populating radical kanji mapping...")
+        
+        for radical, info in radkfile_data.items():
+            stroke_count = info.get('strokeCount', 0)
+            kanji_list = info.get('kanji', [])
+            
+            # Convert list of kanji to comma-separated string
+            kanji_str = ", ".join(kanji_list) if isinstance(kanji_list, list) else str(kanji_list)
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO radical_kanji_mapping (radical, stroke_count, kanji_list)
+                VALUES (?, ?, ?)
+            """, (radical, stroke_count, kanji_str))
+        
+        conn.commit()
+        print(f"✅ Added {len(radkfile_data)} radical kanji mappings")
 
     def load_kanjidic_data(self, file_path: str) -> List[Dict]:
         """Load KanjiDic data from JSON file"""
@@ -1099,7 +1198,7 @@ class DatabaseBuilder:
             print(f"❌ Kanji rebuild failed: {e}")
             return False
 
-    def build_database(self, jmdict_path: str = "app/src/main/assets/jmdict.json", kanjidic_path: str = "app/src/main/assets/kanjidic.json", jmnedict_path: str = "app/src/main/assets/jmnedict.json") -> bool:
+    def build_database(self, jmdict_path: str = "app/src/main/assets/jmdict.json", kanjidic_path: str = "app/src/main/assets/kanjidic.json", jmnedict_path: str = "app/src/main/assets/jmnedict.json", kradfile_path: str = "app/src/main/assets/kradfile.json", radkfile_path: str = "app/src/main/assets/radkfile.json") -> bool:
         """Main method to build the complete database"""
         print(f"🚀 Building database: {self.output_path}")
         print(f"📅 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -1155,6 +1254,22 @@ class DatabaseBuilder:
             else:
                 print("⚠️  No KanjiDic data found, skipping kanji tables.")
 
+            # Load and populate kradfile data (kanji → components)
+            print("\n🔄 Processing kradfile data...")
+            kradfile_data = self.load_kradfile_data(kradfile_path)
+            if kradfile_data:
+                self.populate_kanji_radical_mapping(conn, kradfile_data)
+            else:
+                print("⚠️  No kradfile data found, skipping kanji radical mapping.")
+
+            # Load and populate radkfile data (radical → kanji list)
+            print("\n🔄 Processing radkfile data...")
+            radkfile_data = self.load_radkfile_data(radkfile_path)
+            if radkfile_data:
+                self.populate_radical_kanji_mapping(conn, radkfile_data)
+            else:
+                print("⚠️  No radkfile data found, skipping radical kanji mapping.")
+
             # Populate FTS tables (after all data is inserted into main table)
             self.populate_fts_tables(conn)
 
@@ -1200,11 +1315,15 @@ def main():
                        help="Path to KanjiDic JSON file")
     parser.add_argument("--jmnedict", default="app/src/main/assets/jmnedict.json",
                        help="Path to JMnedict JSON file")
+    parser.add_argument("--kradfile", default="app/src/main/assets/kradfile.json",
+                       help="Path to kradfile JSON file")
+    parser.add_argument("--radkfile", default="app/src/main/assets/radkfile.json",
+                       help="Path to radkfile JSON file")
 
     args = parser.parse_args()
 
     builder = DatabaseBuilder(args.output)
-    success = builder.build_database(args.jmdict, args.kanjidic, args.jmnedict)
+    success = builder.build_database(args.jmdict, args.kanjidic, args.jmnedict, args.kradfile, args.radkfile)
 
     if success:
         print("\n🎉 Database ready for Android deployment!")

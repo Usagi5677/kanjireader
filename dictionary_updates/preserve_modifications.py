@@ -369,7 +369,7 @@ class ModificationPreserver:
             print("Copying new dictionary files...")
             
             # Single JSON files
-            dictionary_files = ["jmdict.json", "jmnedict.json", "kanjidic.json"]
+            dictionary_files = ["jmdict.json", "jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json"]
             
             for filename in dictionary_files:
                 source = new_files_dir / filename

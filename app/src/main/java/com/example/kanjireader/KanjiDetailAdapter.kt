@@ -1,6 +1,8 @@
 // Update KanjiDetailAdapter.kt
 package com.example.kanjireader
 
+import android.content.Context
+import android.content.Intent
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -13,7 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class KanjiDetailAdapter : RecyclerView.Adapter<KanjiDetailAdapter.KanjiViewHolder>() {
+class KanjiDetailAdapter(
+    private val context: Context
+) : RecyclerView.Adapter<KanjiDetailAdapter.KanjiViewHolder>() {
 
     private var kanjiList: List<KanjiResult> = emptyList()
 
@@ -46,6 +50,7 @@ class KanjiDetailAdapter : RecyclerView.Adapter<KanjiDetailAdapter.KanjiViewHold
         private val onReadingText: TextView = itemView.findViewById(R.id.onReading)
         private val kunReadingText: TextView = itemView.findViewById(R.id.kunReading)
         private val radicalText: TextView = itemView.findViewById(R.id.radical)
+        private val partsText: ClickablePartsTextView = itemView.findViewById(R.id.parts)
         private val strokeCountText: TextView = itemView.findViewById(R.id.strokeCount)
         private val jlptText: TextView = itemView.findViewById(R.id.jlptLevel)
         private val strokeOrderSection: LinearLayout = itemView.findViewById(R.id.strokeOrderSection)
@@ -78,6 +83,14 @@ class KanjiDetailAdapter : RecyclerView.Adapter<KanjiDetailAdapter.KanjiViewHold
                 }
             }
             radicalText.text = radicalInfo
+            
+            // Parts information with click handling
+            partsText.setParts(kanji.components)
+            partsText.setOnPartClickListener(object : ClickablePartsTextView.OnPartClickListener {
+                override fun onPartClicked(part: String) {
+                    handlePartClick(part)
+                }
+            })
 
             // Additional info
             strokeCountText.text = "Strokes: ${kanji.strokeCount ?: "?"}"
@@ -106,6 +119,23 @@ class KanjiDetailAdapter : RecyclerView.Adapter<KanjiDetailAdapter.KanjiViewHold
                     strokeOrderSection.visibility = View.GONE
                 }
             }
+        }
+
+        private fun handlePartClick(part: String) {
+            // Check if the part is a single kanji character
+            if (part.length == 1 && isKanji(part[0])) {
+                // Launch WordDetailActivity with the kanji
+                val intent = Intent(context, WordDetailActivity::class.java).apply {
+                    putExtra("word", part)  // Changed from "selected_word" to "word"
+                    putExtra("is_single_kanji", true)
+                }
+                context.startActivity(intent)
+            }
+        }
+
+        private fun isKanji(char: Char): Boolean {
+            val codePoint = char.code
+            return (codePoint in 0x4E00..0x9FAF) || (codePoint in 0x3400..0x4DBF)
         }
     }
 }

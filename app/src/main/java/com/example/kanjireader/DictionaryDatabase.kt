@@ -68,6 +68,8 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         // Table names
         const val TABLE_ENTRIES = "dictionary_entries"
         const val TABLE_ENGLISH_FTS = "english_fts"
+        const val TABLE_KANJI_RADICAL_MAPPING = "kanji_radical_mapping"
+        const val TABLE_RADICAL_KANJI_MAPPING = "radical_kanji_mapping"
         const val COL_ID = "id"
         const val COL_KANJI = "kanji"
         const val COL_READING = "reading"
@@ -78,6 +80,15 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         const val COL_IS_JMNEDICT_ENTRY = "is_jmnedict_entry"
         const val COL_TOKENIZED_KANJI = "tokenized_kanji"
         const val COL_TOKENIZED_READING = "tokenized_reading"
+
+        // Kanji radical mapping table columns
+        const val COL_KRM_KANJI = "kanji"
+        const val COL_KRM_COMPONENTS = "components"
+        
+        // Radical kanji mapping table columns  
+        const val COL_RKM_RADICAL = "radical"
+        const val COL_RKM_STROKE_COUNT = "stroke_count"
+        const val COL_RKM_KANJI_LIST = "kanji_list"
 
         // FTS Table names and columns
         // Note: FTS columns are implicitly part of the FTS table definition,
@@ -236,6 +247,22 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 components TEXT,
                 radical TEXT,
                 radical_number INTEGER
+            )
+        """
+
+        // Kanji radical mapping tables schema
+        private const val CREATE_KANJI_RADICAL_MAPPING_TABLE = """
+            CREATE TABLE IF NOT EXISTS $TABLE_KANJI_RADICAL_MAPPING (
+                $COL_KRM_KANJI TEXT PRIMARY KEY,
+                $COL_KRM_COMPONENTS TEXT NOT NULL
+            )
+        """
+        
+        private const val CREATE_RADICAL_KANJI_MAPPING_TABLE = """
+            CREATE TABLE IF NOT EXISTS $TABLE_RADICAL_KANJI_MAPPING (
+                $COL_RKM_RADICAL TEXT PRIMARY KEY,
+                $COL_RKM_STROKE_COUNT INTEGER,
+                $COL_RKM_KANJI_LIST TEXT NOT NULL
             )
         """
     }
@@ -441,11 +468,17 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             Log.d(TAG, "STEP 6: Creating kanji table...")
             db.execSQL(CREATE_KANJI_ENTRIES_TABLE)
             Log.d(TAG, "✅ STEP 6 COMPLETE: Kanji table created")
+            
+            // Step 7: Create kanji radical mapping tables
+            Log.d(TAG, "STEP 7: Creating kanji radical mapping tables...")
+            db.execSQL(CREATE_KANJI_RADICAL_MAPPING_TABLE)
+            db.execSQL(CREATE_RADICAL_KANJI_MAPPING_TABLE)
+            Log.d(TAG, "✅ STEP 7 COMPLETE: Kanji radical mapping tables created")
 
-            // Step 7: Verify table creation (empty tables expected)
-            Log.d(TAG, "STEP 7: Verifying table creation...")
+            // Step 8: Verify table creation (empty tables expected)
+            Log.d(TAG, "STEP 8: Verifying table creation...")
             verifyTableCreation(db)
-            Log.d(TAG, "✅ STEP 7 COMPLETE: Table verification done")
+            Log.d(TAG, "✅ STEP 8 COMPLETE: Table verification done")
 
             Log.d(TAG, "📝 NOTE: FTS tables are empty - call ensureFTSDataPopulated() after asset copy")
 
@@ -616,11 +649,30 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             Log.d(TAG, "✅ $TABLE_KANJI_ENTRIES table already exists")
         }
         Log.d(TAG, "✅ UPGRADE STEP 8 COMPLETE: Kanji entries table handled")
+        
+        // Handle kanji radical mapping tables upgrade
+        Log.d(TAG, "UPGRADE STEP 9: Handling kanji radical mapping tables...")
+        if (!checkTableExists(db, TABLE_KANJI_RADICAL_MAPPING)) {
+            Log.d(TAG, "Creating $TABLE_KANJI_RADICAL_MAPPING table...")
+            db.execSQL(CREATE_KANJI_RADICAL_MAPPING_TABLE)
+            Log.d(TAG, "✅ $TABLE_KANJI_RADICAL_MAPPING table created")
+        } else {
+            Log.d(TAG, "✅ $TABLE_KANJI_RADICAL_MAPPING table already exists")
+        }
+        
+        if (!checkTableExists(db, TABLE_RADICAL_KANJI_MAPPING)) {
+            Log.d(TAG, "Creating $TABLE_RADICAL_KANJI_MAPPING table...")
+            db.execSQL(CREATE_RADICAL_KANJI_MAPPING_TABLE)
+            Log.d(TAG, "✅ $TABLE_RADICAL_KANJI_MAPPING table created")
+        } else {
+            Log.d(TAG, "✅ $TABLE_RADICAL_KANJI_MAPPING table already exists")
+        }
+        Log.d(TAG, "✅ UPGRADE STEP 9 COMPLETE: Kanji radical mapping tables handled")
 
         // Final verification
-        Log.d(TAG, "UPGRADE STEP 9: Final verification (schema only)...")
+        Log.d(TAG, "UPGRADE STEP 10: Final verification (schema only)...")
         verifyTableCreation(db) // Verify tables exist, but might be empty
-        Log.d(TAG, "✅ UPGRADE STEP 9 COMPLETE: Final verification done")
+        Log.d(TAG, "✅ UPGRADE STEP 10 COMPLETE: Final verification done")
     }
 
     /**
@@ -830,7 +882,9 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             // TABLE_JAPANESE_FTS to CREATE_JAPANESE_FTS5_TABLE, // REMOVED: Using entries_fts5 instead
             TABLE_TAG_DEFINITIONS to CREATE_TAG_DEFINITIONS_TABLE,
             TABLE_WORD_TAGS to CREATE_WORD_TAGS_TABLE,
-            TABLE_KANJI_ENTRIES to CREATE_KANJI_ENTRIES_TABLE
+            TABLE_KANJI_ENTRIES to CREATE_KANJI_ENTRIES_TABLE,
+            TABLE_KANJI_RADICAL_MAPPING to CREATE_KANJI_RADICAL_MAPPING_TABLE,
+            TABLE_RADICAL_KANJI_MAPPING to CREATE_RADICAL_KANJI_MAPPING_TABLE
         )
 
         for ((tableName, createSql) in tablesToVerify) {
@@ -1385,6 +1439,60 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         
         Log.d(TAG, "getTagsForWord: Found ${tags.size} tags for word '$word': $tags")
         return tags
+    }
+    
+    /**
+     * Get components (parts) for a kanji character from kradfile data
+     */
+    fun getKanjiComponents(kanji: String): List<String> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_KANJI_RADICAL_MAPPING,
+            arrayOf(COL_KRM_COMPONENTS),
+            "$COL_KRM_KANJI = ?",
+            arrayOf(kanji),
+            null, null, null
+        )
+        
+        return cursor.use {
+            if (it.moveToFirst()) {
+                val componentsString = it.getString(0)
+                if (!componentsString.isNullOrBlank()) {
+                    componentsString.split(",").map { component -> component.trim() }
+                } else {
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
+        }
+    }
+    
+    /**
+     * Get kanji characters that contain a specific radical
+     */
+    fun getKanjiByRadical(radical: String): List<String> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_RADICAL_KANJI_MAPPING,
+            arrayOf(COL_RKM_KANJI_LIST),
+            "$COL_RKM_RADICAL = ?",
+            arrayOf(radical),
+            null, null, null
+        )
+        
+        return cursor.use {
+            if (it.moveToFirst()) {
+                val kanjiString = it.getString(0)
+                if (!kanjiString.isNullOrBlank()) {
+                    kanjiString.split(",").map { kanji -> kanji.trim() }
+                } else {
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
+        }
     }
 
     /**

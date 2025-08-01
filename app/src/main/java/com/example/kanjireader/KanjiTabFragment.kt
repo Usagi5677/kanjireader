@@ -56,7 +56,7 @@ class KanjiTabFragment : Fragment() {
     }
 
     private fun setupRecyclerView() {
-        kanjiAdapter = KanjiDetailAdapter()
+        kanjiAdapter = KanjiDetailAdapter(requireContext())
         recyclerView.apply {
             layoutManager = LinearLayoutManager(context)
             adapter = kanjiAdapter

@@ -2265,6 +2265,10 @@ class DictionaryRepository(private val context: Context) {
                 
                 val finalRadicalNames = parsedRadicalNames
                 
+                // Get kanji components from kradfile data
+                val components = database.getKanjiComponents(entry.kanji)
+                Log.d(TAG, "  components: $components")
+                
                 KanjiResult(
                     kanji = entry.kanji,
                     onReadings = parseReadingsFromDatabase(entry.onReadings),
@@ -2277,7 +2281,8 @@ class DictionaryRepository(private val context: Context) {
                     nanori = parseReadingsFromDatabase(entry.nanoriReadings),
                     radicalNames = finalRadicalNames,
                     classicalRadical = entry.radicalNumber,
-                    radicalNumber = entry.radicalNumber
+                    radicalNumber = entry.radicalNumber,
+                    components = components
                 )
             }
         }

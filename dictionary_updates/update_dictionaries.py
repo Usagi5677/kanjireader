@@ -81,7 +81,7 @@ class DictionaryUpdateOrchestrator:
         
         # Step 1: Download latest dictionaries 
         print("\n[1/3] Downloading, extracting, and renaming dictionaries...")
-        jmdict_path, kanjidic_path, jmnedict_path = self.downloader.download_latest_dictionaries()
+        jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path = self.downloader.download_latest_dictionaries()
         
         if not jmdict_path:
             print("✗ Failed to download JMdict")
@@ -122,7 +122,7 @@ class DictionaryUpdateOrchestrator:
         print("\n=== Update Summary ===")
         
         # Check file sizes for single JSON files
-        assets_files = ["jmdict.json", "jmnedict.json", "kanjidic.json"]
+        assets_files = ["jmdict.json", "jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json"]
         
         for filename in assets_files:
             filepath = self.assets_dir / filename
@@ -154,7 +154,7 @@ class DictionaryUpdateOrchestrator:
             return False
         
         # Check optional files
-        optional_files = ["jmnedict.json", "kanjidic.json"]
+        optional_files = ["jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json"]
         for filename in optional_files:
             filepath = self.assets_dir / filename
             if filepath.exists():
