@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kanji Reader</string>
+    <string name="capture_photo">Capture Photo</string>
+    <string name="toggle_flash">Toggle Flash</string>
+    <string name="readings_list">Readings List</string>
+    <string name="gallery">Gallery</string>
+    <string name="select_photo">Select Photo</string>
+    <string name="select_photo_from_gallery">Select photo from gallery</string>
+    <string name="processing_image">Processing image...</string>
+    <string name="detected_kanji">Detected Kanji</string>
+    <string name="tap_for_details">Tap on any word for detailed information</string>
+    <string name="no_kanji_found">No Japanese text found\nTry taking another photo</string>
+    <string name="back">Back</string>
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+    
+    <!-- Loading and initialization -->
+    <string name="app_title">Kanji Reader</string>
+    <string name="initializing_text_recognition">Initializing text recognition</string>
+    <string name="loading_complete">Loading complete</string>
+    <string name="starting_camera">Starting camera</string>
+    <string name="dictionary_loading_please_wait">Dictionary is loading, please wait…</string>
+    <string name="loading_may_take_seconds">This may take a few seconds...</string>
+    
+    <!-- Error messages -->
+    <string name="error_dictionary_load_failed">Failed to load dictionary. Some features may be limited.</string>
+    <string name="error_dictionary_loading">Dictionary loading error. You can still use the camera.</string>
+    <string name="error_database_builder_failed">Failed to launch database builder: %1$s</string>
+    <string name="error_image_process_failed">Failed to process captured image</string>
+    <string name="error_try_another_photo">Please try taking another photo</string>
+    <string name="error_out_of_memory">Out of memory</string>
+    <string name="error_close_other_apps">Please close other apps and try again</string>
+    <string name="error_camera_access_denied">Camera access denied</string>
+    <string name="error_check_camera_permissions">Please check camera permissions</string>
+    <string name="error_image_processing_failed">Image processing failed</string>
+    <string name="error_please_try_again">Please try again</string>
+    <string name="error_text_recognition_failed">Text recognition failed</string>
+    <string name="error_no_japanese_text_detected">No Japanese text detected in image</string>
+    <string name="error_network">Network Error</string>
+    <string name="error_check_internet_connection">Please check your internet connection and try again</string>
+    <string name="error_failed_to_process_image">Failed to process image</string>
+    <string name="error_camera_permission_required">Camera permission is required</string>
+    
+    <!-- Dictionary search -->
+    <string name="search_hint">Search Japanese, English, or use ? for wildcards…</string>
+    <string name="search_the_dictionary">Search the dictionary</string>
+    <string name="enter_japanese_or_english">Enter Japanese characters or English meanings</string>
+    <string name="wildcard_tip">💡 Tip: Use ? for wildcards (e.g., 日?力 or ??語)</string>
+    <string name="dictionary_title">Dictionary</string>
+    <string name="searching">Searching…</string>
+    <string name="error_memory_during_search">Memory error during search</string>
+    <string name="error_try_shorter_search">Try a shorter search term</string>
+    <string name="error_dictionary_not_ready">Dictionary not ready</string>
+    <string name="error_wait_for_dictionary">Please wait for dictionary to load</string>
+    <string name="error_search_failed">Search failed</string>
+    <string name="error_dictionary_init_failed">Failed to initialize dictionary</string>
+    <string name="no_results_for">No results for \"%1$s\"</string>
+    <string name="entries_count">%1$d entries (%2$d total forms)</string>
+    
+    <!-- Image annotation -->
+    <string name="error_failed_to_load_image">Failed to load captured image</string>
+    <string name="error_try_capturing_again">Please try capturing again</string>
+    <string name="error_failed_to_process_text_data">Failed to process text data</string>
+    <string name="error_image_no_readable_text">Image may not contain readable text</string>
+    
+    <!-- Flash messages -->
+    <string name="flash_on">Flash ON</string>
+    <string name="flash_off">Flash OFF</string>
+    
+    <!-- Dictionary results -->
+    <string name="no_results_found">No results found</string>
+    <string name="try_different_search">Try a different search term</string>
+    
+    <!-- Image annotation -->
+    <string name="meanings_label">Meanings:</string>
+    <string name="word_not_found_in_dictionary">Word not found in dictionary</string>
+    <string name="try_selecting_characters">Try selecting individual characters or common word forms</string>
+    <string name="view_text">View Text</string>
+    
+    <!-- Readings list -->
+    <string name="no_saved_words">No saved words yet</string>
+    <string name="take_photos_to_build_vocabulary">Take photos to start building your vocabulary!</string>
+    
+    <!-- Word detail -->
+    <string name="meanings">Meanings</string>
+    
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+</resources>

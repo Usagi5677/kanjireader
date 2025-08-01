@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingVertical="4dp">
+
+    <!-- Variant word -->
+    <TextView
+        android:id="@+id/variantText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="18sp"
+        android:textColor="@android:color/black" />
+
+    <!-- Variant-specific tags or inheritance message -->
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/variantChipGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:visibility="gone"
+        app:singleLine="false"
+        app:chipSpacing="4dp"
+        app:chipSpacingHorizontal="4dp"
+        app:chipSpacingVertical="4dp" />
+
+    <TextView
+        android:id="@+id/variantInheritText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="(inherits all tags)"
+        android:textSize="12sp"
+        android:textStyle="italic"
+        android:textColor="@android:color/darker_gray"
+        android:visibility="gone" />
+
+</LinearLayout>

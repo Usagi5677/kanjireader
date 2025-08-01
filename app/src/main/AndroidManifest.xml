@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Camera permission -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    
+    <!-- Internet permission for Tatoeba API -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Camera features -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+
+    <application
+        android:name=".KanjiReaderApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.KanjiReader"
+        tools:targetApi="31"
+        android:largeHeap="true"
+        android:usesCleartextTraffic="true">
+
+        <!-- Main Camera Activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ADD THIS NEW ACTIVITY -->
+        <activity
+            android:name=".ImageAnnotationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+
+
+        <!-- Readings List Activity -->
+        <activity
+            android:name=".ReadingsListActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".DictionaryActivity"
+            android:label="Dictionary"
+            android:theme="@style/Theme.KanjiReader"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".DatabaseBuilderActivity"
+            android:label="Database Builder"
+            android:exported="false" />
+
+        <activity
+            android:name=".WordDetailActivity"
+            android:label="Word Detail"
+            android:parentActivityName=".DictionaryActivity">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".DictionaryActivity" />
+        </activity>
+
+        <!-- xcdat Test Activity -->
+        <activity
+            android:name=".XcdatTestActivity"
+            android:label="xcdat Dictionary Test"
+            android:exported="true" />
+
+    </application>
+
+</manifest>

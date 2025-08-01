@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.KanjiReader" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Customize your theme here. -->
+        <item name="colorPrimary">@color/teal_500</item>
+        <item name="colorPrimaryVariant">@color/teal_700</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">@color/teal_200</item>
+        <item name="colorSecondaryVariant">@color/teal_700</item>
+        <item name="colorOnSecondary">@color/black</item>
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+        <!-- Customize your theme here. -->
+        <item name="android:windowLightStatusBar">false</item>
+
+        <!-- ADD THESE FOR NAVIGATION DRAWER -->
+        <item name="colorSurface">@color/white</item>
+        <item name="colorOnSurfaceVariant">@android:color/darker_gray</item>
+
+        <!-- Navigation drawer selected item colors -->
+        <item name="navigationViewStyle">@style/NavigationViewStyle</item>
+    </style>
+
+    <!-- Custom Navigation View Style -->
+    <style name="NavigationViewStyle" parent="Widget.Material3.NavigationView">
+        <item name="itemIconTint">@color/nav_item_tint</item>
+        <item name="itemTextColor">@color/nav_item_tint</item>
+        <item name="itemShapeFillColor">@color/nav_item_background</item>
+    </style>
+</resources>

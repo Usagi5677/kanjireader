@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingVertical="12dp">
+
+    <!-- Entry Title (Number + Kanji/Reading) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/entryNumber"
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:text="1."
+            android:textSize="16sp"
+            android:textColor="@color/teal_700" />
+
+        <TextView
+            android:id="@+id/entryTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="漢字 (かんじ)"
+            android:textSize="18sp"
+            android:textColor="@android:color/black"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+    <!-- Meanings -->
+    <TextView
+        android:id="@+id/entryMeanings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Chinese character; kanji"
+        android:textSize="14sp"
+        android:textColor="@android:color/black"
+        android:paddingStart="48dp"
+        android:paddingTop="8dp"
+        android:lineSpacingExtra="4dp" />
+
+    <!-- Enhanced Info (Grammar, Verb Type) -->
+    <TextView
+        android:id="@+id/entryEnhancedInfo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Type: Ichidan verb"
+        android:textSize="12sp"
+        android:textColor="@android:color/darker_gray"
+        android:paddingStart="48dp"
+        android:paddingTop="4dp"
+        android:visibility="gone" />
+
+</LinearLayout>

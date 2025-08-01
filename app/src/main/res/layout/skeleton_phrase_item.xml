@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="8dp"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="2dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Skeleton for Japanese text -->
+        <View
+            android:id="@+id/skeletonJapaneseText"
+            android:layout_width="match_parent"
+            android:layout_height="24dp"
+            android:layout_marginBottom="8dp"
+            android:background="?attr/colorSurfaceVariant"
+            android:alpha="0.3" />
+
+        <!-- Container for shorter Japanese text line -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:orientation="horizontal">
+            
+            <View
+                android:id="@+id/skeletonJapaneseTextShort"
+                android:layout_width="0dp"
+                android:layout_height="24dp"
+                android:layout_weight="0.6"
+                android:background="?attr/colorSurfaceVariant"
+                android:alpha="0.3" />
+            
+            <View
+                android:layout_width="0dp"
+                android:layout_height="24dp"
+                android:layout_weight="0.4" />
+                
+        </LinearLayout>
+
+        <!-- Skeleton for English translation -->
+        <View
+            android:id="@+id/skeletonEnglishText"
+            android:layout_width="match_parent"
+            android:layout_height="18dp"
+            android:layout_marginBottom="4dp"
+            android:background="?attr/colorSurfaceVariant"
+            android:alpha="0.2" />
+
+        <!-- Container for shorter English text line -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            
+            <View
+                android:id="@+id/skeletonEnglishTextShort"
+                android:layout_width="0dp"
+                android:layout_height="18dp"
+                android:layout_weight="0.8"
+                android:background="?attr/colorSurfaceVariant"
+                android:alpha="0.2" />
+            
+            <View
+                android:layout_width="0dp"
+                android:layout_height="18dp"
+                android:layout_weight="0.2" />
+                
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.cardview.widget.CardView>

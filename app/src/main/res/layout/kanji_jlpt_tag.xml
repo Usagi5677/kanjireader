@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical">
+
+    <!-- Kanji Character -->
+    <TextView
+        android:id="@+id/kanjiText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="見"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/black"
+        android:paddingEnd="4dp" />  <!-- Reduced from 8dp -->
+
+    <!-- Separator -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="|"
+        android:textSize="14sp"
+        android:textColor="@android:color/darker_gray"
+        android:paddingHorizontal="4dp" />  <!-- Reduced from 8dp -->
+
+    <!-- JLPT Chip -->
+    <com.google.android.material.chip.Chip
+        android:id="@+id/jlptChip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="JLPT N5"
+        android:textSize="11sp"
+        app:chipMinHeight="24dp"
+        app:chipCornerRadius="12dp"
+        app:chipBackgroundColor="@color/blue_100"
+        app:chipStrokeWidth="0dp"
+        android:clickable="false"
+        android:focusable="false" />
+
+</LinearLayout>

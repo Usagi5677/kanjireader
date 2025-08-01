@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <!-- Dictionary Entry Header (optional) -->
+    <TextView
+        android:id="@+id/dictionaryEntryHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Dictionary entry:"
+        android:textSize="16sp"
+        android:textColor="@android:color/black"
+        android:paddingBottom="12dp"
+        android:visibility="gone" />
+
+    <!-- Kanji Display -->
+    <TextView
+        android:id="@+id/kanjiDisplay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="漢字"
+        android:textSize="32sp"
+        android:textColor="@android:color/black"
+        android:gravity="center"
+        android:paddingVertical="16dp"
+        android:visibility="gone" />
+
+    <!-- Reading Display -->
+    <TextView
+        android:id="@+id/readingDisplay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="かんじ"
+        android:textSize="24sp"
+        android:textColor="@color/teal_700"
+        android:gravity="center"
+        android:paddingVertical="12dp"
+        android:paddingBottom="16dp" />
+
+    <!-- Meanings Label -->
+    <TextView
+        android:id="@+id/meaningsLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Meanings:"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/black"
+        android:paddingBottom="8dp" />
+
+    <!-- Meanings Content -->
+    <TextView
+        android:id="@+id/meaningsContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="1. Chinese character\n2. Kanji"
+        android:textSize="16sp"
+        android:textColor="@android:color/black"
+        android:paddingStart="8dp"
+        android:paddingBottom="16dp"
+        android:lineSpacingExtra="4dp" />
+
+</LinearLayout>

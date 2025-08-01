@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <color name="purple_100">#E1BEE7</color>
+    <color name="purple_200">#CE93D8</color>
+    <color name="purple_500">#9C27B0</color>
+    <color name="purple_600">#8E24AA</color>
+    <color name="purple_700">#7B1FA2</color>
+    <color name="purple_900">#4A148C</color>
+
+    <color name="teal_50">#E0F2F1</color>
+    <color name="teal_100">#B2DFDB</color>
+    <color name="teal_200">#80CBC4</color>
+    <color name="teal_300">#4DB6AC</color>
+    <color name="teal_400">#26A69A</color>
+    <color name="teal_500">#009688</color>
+    <color name="teal_600">#00897B</color>
+    <color name="teal_700">#00796B</color>
+    <color name="teal_800">#00695C</color>
+    <color name="teal_900">#004D40</color>
+
+    <color name="green_100">#C8E6C9</color>  <!-- Light green -->
+    <color name="green_500">#4CAF50</color>  <!-- Medium green -->
+    <color name="green_700">#388E3C</color>  <!-- Dark green -->
+
+    <color name="orange_700">#F57C00</color>
+    <color name="orange_100">#FFE0B2</color>
+    <color name="pink_100">#F8BBD0</color>
+    <color name="blue_100">#BBDEFB</color>
+    <color name="blue_600">#1976D2</color>
+    <color name="blue_700">#1565C0</color>
+    
+    <!-- Frequency counter colors -->
+    <color name="freq_very_high_bg">#E8F5E9</color>   <!-- Very light green -->
+    <color name="freq_very_high_text">#1B5E20</color> <!-- Very dark green -->
+    
+    <color name="freq_high_bg">#FFF3E0</color>        <!-- Very light orange -->
+    <color name="freq_high_text">#E65100</color>      <!-- Dark orange -->
+    
+    <color name="freq_medium_bg">#E3F2FD</color>      <!-- Very light blue -->
+    <color name="freq_medium_text">#0D47A1</color>    <!-- Dark blue -->
+    
+    <color name="freq_low_bg">#F3E5F5</color>         <!-- Very light purple -->
+    <color name="freq_low_text">#4A148C</color>       <!-- Dark purple -->
+    
+    <color name="freq_very_low_bg">#FAFAFA</color>    <!-- Very light gray -->
+    <color name="freq_very_low_text">#424242</color>  <!-- Dark gray -->
+
+    <!-- Grammar tag colors -->
+    <!-- Generic verb color for simple contexts (dictionary adapter) -->
+    <color name="tag_verb_bg">#E8F5E9</color>              <!-- Light green -->
+    <color name="tag_verb_text">#1B5E20</color>            <!-- Dark green -->
+    
+    <!-- Verb types - Different greens and related colors -->
+    <color name="tag_verb_godan_bg">#E8F5E9</color>        <!-- Light green -->
+    <color name="tag_verb_godan_text">#1B5E20</color>      <!-- Dark green -->
+    
+    <color name="tag_verb_ichidan_bg">#E0F2F1</color>      <!-- Light teal -->
+    <color name="tag_verb_ichidan_text">#004D40</color>    <!-- Dark teal -->
+    
+    <color name="tag_verb_transitive_bg">#FFF8E1</color>   <!-- Light amber -->
+    <color name="tag_verb_transitive_text">#F57F17</color> <!-- Dark amber -->
+    
+    <color name="tag_verb_intransitive_bg">#FFF3E0</color> <!-- Light orange -->
+    <color name="tag_verb_intransitive_text">#E65100</color> <!-- Dark orange -->
+    
+    <color name="tag_verb_auxiliary_bg">#F1F8E9</color>    <!-- Very light green -->
+    <color name="tag_verb_auxiliary_text">#33691E</color>  <!-- Medium green -->
+    
+    <!-- Other part of speech -->
+    <color name="tag_adjective_bg">#E3F2FD</color>    <!-- Light blue -->
+    <color name="tag_adjective_text">#0D47A1</color>  <!-- Dark blue -->
+    
+    <color name="tag_noun_bg">#FFF9C4</color>         <!-- Light yellow -->
+    <color name="tag_noun_text">#F57F17</color>      <!-- Dark yellow/orange -->
+    
+    <color name="tag_particle_bg">#F3E5F5</color>     <!-- Light purple -->
+    <color name="tag_particle_text">#4A148C</color>   <!-- Dark purple -->
+    
+    <color name="tag_adverb_bg">#EFEBE9</color>       <!-- Light brown -->
+    <color name="tag_adverb_text">#3E2723</color>     <!-- Dark brown -->
+    
+    <!-- Special tags -->
+    <color name="tag_common_bg">#E1F5FE</color>       <!-- Light cyan -->
+    <color name="tag_common_text">#006064</color>     <!-- Dark cyan -->
+    
+    <color name="tag_frequency_bg">#FAFAFA</color>    <!-- Light gray -->
+    <color name="tag_frequency_text">#424242</color>  <!-- Dark gray -->
+    
+    <color name="tag_other_bg">#F5F5F5</color>        <!-- Very light gray -->
+    <color name="tag_other_text">#616161</color>      <!-- Medium gray -->
+
+    <color name="jlpt_n5">#4CAF50</color> <!-- Green - Easiest -->
+    <color name="jlpt_n4">#8BC34A</color> <!-- Light Green -->
+    <color name="jlpt_n3">#FFC107</color> <!-- Amber - Medium -->
+    <color name="jlpt_n2">#FF9800</color> <!-- Orange -->
+    <color name="jlpt_n1">#F44336</color> <!-- Red - Hardest -->
+
+    <color name="jlpt_n5_light">#E8F5E9</color> <!-- Light Green -->
+    <color name="jlpt_n4_light">#F1F8E9</color> <!-- Lighter Green -->
+    <color name="jlpt_n3_light">#FFF8E1</color> <!-- Light Amber -->
+    <color name="jlpt_n2_light">#FFF3E0</color> <!-- Light Orange -->
+    <color name="jlpt_n1_light">#FFEBEE</color> <!-- Light Red -->
+
+    <!-- JMNEDict (proper noun) tag colors - using consistent purple/lavender theme -->
+    <color name="jmne_person_bg">#F3E5F5</color>       <!-- Light purple for person names -->
+    <color name="jmne_person_text">#4A148C</color>     <!-- Dark purple -->
+    
+    <color name="jmne_place_bg">#EDE7F6</color>        <!-- Light purple-indigo for places -->
+    <color name="jmne_place_text">#512DA8</color>      <!-- Dark purple-indigo -->
+    
+    <color name="jmne_company_bg">#F8BBD9</color>      <!-- Light purple-pink for companies -->
+    <color name="jmne_company_text">#880E4F</color>    <!-- Dark purple-pink -->
+    
+    <color name="jmne_organization_bg">#E1BEE7</color> <!-- Light purple-magenta for organizations -->
+    <color name="jmne_organization_text">#6A1B9A</color> <!-- Dark purple-magenta -->
+    
+    <color name="jmne_given_bg">#FCE4EC</color>        <!-- Light pink for given names (keep this - looks good) -->
+    <color name="jmne_given_text">#AD1457</color>      <!-- Dark pink -->
+    
+    <color name="jmne_surname_bg">#F3E5F5</color>      <!-- Light purple for surnames -->
+    <color name="jmne_surname_text">#7B1FA2</color>    <!-- Dark purple -->
+    
+    <color name="jmne_station_bg">#E8EAF6</color>      <!-- Light purple-blue for stations -->
+    <color name="jmne_station_text">#5E35B1</color>    <!-- Dark purple-blue -->
+    
+    <color name="jmne_other_bg">#F3E5F5</color>        <!-- Light purple for other JMNEDict entries (consistent) -->
+    <color name="jmne_other_text">#4A148C</color>      <!-- Dark purple -->
+
+    <!-- Search highlighting colors -->
+    <color name="search_highlight_text">#1976D2</color>  <!-- Blue text for highlighting -->
+</resources>

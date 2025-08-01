@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="12dp"
+    android:background="?android:attr/selectableItemBackground">
+
+    <!-- Form Name Column -->
+    <TextView
+        android:id="@+id/formNameText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="Past"
+        android:textSize="14sp"
+        android:textColor="@android:color/darker_gray" />
+
+    <!-- Conjugation Column -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1.5"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/conjugationText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="見た"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/blue_600"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="4dp" />
+
+        <TextView
+            android:id="@+id/readingText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="みた"
+            android:textSize="14sp"
+            android:textColor="@color/teal_700"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="4dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- Meaning Column -->
+    <TextView
+        android:id="@+id/meaningText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1.5"
+        android:text="saw/looked"
+        android:textSize="14sp"
+        android:textColor="@android:color/black"
+        android:textAlignment="textEnd" />
+
+</LinearLayout>

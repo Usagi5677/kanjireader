@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Create: res/layout/top_popup_word_meaning.xml -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bottom_sheet_background"
+    android:elevation="12dp"
+    android:paddingBottom="16dp">
+
+    <!-- Top Handle -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bottom_sheet_handle" />
+
+    <!-- Header with selected word and close button -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp">
+
+        <TextView
+            android:id="@+id/selectedWordTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:text="Selected Word"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/teal_700" />
+
+        <ImageButton
+            android:id="@+id/closePopupButton"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_close"
+            android:contentDescription="Close"
+            android:padding="4dp" />
+
+    </RelativeLayout>
+
+    <!-- Content Area -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="400dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Word Found - Dictionary Results -->
+            <LinearLayout
+                android:id="@+id/wordFoundLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:visibility="gone">
+
+                <!-- Kanji Display (if available) -->
+                <TextView
+                    android:id="@+id/kanjiText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="漢字"
+                    android:textSize="32sp"
+                    android:textStyle="bold"
+                    android:textColor="@android:color/black"
+                    android:gravity="center"
+                    android:paddingVertical="16dp"
+                    android:background="#F8F9FA"
+                    android:layout_marginBottom="16dp"
+                    android:visibility="gone" />
+
+                <!-- Reading Display -->
+                <TextView
+                    android:id="@+id/readingText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="ひらがな"
+                    android:textSize="24sp"
+                    android:textColor="@color/teal_700"
+                    android:gravity="center"
+                    android:paddingVertical="12dp"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Meanings List -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Meanings:"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@android:color/black"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/meaningsText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="• Meaning 1\n• Meaning 2\n• Meaning 3"
+                    android:textSize="16sp"
+                    android:textColor="@android:color/black"
+                    android:lineSpacingExtra="4dp"
+                    android:paddingStart="8dp"
+                    android:paddingBottom="16dp" />
+
+            </LinearLayout>
+
+            <!-- Word Not Found - Nice Error Message -->
+            <LinearLayout
+                android:id="@+id/wordNotFoundLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:paddingHorizontal="24dp"
+                android:paddingVertical="32dp"
+                android:visibility="gone">
+
+                <!-- Icon -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔍"
+                    android:textSize="64sp"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Selected Word Display -->
+                <TextView
+                    android:id="@+id/notFoundWordText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="選択された単語"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/teal_700"
+                    android:gravity="center"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Not Found Message -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Word not found in dictionary"
+                    android:textSize="18sp"
+                    android:textColor="@android:color/darker_gray"
+                    android:gravity="center"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Suggestion Text -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Try selecting individual characters or common word forms"
+                    android:textSize="14sp"
+                    android:textColor="@android:color/darker_gray"
+                    android:gravity="center"
+                    android:layout_marginTop="8dp" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</LinearLayout>

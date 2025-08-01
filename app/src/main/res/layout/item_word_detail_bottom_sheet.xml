@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- Header Text (for clicked word) -->
+    <TextView
+        android:id="@+id/headerText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="@color/teal_700"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone"
+        android:text="Clicked Word" />
+
+    <!-- Kanji Text -->
+    <TextView
+        android:id="@+id/kanjiText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@color/teal_700"
+        android:layout_marginBottom="4dp"
+        android:text="漢字"
+        android:visibility="gone" />
+
+    <!-- Reading Text -->
+    <TextView
+        android:id="@+id/readingText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="16sp"
+        android:textColor="@android:color/darker_gray"
+        android:layout_marginBottom="6dp"
+        android:text="かんじ"
+        android:visibility="gone" />
+
+    <!-- Meaning Text -->
+    <TextView
+        android:id="@+id/meaningText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="@android:color/black"
+        android:lineSpacingExtra="2dp"
+        android:text="Chinese character, kanji"
+        android:visibility="gone" />
+
+    <!-- Divider (except for last item) -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#E0E0E0"
+        android:layout_marginTop="8dp" />
+
+</LinearLayout>

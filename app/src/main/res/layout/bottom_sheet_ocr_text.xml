@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Updated: res/layout/bottom_sheet_ocr_text.xml -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bottom_sheet_background"
+    android:elevation="16dp">
+
+    <!-- Bottom Sheet Handle -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="4dp"
+        android:background="@drawable/bottom_sheet_handle" />
+
+    <!-- Header with buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text=""
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/teal_700" />
+
+        <!-- Japanese Only Toggle -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/japaneseOnlyToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="日本語"
+            android:textSize="12sp"
+            android:textAllCaps="false"
+            android:minWidth="70dp"
+            android:paddingHorizontal="12dp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            app:cornerRadius="18dp"
+            app:strokeColor="@color/teal_500"
+            app:strokeWidth="1dp"
+            android:layout_marginEnd="8dp" />
+
+        <!-- Copy Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/copyOcrButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Copy"
+            android:textSize="12sp"
+            android:textAllCaps="false"
+            android:minWidth="60dp"
+            android:paddingHorizontal="12dp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            app:cornerRadius="18dp"
+            app:strokeColor="@color/teal_700"
+            app:strokeWidth="1dp"
+            android:layout_marginEnd="8dp" />
+
+        <!-- Close Button -->
+        <ImageButton
+            android:id="@+id/closeButton"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_close"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:padding="6dp"
+            android:contentDescription="Close"
+            app:tint="@android:color/darker_gray" />
+
+    </LinearLayout>
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#E0E0E0"
+        android:layout_marginHorizontal="16dp" />
+
+    <!-- Scrollable OCR Text Content -->
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="16dp"
+        android:paddingBottom="32dp">
+
+        <!-- OCR Text Display -->
+        <TextView
+            android:id="@+id/ocrTextContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textColor="@android:color/black"
+            android:lineSpacingExtra="4dp"
+            android:text="Loading OCR text..."
+            android:textIsSelectable="true"
+            android:background="@drawable/ocr_text_background"
+            android:padding="16dp" />
+
+    </androidx.core.widget.NestedScrollView>
+
+</LinearLayout>

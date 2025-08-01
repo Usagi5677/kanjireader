@@ -1,0 +1,69 @@
+# Git specific ignore rules
+.DS_Store
+.idea/
+.gradle/
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+# For Android Studio project files, .idea folder is generally ignored entirely
+# If you want to keep some specific .idea files, adjust below
+.idea/
+
+# General build output and temporary files
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+*.iml
+*.ap_
+*.apk
+*.aab
+*.aar
+*.dex
+*.kdoc
+*.class
+*.jar
+*.so
+*.tlog
+*.log
+*.hprof # Android Profiling
+*.iws # IntelliJ / Android Studio workspace file
+out/ # General output directory
+
+# Keystore files
+*.jks
+*.keystore
+
+# Google Services (if using Firebase, typically excluded)
+# app/google-services.json
+
+# Backup files
+*.bak
+*~
+*.swp
+*.swo
+
+# OS files
+._*
+Thumbs.db
+ehthumbs.db
+
+# VS Code (if you ever open the project there)
+.vscode/
+
+
+app/src/main/assets/
+
+
+# Python specific ignores (if you have Python scripts for data processing)
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+venv/
+.venv/
