@@ -80,7 +80,7 @@ class DictionaryUpdateOrchestrator:
         print("Starting automated dictionary update process...")
         
         # Step 1: Download latest dictionaries 
-        print("\n[1/3] Downloading, extracting, and renaming dictionaries...")
+        print("\n[1/4] Downloading, extracting, and renaming dictionaries...")
         jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path = self.downloader.download_latest_dictionaries()
         
         if not jmdict_path:
@@ -93,17 +93,24 @@ class DictionaryUpdateOrchestrator:
         
         print(f"✓ Files renamed and moved to {self.assets_dir}")
         
-        # Step 2: Apply custom modifications (if requested)
+        # Step 2: Create merged kradfile from Kradical + kensaku sources
+        print("\n[2/4] Creating merged kradfile...")
+        if not self.preserver.create_merged_kradfile(self.downloader):
+            print("✗ Failed to create merged kradfile")
+            return False
+        print("✓ Merged kradfile created successfully")
+        
+        # Step 3: Apply custom modifications (if requested)
         if preserve_custom:
-            print("\n[2/3] Applying custom modifications...")
+            print("\n[3/4] Applying custom modifications...")
             if not self.preserver.preserve_and_apply():
                 print("✗ Failed to apply custom modifications")
                 return False
         else:
-            print("\n[2/3] Skipping custom modifications")
+            print("\n[3/4] Skipping custom modifications")
         
-        # Step 3: Cleanup
-        print("\n[3/3] Cleaning up temporary files...")
+        # Step 4: Cleanup
+        print("\n[4/4] Cleaning up temporary files...")
         try:
             # Remove downloaded ZIP files to save space (already done by downloader)
             print("  Temporary files cleaned up")

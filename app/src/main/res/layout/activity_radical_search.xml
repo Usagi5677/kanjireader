@@ -57,17 +57,41 @@
             android:orientation="vertical"
             android:background="#F8F8F8">
 
-            <!-- Section Header -->
-            <TextView
+            <!-- Section Header with Counter -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:orientation="horizontal"
                 android:padding="12dp"
-                android:text="Kanji Results"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="@color/teal_700"
                 android:background="@android:color/white"
-                android:elevation="2dp" />
+                android:elevation="2dp"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Kanji Results"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/teal_700" />
+
+                <TextView
+                    android:id="@+id/resultsCounter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/circular_badge_background"
+                    android:gravity="center"
+                    android:minWidth="28dp"
+                    android:minHeight="28dp"
+                    android:paddingHorizontal="8dp"
+                    android:text="0"
+                    android:textColor="@color/teal_900"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+
+            </LinearLayout>
 
             <!-- Kanji Results RecyclerView -->
             <androidx.recyclerview.widget.RecyclerView

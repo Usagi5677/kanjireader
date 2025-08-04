@@ -78,6 +78,14 @@ class TextSelectionView @JvmOverloads constructor(
     var onTextSelected: ((String) -> Unit)? = null
     var onWordLookup: ((String) -> Boolean)? = null
     
+    // Word highlighting
+    private var highlightedWordRange: Pair<Int, Int>? = null
+    private val wordHighlightPaint = Paint().apply {
+        color = 0x66009688 // Semi-transparent teal
+        isAntiAlias = true
+        style = Paint.Style.FILL
+    }
+    
     // Debounce mechanism to prevent duplicate callbacks
     private var lastCallbackText = ""
     private var lastCallbackTime = 0L
@@ -125,6 +133,7 @@ class TextSelectionView @JvmOverloads constructor(
 
         // Clear previous selection
         clearSelection()
+        clearWordHighlight() // Clear any existing word highlights
 
         // Process furigana if enabled
         if (showFurigana) {
@@ -133,6 +142,22 @@ class TextSelectionView @JvmOverloads constructor(
 
         // Request layout to trigger measurement
         requestLayout()
+    }
+    
+    /**
+     * Highlight a word at the specified position range
+     */
+    fun highlightWord(startPosition: Int, endPosition: Int) {
+        highlightedWordRange = Pair(startPosition, endPosition)
+        invalidate()
+    }
+    
+    /**
+     * Clear word highlighting
+     */
+    fun clearWordHighlight() {
+        highlightedWordRange = null
+        invalidate()
     }
 
     private fun processFurigana() {
@@ -320,11 +345,40 @@ class TextSelectionView @JvmOverloads constructor(
         } else if (lastSelectedChars.isNotEmpty()) {
             drawPersistentSelection(canvas)
         }
+        
+        // Draw word highlighting
+        highlightedWordRange?.let { (start, end) ->
+            drawWordHighlight(canvas, start, end)
+        }
 
         // Draw dot only if dragging
         if (isDragging) {
             canvas.drawCircle(dragCurrentX, dragCurrentY, 15f, dotPaint)
         }
+    }
+    
+    private fun drawWordHighlight(canvas: Canvas, startPos: Int, endPos: Int) {
+        if (startPos < 0 || endPos <= startPos || endPos > displayText.length) return
+        
+        val layout = staticLayout ?: return
+        
+        // Find character bounds within the highlighted range
+        val highlightChars = characterBounds.filter { char ->
+            char.charIndex in startPos until endPos
+        }
+        
+        if (highlightChars.isEmpty()) return
+        
+        canvas.save()
+        canvas.translate(16f, 16f + if (showFurigana) TOP_MARGIN_FOR_FURIGANA else 0f)
+        
+        // Draw highlight rectangles for each character in the word
+        for (char in highlightChars) {
+            val rect = RectF(char.bounds)
+            canvas.drawRect(rect, wordHighlightPaint)
+        }
+        
+        canvas.restore()
     }
 
     private fun findKanjiPortion(text: String): KanjiInfo? {

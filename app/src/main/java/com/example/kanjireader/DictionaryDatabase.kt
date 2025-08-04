@@ -265,6 +265,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 $COL_RKM_KANJI_LIST TEXT NOT NULL
             )
         """
+        
     }
 
     // Context is now a member variable
@@ -1521,6 +1522,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         return radicalsByStroke
     }
 
+
     /**
      * Get kanji that contain ALL of the specified radicals
      */
@@ -1532,7 +1534,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         // Build query to find kanji that appear in all radical lists
         val placeholders = radicals.joinToString(",") { "?" }
         val sql = """
-            SELECT $COL_RKM_KANJI_LIST
+            SELECT $COL_RKM_RADICAL, $COL_RKM_KANJI_LIST
             FROM $TABLE_RADICAL_KANJI_MAPPING 
             WHERE $COL_RKM_RADICAL IN ($placeholders)
         """
@@ -1540,23 +1542,27 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         val cursor = db.rawQuery(sql, radicals.toTypedArray())
         
         return cursor.use {
-            val kanjiSets = mutableListOf<Set<String>>()
+            // Map each radical to its kanji set
+            val radicalToKanjiSets = mutableMapOf<String, Set<String>>()
             
             while (it.moveToNext()) {
-                val kanjiString = it.getString(0)
-                if (!kanjiString.isNullOrBlank()) {
+                val radical = it.getString(0)
+                val kanjiString = it.getString(1)
+                
+                if (!radical.isNullOrBlank() && !kanjiString.isNullOrBlank()) {
                     val kanjiSet = kanjiString.split(",").map { kanji -> kanji.trim() }.toSet()
-                    kanjiSets.add(kanjiSet)
+                    radicalToKanjiSets[radical] = kanjiSet
                 }
             }
             
-            // Find intersection of all sets (kanji that appear in ALL radical lists)
-            if (kanjiSets.isEmpty()) {
+            // Find intersection of all radical kanji sets (kanji that appear in ALL radical sets)
+            if (radicalToKanjiSets.size != radicals.size) {
+                // Some radicals had no results
                 emptyList()
             } else {
-                var result = kanjiSets.first()
-                for (i in 1 until kanjiSets.size) {
-                    result = result.intersect(kanjiSets[i])
+                var result = radicalToKanjiSets.values.first()
+                for (kanjiSet in radicalToKanjiSets.values.drop(1)) {
+                    result = result.intersect(kanjiSet)
                 }
                 result.sorted() // Return sorted list
             }
@@ -1693,6 +1699,49 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         }
         
         return results
+    }
+
+    /**
+     * Convert KanjiDatabaseEntry to KanjiCardInfo for display in card UI
+     */
+    fun convertToKanjiCardInfo(kanjiList: List<String>): List<KanjiCardInfo> {
+        val kanjiEntries = getKanjiByCharacters(kanjiList)
+        val kanjiMap = kanjiEntries.associateBy { it.kanji }
+        
+        return kanjiList.mapNotNull { kanji ->
+            kanjiMap[kanji]?.let { entry ->
+                // Clean up readings - remove brackets and quotes
+                val cleanOnReadings = entry.onReadings
+                    ?.removeSurrounding("[", "]")
+                    ?.replace("\"", "")
+                    ?.replace(", ", "、")
+                    ?: ""
+                
+                val cleanKunReadings = entry.kunReadings
+                    ?.removeSurrounding("[", "]")
+                    ?.replace("\"", "")
+                    ?.replace(", ", "、")
+                    ?: ""
+                
+                // Clean up meanings - remove brackets and quotes
+                val cleanMeanings = entry.meanings
+                    ?.removeSurrounding("[", "]")
+                    ?.replace("\"", "")
+                    ?.split(", ")
+                    ?.take(3)
+                    ?.joinToString(", ")
+                    ?: ""
+                
+                KanjiCardInfo(
+                    kanji = entry.kanji,
+                    onReadings = cleanOnReadings,
+                    kunReadings = cleanKunReadings,
+                    primaryMeaning = cleanMeanings,
+                    jlptLevel = entry.jlptLevel,
+                    grade = entry.grade
+                )
+            }
+        }
     }
 
 }

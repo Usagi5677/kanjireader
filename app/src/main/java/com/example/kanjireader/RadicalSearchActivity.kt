@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Button
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.appcompat.widget.Toolbar
@@ -23,10 +24,11 @@ class RadicalSearchActivity : AppCompatActivity() {
     private lateinit var clearButton: Button
     private lateinit var kanjiResultsRecyclerView: RecyclerView
     private lateinit var radicalGridRecyclerView: RecyclerView
+    private lateinit var resultsCounter: TextView
 
     // Adapters
     private lateinit var radicalGridAdapter: RadicalGridAdapter
-    private lateinit var radicalKanjiAdapter: RadicalKanjiAdapter
+    private lateinit var kanjiCardAdapter: KanjiCardAdapter
 
     // Data
     private val selectedRadicals = mutableSetOf<String>()
@@ -52,6 +54,7 @@ class RadicalSearchActivity : AppCompatActivity() {
         clearButton = findViewById(R.id.clearButton)
         kanjiResultsRecyclerView = findViewById(R.id.kanjiResultsRecyclerView)
         radicalGridRecyclerView = findViewById(R.id.radicalGridRecyclerView)
+        resultsCounter = findViewById(R.id.resultsCounter)
     }
 
     private fun setupToolbar() {
@@ -69,13 +72,13 @@ class RadicalSearchActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerViews() {
-        // Setup kanji results grid (5 columns)
-        radicalKanjiAdapter = RadicalKanjiAdapter { kanji ->
+        // Setup kanji results with card layout (vertical scrolling)
+        kanjiCardAdapter = KanjiCardAdapter { kanji ->
             onKanjiClicked(kanji)
         }
         kanjiResultsRecyclerView.apply {
-            layoutManager = GridLayoutManager(this@RadicalSearchActivity, 5)
-            adapter = radicalKanjiAdapter
+            layoutManager = LinearLayoutManager(this@RadicalSearchActivity)
+            adapter = kanjiCardAdapter
         }
 
         // Setup radical selection grid (vertical scrolling)
@@ -169,8 +172,20 @@ class RadicalSearchActivity : AppCompatActivity() {
     }
 
     private fun updateKanjiGrid() {
-        radicalKanjiAdapter.updateData(currentKanjiResults)
-        Log.d(TAG, "Updated kanji grid with ${currentKanjiResults.size} results")
+        lifecycleScope.launch {
+            val kanjiCards = database.convertToKanjiCardInfo(currentKanjiResults)
+            kanjiCardAdapter.updateData(kanjiCards)
+            
+            // Update the results counter - show only if there are results
+            if (kanjiCards.isNotEmpty()) {
+                resultsCounter.visibility = android.view.View.VISIBLE
+                resultsCounter.text = kanjiCards.size.toString()
+            } else {
+                resultsCounter.visibility = android.view.View.GONE
+            }
+            
+            Log.d(TAG, "Updated kanji grid with ${kanjiCards.size} results")
+        }
     }
 
     private fun updateRadicalGrid() {

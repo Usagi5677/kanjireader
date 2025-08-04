@@ -12,49 +12,38 @@
         android:layout_height="match_parent"
         android:background="@android:color/black">
 
-        <!-- Test ImageView -->
-        <ImageView
-            android:id="@+id/imageView"
+
+        <!-- Split Screen Container -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scaleType="fitCenter"
-            android:background="@android:color/black" />
-        <!-- Test Toggle Button -->
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/btnToggleWordList"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_margin="16dp"
-            android:src="@android:drawable/ic_menu_agenda"
-            app:backgroundTint="@color/teal_500"
-            app:tint="@color/white"
-            app:layout_anchor="@id/imageView"
-            app:layout_anchorGravity="top|end"
-            app:fabSize="mini" />
+            android:orientation="vertical">
 
-        <!-- Gallery Selection Button -->
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/btnSelectFromGallery"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="88dp"
-            android:layout_marginEnd="16dp"
-            android:src="@drawable/ic_gallery"
-            android:contentDescription="@string/select_photo_from_gallery"
-            app:backgroundTint="@color/teal_500"
-            app:tint="@color/white"
-            app:layout_anchor="@id/imageView"
-            app:layout_anchorGravity="top|end"
-            app:fabSize="mini" />
+            <!-- Top Half: Image and OCR Text -->
+            <FrameLayout
+                android:id="@+id/topHalfContainer"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@android:color/black">
 
-        <!-- Test Bottom Sheet -->
-        <LinearLayout
-            android:id="@+id/bottomSheet"
-            android:layout_width="match_parent"
-            android:layout_height="330dp"
-            android:orientation="vertical"
-            android:background="@android:color/white"
-            app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior">
+                <!-- ImageView for captured image -->
+                <ImageView
+                    android:id="@+id/imageView"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="fitCenter"
+                    android:background="@android:color/black" />
+
+                <!-- OCR Text Container (Positioned to avoid buttons) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_gravity="bottom"
+                    android:layout_marginTop="80dp"
+                    android:background="@android:color/white"
+                    android:elevation="2dp">
 
             <!-- Header with title and controls -->
             <LinearLayout
@@ -146,6 +135,99 @@
                     android:minHeight="200dp" />
 
             </ScrollView>
+
+                </LinearLayout>
+
+                <!-- Horizontal Button Container (High elevation to stay on top) -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_margin="16dp"
+                    android:layout_gravity="top|end"
+                    android:elevation="8dp">
+
+                    <!-- Gallery Selection Button -->
+                    <com.google.android.material.floatingactionbutton.FloatingActionButton
+                        android:id="@+id/btnSelectFromGallery"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="8dp"
+                        android:src="@drawable/ic_gallery"
+                        android:contentDescription="@string/select_photo_from_gallery"
+                        app:backgroundTint="@color/teal_500"
+                        app:tint="@color/white"
+                        app:fabSize="mini" />
+
+                    <!-- Toggle Word List Button -->
+                    <com.google.android.material.floatingactionbutton.FloatingActionButton
+                        android:id="@+id/btnToggleWordList"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:src="@android:drawable/ic_menu_agenda"
+                        app:backgroundTint="@color/teal_500"
+                        app:tint="@color/white"
+                        app:fabSize="mini" />
+
+                </LinearLayout>
+
+            </FrameLayout>
+
+            <!-- Bottom Half: Word Cards List -->
+            <LinearLayout
+                android:id="@+id/bottomHalfContainer"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:background="#F8F8F8">
+
+                <!-- Word Cards Header -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="12dp"
+                    android:background="@android:color/white"
+                    android:elevation="2dp"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Found Words"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/teal_700" />
+
+                    <TextView
+                        android:id="@+id/wordCountBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/circular_badge_background"
+                        android:gravity="center"
+                        android:minWidth="28dp"
+                        android:minHeight="28dp"
+                        android:paddingHorizontal="8dp"
+                        android:text="0"
+                        android:textColor="@color/teal_900"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+
+                <!-- Word Cards RecyclerView -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/wordCardsRecyclerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:padding="8dp"
+                    android:paddingBottom="400dp"
+                    android:clipToPadding="false" />
+
+            </LinearLayout>
 
         </LinearLayout>
 

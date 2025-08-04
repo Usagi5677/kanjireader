@@ -913,8 +913,66 @@ class DatabaseBuilder:
         conn.commit()
         print(f"✅ Added {len(kradfile_data)} kanji component mappings")
 
+    def populate_radical_kanji_mapping_from_kradfile(self, conn: sqlite3.Connection, kradfile_data: Dict, radkfile_data: Dict = None) -> None:
+        """Build radical_kanji_mapping table from kradfile data (primary) with radkfile fallback"""
+        cursor = conn.cursor()
+        
+        print("🔧 Building radical kanji mapping from kradfile data...")
+        
+        # Build radical -> kanji mapping from kradfile
+        radical_to_kanji = {}
+        
+        for kanji, components in kradfile_data.items():
+            if isinstance(components, list):
+                for radical in components:
+                    if radical not in radical_to_kanji:
+                        radical_to_kanji[radical] = []
+                    radical_to_kanji[radical].append(kanji)
+        
+        # Get stroke counts from radkfile if available
+        radical_stroke_counts = {}
+        if radkfile_data:
+            for radical, info in radkfile_data.items():
+                stroke_count = info.get('strokeCount', 0)
+                radical_stroke_counts[radical] = stroke_count
+        
+        # Insert or update radical mappings
+        for radical, kanji_list in radical_to_kanji.items():
+            # Get stroke count from radkfile, default to 1 if not found
+            stroke_count = radical_stroke_counts.get(radical, 1)
+            
+            # Convert list of kanji to comma-separated string
+            kanji_str = ", ".join(sorted(kanji_list))  # Sort for consistency
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO radical_kanji_mapping (radical, stroke_count, kanji_list)
+                VALUES (?, ?, ?)
+            """, (radical, stroke_count, kanji_str))
+        
+        conn.commit()
+        print(f"✅ Built radical mappings for {len(radical_to_kanji)} radicals from kradfile data")
+        
+        # Add any radicals from radkfile that weren't in kradfile
+        if radkfile_data:
+            radkfile_only_count = 0
+            for radical, info in radkfile_data.items():
+                if radical not in radical_to_kanji:
+                    stroke_count = info.get('strokeCount', 0)
+                    kanji_list = info.get('kanji', [])
+                    kanji_str = ", ".join(kanji_list) if isinstance(kanji_list, list) else str(kanji_list)
+                    
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO radical_kanji_mapping (radical, stroke_count, kanji_list)
+                        VALUES (?, ?, ?)
+                    """, (radical, stroke_count, kanji_str))
+                    radkfile_only_count += 1
+            
+            if radkfile_only_count > 0:
+                conn.commit()
+                print(f"✅ Added {radkfile_only_count} additional radicals from radkfile")
+
     def populate_radical_kanji_mapping(self, conn: sqlite3.Connection, radkfile_data: Dict) -> None:
-        """Populate radical_kanji_mapping table from radkfile data"""
+        """Populate radical_kanji_mapping table from radkfile data (legacy method)"""
         cursor = conn.cursor()
         
         print("🔧 Populating radical kanji mapping...")
@@ -1262,13 +1320,18 @@ class DatabaseBuilder:
             else:
                 print("⚠️  No kradfile data found, skipping kanji radical mapping.")
 
-            # Load and populate radkfile data (radical → kanji list)
-            print("\n🔄 Processing radkfile data...")
+            # Load radkfile data (for stroke counts and additional radicals)
+            print("\n🔄 Loading radkfile data...")
             radkfile_data = self.load_radkfile_data(radkfile_path)
-            if radkfile_data:
+            
+            # Build radical → kanji mapping from kradfile (primary) with radkfile support
+            if kradfile_data:
+                self.populate_radical_kanji_mapping_from_kradfile(conn, kradfile_data, radkfile_data)
+            elif radkfile_data:
+                # Fallback to old method if only radkfile is available
                 self.populate_radical_kanji_mapping(conn, radkfile_data)
             else:
-                print("⚠️  No radkfile data found, skipping radical kanji mapping.")
+                print("⚠️  No radical data found, skipping radical kanji mapping.")
 
             # Populate FTS tables (after all data is inserted into main table)
             self.populate_fts_tables(conn)

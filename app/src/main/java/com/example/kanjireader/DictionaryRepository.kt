@@ -2317,8 +2317,7 @@ class DictionaryRepository(private val context: Context) {
                 val finalRadicalNames = parsedRadicalNames
                 
                 // Get kanji components from kradfile data
-                // TODO: Implement getKanjiComponents method or use existing components data
-                val components = emptyList<String>() // Temporary fix for compilation
+                val components = database.getKanjiComponents(entry.kanji)
                 Log.d(TAG, "  components: $components")
                 
                 KanjiResult(

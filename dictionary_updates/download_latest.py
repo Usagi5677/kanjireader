@@ -34,6 +34,12 @@ class DictionaryDownloader:
         
         # Direct URL for complete radkfile from Kradical repository
         self.kradical_radkfile_url = "https://raw.githubusercontent.com/tim-harding/Kradical/master/assets/outputs/radk.json"
+        
+        # Direct URL for kradfile with proper Unicode radicals from Kradical repository
+        self.kradical_kradfile_url = "https://raw.githubusercontent.com/tim-harding/Kradical/master/assets/outputs/krad.json"
+        
+        # Backup URL for additional kanji coverage from kensaku repository
+        self.kensaku_kradfile_url = "https://raw.githubusercontent.com/jmettraux/kensaku/master/data/kradfile-u"
     
     def get_latest_release_info(self) -> Optional[Dict]:
         """Get information about the latest release from GitHub API"""
@@ -102,6 +108,147 @@ class DictionaryDownloader:
             print(f"❌ Error converting/saving radkfile: {e}")
             return None
     
+    def download_kradical_kradfile(self) -> Optional[Path]:
+        """Download kradfile with proper Unicode radicals from Kradical repository"""
+        try:
+            print("Downloading kradfile from Kradical repository (proper Unicode radicals)...")
+            response = requests.get(self.kradical_kradfile_url, timeout=30)
+            response.raise_for_status()
+            
+            # Parse the JSON data directly
+            kradfile_data = response.json()
+            
+            # Convert from Kradical's array format to our expected format
+            converted_data = self.convert_kradfile_to_expected_format(kradfile_data)
+            
+            # Save converted data to assets directory as kradfile.json
+            kradfile_path = self.assets_dir / "kradfile.json"
+            with open(kradfile_path, 'w', encoding='utf-8') as f:
+                json.dump(converted_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"✅ Downloaded and converted Kradical kradfile to {kradfile_path}")
+            print(f"   Found {len(converted_data['kanji'])} kanji entries")
+            
+            # Show some examples
+            example_count = 0
+            for kanji, radicals in converted_data['kanji'].items():
+                if example_count < 5:
+                    print(f"   Example: {kanji} → {radicals}")
+                    example_count += 1
+                else:
+                    break
+            
+            return kradfile_path
+            
+        except requests.RequestException as e:
+            print(f"❌ Error downloading kradfile from Kradical: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ Error converting/saving kradfile: {e}")
+            return None
+
+    def download_kensaku_kradfile_for_merging(self) -> Optional[dict]:
+        """Download comprehensive kradfile-u from kensaku repository for merging additional kanji"""
+        try:
+            print("Downloading additional kanji from kensaku repository...")
+            response = requests.get(self.kensaku_kradfile_url, timeout=30)
+            response.raise_for_status()
+            
+            # Parse the kradfile-u format (text format, not JSON)
+            kradfile_content = response.text
+            
+            # Convert to our expected format but return data instead of saving
+            converted_data = self.parse_kradfile_u(kradfile_content)
+            
+            print(f"✅ Downloaded kensaku kradfile-u for merging")
+            print(f"   Found {len(converted_data['kanji'])} additional kanji entries")
+            
+            return converted_data
+            
+        except requests.RequestException as e:
+            print(f"❌ Error downloading kradfile from kensaku: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ Error parsing kensaku kradfile: {e}")
+            return None
+    
+    def parse_kradfile_u(self, content: str) -> dict:
+        """
+        Parse kradfile-u format and convert to JSON format.
+        
+        Format expected in kradfile-u:
+        - Lines starting with '#' are comments
+        - After "###########################################################" line
+        - Format: kanji : radical1 radical2 radical3
+        - Example: 㐂 : 匕
+        """
+        kanji_radicals = {}
+        parsing_data = False
+        
+        lines = content.split('\n')
+        for line in lines:
+            line = line.strip()
+            
+            # Skip empty lines
+            if not line:
+                continue
+            
+            # Check for the separator line to start parsing
+            if line.startswith('###########'):
+                parsing_data = True
+                continue
+            
+            # Skip comments and header lines
+            if line.startswith('#') or not parsing_data:
+                continue
+            
+            # Parse kanji:radical format
+            if ':' in line:
+                try:
+                    parts = line.split(':', 1)
+                    if len(parts) == 2:
+                        kanji = parts[0].strip()
+                        radicals_str = parts[1].strip()
+                        
+                        # Split radicals by spaces and filter empty strings
+                        radicals = [r.strip() for r in radicals_str.split() if r.strip()]
+                        
+                        if kanji and radicals:
+                            kanji_radicals[kanji] = radicals
+                            
+                except Exception:
+                    continue
+        
+        return {
+            "version": "converted-from-kradfile-u",
+            "kanji": kanji_radicals
+        }
+    
+    def convert_kradfile_to_expected_format(self, input_data: list, version: str = "converted-from-kradical") -> dict:
+        """
+        Converts Kradical krad.json format to expected kradfile.json format.
+        
+        Args:
+            input_data (list): A list of dictionaries with 'kanji' and 'radicals' keys
+            version (str): The version string to be included in the output
+        
+        Returns:
+            dict: A dictionary in the expected format with 'version' and 'kanji' keys
+        """
+        converted_format = {
+            "version": version,
+            "kanji": {}
+        }
+        
+        for entry in input_data:
+            kanji_char = entry.get("kanji")
+            radicals_list = entry.get("radicals", [])
+            
+            if kanji_char and radicals_list:
+                converted_format["kanji"][kanji_char] = radicals_list
+        
+        return converted_format
+    
     def convert_radicals_to_new_format(self, input_data: list, version: str = "3.6.1") -> dict:
         """
         Converts a list of radical dictionaries into a new, nested dictionary format.
@@ -136,11 +283,11 @@ class DictionaryDownloader:
         return new_format
     
     def find_target_assets(self, release_data: Dict) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
-        """Find the jmdict-eng, kanjidic2-en, jmnedict, and kradfile ZIP file URLs (radkfile downloaded separately)"""
+        """Find the jmdict-eng, kanjidic2-en, jmnedict ZIP file URLs (kradfile from kensaku, radkfile from Kradical)"""
         jmdict_url = None
         kanjidic_url = None
         jmnedict_url = None
-        kradfile_url = None
+        kradfile_url = None  # Will be handled separately from kensaku repo
         radkfile_url = None  # Will be handled separately from Kradical repo
         
         assets = release_data.get('assets', [])
@@ -170,12 +317,11 @@ class DictionaryDownloader:
                 jmnedict_url = download_url
                 print(f"Found JMnedict file: {name}")
             
-            # Look for kradfile ZIP files
+            # Skip kradfile - will be downloaded separately from kensaku repository
             elif 'kradfile' in name and name.endswith('.zip'):
-                kradfile_url = download_url
-                print(f"Found Kradfile file: {name}")
+                print(f"Skipping Kradfile from jmdict-simplified (using kensaku instead): {name}")
             
-            # Note: radkfile is downloaded separately from Kradical repository
+            # Note: kradfile is downloaded from kensaku, radkfile from Kradical
         
         if not jmdict_url:
             print("Warning: No jmdict-eng ZIP file found")
@@ -183,9 +329,7 @@ class DictionaryDownloader:
             print("Warning: No kanjidic2-en ZIP file found")
         if not jmnedict_url:
             print("Warning: No jmnedict ZIP file found")
-        if not kradfile_url:
-            print("Warning: No kradfile ZIP file found")
-        # Note: radkfile will be downloaded separately from Kradical repository
+        # Note: kradfile is downloaded from kensaku, radkfile from Kradical
             
         return jmdict_url, kanjidic_url, jmnedict_url, kradfile_url, radkfile_url
     
@@ -349,11 +493,8 @@ class DictionaryDownloader:
                 jmnedict_zip_path = self.downloads_dir / jmnedict_filename
                 jmnedict_path = self.extract_zip(jmnedict_zip_path)
         
-        if kradfile_url:
-            kradfile_filename = kradfile_url.split('/')[-1]
-            if self.download_file(kradfile_url, kradfile_filename):
-                kradfile_zip_path = self.downloads_dir / kradfile_filename
-                kradfile_path = self.extract_zip(kradfile_zip_path)
+        # Download kradfile with proper Unicode radicals from Kradical repository
+        kradfile_path = self.download_kradical_kradfile()
         
         # Download complete radkfile from Kradical repository
         radkfile_path = self.download_kradical_radkfile()
@@ -381,9 +522,9 @@ class DictionaryDownloader:
             print("JMnedict: Failed to download/extract")
         
         if kradfile_path:
-            print(f"Kradfile: {kradfile_path}")
+            print(f"Kradfile (from Kradical): {kradfile_path}")
         else:
-            print("Kradfile: Failed to download/extract")
+            print("Kradfile (from Kradical): Failed to download")
         
         if radkfile_path:
             print(f"Radkfile (from Kradical): {radkfile_path}")
