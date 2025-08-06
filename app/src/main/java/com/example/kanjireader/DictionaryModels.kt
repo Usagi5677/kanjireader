@@ -71,7 +71,8 @@ data class KanjiCardInfo(
     val jlptLevel: Int? = null,
     val grade: Int? = null,
     val commonalityScore: Int = 0,  // Higher score = more common kanji
-    val hasReadings: Boolean = true  // False for "No readings available" cases
+    val hasReadings: Boolean = true,  // False for "No readings available" cases
+    val confidence: Int? = null  // Recognition confidence percentage (0-100) for drawing results
 )
 
 data class WordCardInfo(

@@ -356,7 +356,13 @@ class DictionaryActivity : AppCompatActivity() {
         binding.resultsRecyclerView.visibility = View.GONE
         binding.noResultsLayout.visibility = View.VISIBLE
 
-        binding.noResultsText.text = getString(R.string.no_results_for, query)
+        // Limit the query length in the no results message
+        val displayQuery = if (query.length > 30) {
+            "No results found"
+        } else {
+            getString(R.string.no_results_for, query)
+        }
+        binding.noResultsText.text = displayQuery
         supportActionBar?.subtitle = null
     }
 

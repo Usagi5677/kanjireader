@@ -6,7 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/white"
-    tools:context=".RadicalSearchActivity">
+    tools:context=".KanjiDrawingActivity">
 
     <!-- Toolbar -->
     <androidx.appcompat.widget.Toolbar
@@ -15,7 +15,7 @@
         android:layout_height="wrap_content"
         android:background="@color/teal_500"
         android:elevation="4dp"
-        app:title="Kanji search"
+        app:title="Draw Kanji"
         app:titleTextColor="@android:color/white"
         app:navigationIcon="@drawable/ic_arrow_back"
         app:navigationIconTint="@android:color/white"
@@ -23,7 +23,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- CLEAR Button -->
+        <!-- CLEAR Drawing Button -->
         <Button
             android:id="@+id/clearButton"
             android:layout_width="48dp"
@@ -49,7 +49,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Top Half: Filtered Kanji Results -->
+        <!-- Top Half: Recognition Results -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -96,26 +96,63 @@
                     android:layout_height="1dp"
                     android:layout_weight="1" />
 
-                <!-- Draw Kanji Button -->
-                <Button
-                    android:id="@+id/drawButton"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:background="?android:attr/selectableItemBackgroundBorderless"
-                    android:drawableTop="@drawable/ic_brush"
-                    android:drawableTint="@color/teal_600"
-                    android:padding="12dp"
-                    style="?android:attr/borderlessButtonStyle" />
+                <TextView
+                    android:id="@+id/statusText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textSize="12sp"
+                    android:textColor="@color/teal_600"
+                    android:alpha="0.8"
+                    android:visibility="gone" />
 
             </LinearLayout>
 
-            <!-- Kanji Results RecyclerView -->
+            <!-- Recognition Results RecyclerView -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/kanjiResultsRecyclerView"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:padding="8dp"
                 android:clipToPadding="false" />
+
+            <!-- Empty State -->
+            <LinearLayout
+                android:id="@+id/emptyStateLayout"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:padding="32dp"
+                android:visibility="visible">
+
+                <ImageView
+                    android:layout_width="80dp"
+                    android:layout_height="80dp"
+                    android:layout_marginBottom="24dp"
+                    android:src="@drawable/ic_brush"
+                    android:alpha="0.2"
+                    android:tint="#888888"
+                    android:contentDescription="Draw kanji" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Draw a kanji character"
+                    android:textSize="20sp"
+                    android:textColor="#888888"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Use your finger to draw in the area below"
+                    android:textSize="16sp"
+                    android:textColor="#AAAAAA"
+                    android:gravity="center" />
+
+            </LinearLayout>
 
         </LinearLayout>
 
@@ -125,7 +162,7 @@
             android:layout_height="2dp"
             android:background="@color/teal_500" />
 
-        <!-- Bottom Half: Radical Selection Grid -->
+        <!-- Bottom Half: Drawing Area -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -133,25 +170,46 @@
             android:orientation="vertical"
             android:background="#FFFFFF">
 
-            <!-- Section Header -->
-            <TextView
+            <!-- Drawing Area Header -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:orientation="horizontal"
                 android:padding="12dp"
-                android:text="Select Radicals"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="@color/teal_700"
                 android:background="@android:color/white"
-                android:elevation="2dp" />
+                android:elevation="2dp"
+                android:gravity="center_vertical">
 
-            <!-- Radical Selection RecyclerView -->
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/radicalGridRecyclerView"
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Drawing Area"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/teal_700" />
+
+                <Button
+                    android:id="@+id/undoButton"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:drawableTop="@drawable/ic_undo"
+                    android:drawableTint="@color/teal_600"
+                    android:padding="12dp"
+                    android:enabled="false"
+                    style="?android:attr/borderlessButtonStyle" />
+
+            </LinearLayout>
+
+            <!-- Drawing Canvas -->
+            <com.example.kanjireader.DrawingView
+                android:id="@+id/drawingView"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:padding="8dp"
-                android:clipToPadding="false" />
+                android:layout_margin="8dp"
+                android:background="@android:color/white"
+                android:elevation="2dp" />
 
         </LinearLayout>
 

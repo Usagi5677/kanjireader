@@ -33,6 +33,7 @@ class KanjiCardAdapter(
         private val kanjiCharacter: TextView = itemView.findViewById(R.id.kanjiCharacter)
         private val readings: TextView = itemView.findViewById(R.id.readings)
         private val meaning: TextView = itemView.findViewById(R.id.meaning)
+        private val confidenceBadge: TextView = itemView.findViewById(R.id.confidenceBadge)
 
         fun bind(kanjiCard: KanjiCardInfo) {
             kanjiCharacter.text = kanjiCard.kanji
@@ -54,6 +55,14 @@ class KanjiCardAdapter(
             
             // Set meaning
             meaning.text = kanjiCard.primaryMeaning.ifBlank { "No meaning available" }
+            
+            // Handle confidence badge (only show for drawing recognition results)
+            if (kanjiCard.confidence != null && kanjiCard.confidence > 0) {
+                confidenceBadge.text = "${kanjiCard.confidence}%"
+                confidenceBadge.visibility = View.VISIBLE
+            } else {
+                confidenceBadge.visibility = View.GONE
+            }
             
             // Set click listener
             itemView.setOnClickListener {

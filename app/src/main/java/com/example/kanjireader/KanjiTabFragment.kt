@@ -1,11 +1,14 @@
 package com.example.kanjireader
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -29,6 +32,8 @@ class KanjiTabFragment : Fragment() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var emptyStateLayout: LinearLayout
     private lateinit var kanjiAdapter: KanjiDetailAdapter
+    private lateinit var drawButton: Button
+    private lateinit var resultsCounter: TextView
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -43,7 +48,11 @@ class KanjiTabFragment : Fragment() {
 
         recyclerView = view.findViewById(R.id.kanjiRecyclerView)
         emptyStateLayout = view.findViewById(R.id.emptyStateLayout)
+        drawButton = view.findViewById(R.id.drawButton)
+        resultsCounter = view.findViewById(R.id.resultsCounter)
+        
         setupRecyclerView()
+        setupDrawButton()
 
         // Get the word from arguments
         val word = arguments?.getString(ARG_WORD) ?: ""
@@ -60,6 +69,14 @@ class KanjiTabFragment : Fragment() {
         recyclerView.apply {
             layoutManager = LinearLayoutManager(context)
             adapter = kanjiAdapter
+        }
+    }
+
+    private fun setupDrawButton() {
+        drawButton.setOnClickListener {
+            Log.d("KanjiTabFragment", "Draw button clicked - launching KanjiDrawingActivity")
+            val intent = Intent(requireContext(), KanjiDrawingActivity::class.java)
+            startActivity(intent)
         }
     }
 
@@ -128,11 +145,20 @@ class KanjiTabFragment : Fragment() {
     private fun showEmptyState() {
         recyclerView.visibility = View.GONE
         emptyStateLayout.visibility = View.VISIBLE
+        resultsCounter.visibility = View.GONE
     }
 
     private fun showKanjiData(kanjiDetails: List<KanjiResult>) {
         recyclerView.visibility = View.VISIBLE
         emptyStateLayout.visibility = View.GONE
         kanjiAdapter.updateData(kanjiDetails)
+        
+        // Update counter
+        if (kanjiDetails.isNotEmpty()) {
+            resultsCounter.visibility = View.VISIBLE
+            resultsCounter.text = kanjiDetails.size.toString()
+        } else {
+            resultsCounter.visibility = View.GONE
+        }
     }
 }

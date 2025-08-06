@@ -22,6 +22,7 @@ class RadicalSearchActivity : AppCompatActivity() {
     // UI Components
     private lateinit var toolbar: Toolbar
     private lateinit var clearButton: Button
+    private lateinit var drawButton: Button
     private lateinit var kanjiResultsRecyclerView: RecyclerView
     private lateinit var radicalGridRecyclerView: RecyclerView
     private lateinit var resultsCounter: TextView
@@ -52,6 +53,7 @@ class RadicalSearchActivity : AppCompatActivity() {
     private fun initializeViews() {
         toolbar = findViewById(R.id.toolbar)
         clearButton = findViewById(R.id.clearButton)
+        drawButton = findViewById(R.id.drawButton)
         kanjiResultsRecyclerView = findViewById(R.id.kanjiResultsRecyclerView)
         radicalGridRecyclerView = findViewById(R.id.radicalGridRecyclerView)
         resultsCounter = findViewById(R.id.resultsCounter)
@@ -68,6 +70,12 @@ class RadicalSearchActivity : AppCompatActivity() {
 
         clearButton.setOnClickListener {
             clearSelection()
+        }
+
+        drawButton.setOnClickListener {
+            Log.d(TAG, "Draw button clicked - launching KanjiDrawingActivity")
+            val intent = Intent(this, KanjiDrawingActivity::class.java)
+            startActivity(intent)
         }
     }
 

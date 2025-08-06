@@ -65,6 +65,25 @@
 
         </LinearLayout>
 
+        <!-- Confidence Badge (for drawing recognition) -->
+        <TextView
+            android:id="@+id/confidenceBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/circular_badge_background"
+            android:backgroundTint="@color/teal_100"
+            android:gravity="center"
+            android:minWidth="36dp"
+            android:minHeight="24dp"
+            android:paddingHorizontal="8dp"
+            android:textColor="@color/teal_700"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:text="85%"
+            tools:visibility="visible" />
+
     </LinearLayout>
 
 </androidx.cardview.widget.CardView>
