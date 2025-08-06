@@ -178,6 +178,7 @@ class DatabaseBuilder:
                 tokenized_kanji TEXT,
                 tokenized_reading TEXT,
                 is_jmnedict_entry INTEGER DEFAULT 0,  -- Only this flag for JMnedict source
+                form_is_common INTEGER DEFAULT 0,  -- Common flag specific to this kanji-kana combination
                 UNIQUE(kanji, reading, is_jmnedict_entry)
             )
         """)
@@ -206,6 +207,7 @@ class DatabaseBuilder:
                 is_common UNINDEXED,
                 frequency UNINDEXED,
                 is_jmnedict_entry UNINDEXED, -- Only this flag for FTS
+                form_is_common UNINDEXED,
                 content='dictionary_entries',
                 content_rowid='id'
             )
@@ -255,31 +257,292 @@ class DatabaseBuilder:
 
         print("🏷️  Populating tag definitions...")
 
-        # These are now simply descriptions for the tags, without specific JMdict/JMnedict mentions.
+        # Complete tag definitions from jmdict.json
         tag_definitions = {
-            # Nouns
-            'n': 'noun (common)', 'n-adv': 'adverbial noun', 'n-t': 'noun (temporal)',
-            'n-pr': 'proper noun', 'n-pref': 'noun, used as a prefix', 'n-suf': 'noun, used as a suffix',
+            # Basic parts of speech
+            'n': 'noun (common) (futsuumeishi)',
+            'n-adv': 'adverbial noun (fukushitekimeishi)', 
+            'n-t': 'noun (temporal) (jisoumeishi)',
+            'n-pr': 'proper noun',
+            'n-pref': 'noun, used as a prefix',
+            'n-suf': 'noun, used as a suffix',
+            'adj-i': 'adjective (keiyoushi)',
+            'adj-na': 'adjectival nouns or quasi-adjectives (keiyodoshi)',
+            'adj-no': 'nouns which may take the genitive case particle \'no\'',
+            'adj-pn': 'pre-noun adjectival (rentaishi)',
+            'adj-t': '\'taru\' adjective',
+            'adj-f': 'noun or verb acting prenominally',
+            'adj-ix': 'adjective (keiyoushi) - yoi/ii class',
+            'adj-ku': '\'ku\' adjective (archaic)',
+            'adj-shiku': '\'shiku\' adjective (archaic)',
+            'adj-nari': 'archaic/formal form of na-adjective',
+            'adj-kari': '\'kari\' adjective (archaic)',
+            'adv': 'adverb (fukushi)',
+            'adv-to': 'adverb taking the \'to\' particle',
+            'aux': 'auxiliary',
+            'aux-v': 'auxiliary verb',
+            'aux-adj': 'auxiliary adjective',
+            'conj': 'conjunction',
+            'cop': 'copula',
+            'ctr': 'counter',
+            'exp': 'expressions (phrases, clauses, etc.)',
+            'id': 'idiomatic expression',
+            'int': 'interjection (kandoushi)',
+            'num': 'numeric',
+            'pn': 'pronoun',
+            'prt': 'particle',
+            'pref': 'prefix',
+            'suf': 'suffix',
 
-            # Verbs (example, list truncated for brevity)
-            'v1': 'Ichidan verb', 'v5k': 'Godan verb with ku ending', 'vs': 'suru verb', 'aux-v': 'auxiliary verb',
+            # Verbs - Regular
+            'v1': 'Ichidan verb',
+            'v1-s': 'Ichidan verb - kureru special class',
+            'v5b': 'Godan verb with \'bu\' ending',
+            'v5g': 'Godan verb with \'gu\' ending',
+            'v5k': 'Godan verb with \'ku\' ending',
+            'v5k-s': 'Godan verb - Iku/Yuku special class',
+            'v5m': 'Godan verb with \'mu\' ending',
+            'v5n': 'Godan verb with \'nu\' ending',
+            'v5r': 'Godan verb with \'ru\' ending',
+            'v5r-i': 'Godan verb with \'ru\' ending (irregular verb)',
+            'v5s': 'Godan verb with \'su\' ending',
+            'v5t': 'Godan verb with \'tsu\' ending',
+            'v5u': 'Godan verb with \'u\' ending',
+            'v5u-s': 'Godan verb with \'u\' ending (special class)',
+            'v5uru': 'Godan verb - Uru old class verb (old form of Eru)',
+            'v5aru': 'Godan verb - -aru special class',
+            'vk': 'Kuru verb - special class',
+            'vn': 'irregular nu verb',
+            'vr': 'irregular ru verb, plain form ends with -ri',
+            'vs': 'noun or participle which takes the aux. verb suru',
+            'vs-c': 'su verb - precursor to the modern suru',
+            'vs-s': 'suru verb - special class',
+            'vs-i': 'suru verb - included',
+            'vz': 'Ichidan verb - zuru verb (alternative form of -jiru verbs)',
+            'vt': 'transitive verb',
+            'vi': 'intransitive verb',
+            'v-unspec': 'verb unspecified',
 
-            # Adjectives (example)
-            'adj-i': 'adjective (keiyoushi)', 'adj-na': 'adjectival noun',
+            # Archaic verbs
+            'v2a-s': 'Nidan verb with \'u\' ending (archaic)',
+            'v2b-k': 'Nidan verb (upper class) with \'bu\' ending (archaic)',
+            'v2b-s': 'Nidan verb (lower class) with \'bu\' ending (archaic)',
+            'v2d-k': 'Nidan verb (upper class) with \'dzu\' ending (archaic)',
+            'v2d-s': 'Nidan verb (lower class) with \'dzu\' ending (archaic)',
+            'v2g-k': 'Nidan verb (upper class) with \'gu\' ending (archaic)',
+            'v2g-s': 'Nidan verb (lower class) with \'gu\' ending (archaic)',
+            'v2h-k': 'Nidan verb (upper class) with \'hu/fu\' ending (archaic)',
+            'v2h-s': 'Nidan verb (lower class) with \'hu/fu\' ending (archaic)',
+            'v2k-k': 'Nidan verb (upper class) with \'ku\' ending (archaic)',
+            'v2k-s': 'Nidan verb (lower class) with \'ku\' ending (archaic)',
+            'v2m-k': 'Nidan verb (upper class) with \'mu\' ending (archaic)',
+            'v2m-s': 'Nidan verb (lower class) with \'mu\' ending (archaic)',
+            'v2n-s': 'Nidan verb (lower class) with \'nu\' ending (archaic)',
+            'v2r-k': 'Nidan verb (upper class) with \'ru\' ending (archaic)',
+            'v2r-s': 'Nidan verb (lower class) with \'ru\' ending (archaic)',
+            'v2s-s': 'Nidan verb (lower class) with \'su\' ending (archaic)',
+            'v2t-k': 'Nidan verb (upper class) with \'tsu\' ending (archaic)',
+            'v2t-s': 'Nidan verb (lower class) with \'tsu\' ending (archaic)',
+            'v2w-s': 'Nidan verb (lower class) with \'u\' ending and \'we\' conjugation (archaic)',
+            'v2y-k': 'Nidan verb (upper class) with \'yu\' ending (archaic)',
+            'v2y-s': 'Nidan verb (lower class) with \'yu\' ending (archaic)',
+            'v2z-s': 'Nidan verb (lower class) with \'zu\' ending (archaic)',
+            'v4b': 'Yodan verb with \'bu\' ending (archaic)',
+            'v4g': 'Yodan verb with \'gu\' ending (archaic)',
+            'v4h': 'Yodan verb with \'hu/fu\' ending (archaic)',
+            'v4k': 'Yodan verb with \'ku\' ending (archaic)',
+            'v4m': 'Yodan verb with \'mu\' ending (archaic)',
+            'v4n': 'Yodan verb with \'nu\' ending (archaic)',
+            'v4r': 'Yodan verb with \'ru\' ending (archaic)',
+            'v4s': 'Yodan verb with \'su\' ending (archaic)',
+            'v4t': 'Yodan verb with \'tsu\' ending (archaic)',
 
-            # Adverbs, Particles, Pronouns, etc.
-            'adv': 'adverb', 'prt': 'particle', 'pn': 'pronoun', 'pref': 'prefix', 'suf': 'suffix',
-            'conj': 'conjunction', 'int': 'interjection', 'exp': 'expression', 'ctr': 'counter',
-            'cop': 'copula', 'unc': 'unclassified', 'misc': 'miscellaneous',
+            # Usage and style tags
+            'arch': 'archaic',
+            'dated': 'dated term',
+            'obs': 'obsolete term',
+            'rare': 'rare term',
+            'form': 'formal or literary term',
+            'col': 'colloquial',
+            'fam': 'familiar language',
+            'sl': 'slang',
+            'm-sl': 'manga slang',
+            'net-sl': 'Internet slang',
+            'hon': 'honorific or respectful (sonkeigo) language',
+            'hum': 'humble (kenjougo) language',
+            'pol': 'polite (teineigo) language',
+            'male': 'male term or language',
+            'fem': 'female term or language',
+            'chn': 'children\'s language',
+            'joc': 'jocular, humorous term',
+            'vulg': 'vulgar expression or word',
+            'derog': 'derogatory',
+            'X': 'rude or X-rated term (not displayed in educational software)',
+            'sens': 'sensitive',
+            'euph': 'euphemistic',
 
-            # JMnedict specific tags
-            'relig': 'religion', 'dei': 'deity', 'ship': 'ship name', 'fem': 'female given name',
-            'leg': 'legend', 'myth': 'mythology', 'surname': 'family or surname', 'masc': 'male given name',
-            'station': 'railway station', 'company': 'company name', 'fict': 'fiction', 'place': 'place name',
-            'group': 'group', 'creat': 'creature', 'given': 'given name (gender unspecified)', 'oth': 'other',
-            'product': 'product name', 'serv': 'service', 'work': 'work of art/lit/music name', 'unclass': 'unclassified name',
-            'ev': 'event', 'obj': 'object', 'person': 'full name of a person', 'organization': 'organization name',
-            'char': 'character', 'doc': 'document'
+            # Kanji and kana usage
+            'sK': 'search-only kanji form',
+            'rK': 'rarely used kanji form',
+            'iK': 'word containing irregular kanji usage',
+            'oK': 'word containing out-dated kanji or kanji usage',
+            'sk': 'search-only kana form',
+            'rk': 'rarely used kana form',
+            'ik': 'word containing irregular kana usage',
+            'ok': 'out-dated or obsolete kana usage',
+            'uk': 'word usually written using kana alone',
+            'io': 'irregular okurigana usage',
+            'ateji': 'ateji (phonetic) reading',
+            'gikun': 'gikun (meaning as reading) or jukujikun (special kanji reading)',
+
+            # Specialized fields
+            'abbr': 'abbreviation',
+            'anat': 'anatomy',
+            'agric': 'agriculture',
+            'archeol': 'archeology',
+            'archit': 'architecture',
+            'art': 'art, aesthetics',
+            'astron': 'astronomy',
+            'audvid': 'audiovisual',
+            'aviat': 'aviation',
+            'baseb': 'baseball',
+            'biochem': 'biochemistry',
+            'biol': 'biology',
+            'bot': 'botany',
+            'boxing': 'boxing',
+            'Buddh': 'Buddhism',
+            'bus': 'business',
+            'cards': 'card games',
+            'chem': 'chemistry',
+            'Christn': 'Christianity',
+            'civeng': 'civil engineering',
+            'cloth': 'clothing',
+            'comp': 'computing',
+            'cryst': 'crystallography',
+            'dent': 'dentistry',
+            'ecol': 'ecology',
+            'econ': 'economics',
+            'elec': 'electricity, elec. eng.',
+            'electr': 'electronics',
+            'embryo': 'embryology',
+            'engr': 'engineering',
+            'ent': 'entomology',
+            'figskt': 'figure skating',
+            'film': 'film',
+            'finc': 'finance',
+            'fish': 'fishing',
+            'food': 'food, cooking',
+            'gardn': 'gardening, horticulture',
+            'genet': 'genetics',
+            'geogr': 'geography',
+            'geol': 'geology',
+            'geom': 'geometry',
+            'go': 'go (game)',
+            'golf': 'golf',
+            'gramm': 'grammar',
+            'hanaf': 'hanafuda',
+            'hist': 'historical term',
+            'horse': 'horse racing',
+            'internet': 'Internet',
+            'kabuki': 'kabuki',
+            'law': 'law',
+            'ling': 'linguistics',
+            'logic': 'logic',
+            'MA': 'martial arts',
+            'mahj': 'mahjong',
+            'manga': 'manga',
+            'math': 'mathematics',
+            'mech': 'mechanical engineering',
+            'med': 'medicine',
+            'met': 'meteorology',
+            'mil': 'military',
+            'min': 'mineralogy',
+            'mining': 'mining',
+            'motor': 'motorsport',
+            'music': 'music',
+            'myth': 'mythology',
+            'jpmyth': 'Japanese mythology',
+            'grmyth': 'Greek mythology',
+            'rommyth': 'Roman mythology',
+            'chmyth': 'Chinese mythology',
+            'noh': 'noh',
+            'ornith': 'ornithology',
+            'paleo': 'paleontology',
+            'pathol': 'pathology',
+            'pharm': 'pharmacology',
+            'phil': 'philosophy',
+            'photo': 'photography',
+            'physics': 'physics',
+            'physiol': 'physiology',
+            'poet': 'poetical term',
+            'politics': 'politics',
+            'print': 'printing',
+            'prowres': 'professional wrestling',
+            'psych': 'psychology',
+            'psyanal': 'psychoanalysis',
+            'psy': 'psychiatry',
+            'rail': 'railway',
+            'relig': 'religion',
+            'shogi': 'shogi',
+            'Shinto': 'Shinto',
+            'ski': 'skiing',
+            'sports': 'sports',
+            'stat': 'statistics',
+            'stockm': 'stock market',
+            'sumo': 'sumo',
+            'surg': 'surgery',
+            'telec': 'telecommunications',
+            'tv': 'television',
+            'vet': 'veterinary terms',
+            'vidg': 'video games',
+            'zool': 'zoology',
+
+            # Mimetics and expressions
+            'on-mim': 'onomatopoeic or mimetic word',
+            'yoji': 'yojijukugo',
+            'proverb': 'proverb',
+            'quote': 'quotation',
+
+            # Proper noun types
+            'person': 'full name of a particular person',
+            'given': 'given name or forename, gender not specified',
+            'surname': 'family or surname',
+            'place': 'place name',
+            'station': 'railway station',
+            'company': 'company name',
+            'organization': 'organization name',
+            'product': 'product name',
+            'work': 'work of art, literature, music, etc. name',
+            'char': 'character',
+            'creat': 'creature',
+            'dei': 'deity',
+            'ev': 'event',
+            'fict': 'fiction',
+            'group': 'group',
+            'leg': 'legend',
+            'obj': 'object',
+            'oth': 'other',
+            'serv': 'service',
+            'ship': 'ship name',
+            'unc': 'unclassified',
+            'unclass': 'unclassified name',
+            'doc': 'document',
+            'tradem': 'trademark',
+
+            # Dialectal
+            'hob': 'Hokkaido-ben',
+            'thb': 'Touhoku-ben',
+            'ktb': 'Kantou-ben',
+            'kyb': 'Kyoto-ben',
+            'ksb': 'Kansai-ben',
+            'osb': 'Osaka-ben',
+            'tsb': 'Tosa-ben',
+            'tsug': 'Tsugaru-ben',
+            'kyu': 'Kyuushuu-ben',
+            'rkb': 'Ryuukyuu-ben',
+            'nab': 'Nagano-ben',
+            'bra': 'Brazilian',
+            'masc': 'male name',
         }
 
         for tag, description in tag_definitions.items():
@@ -498,6 +761,12 @@ class DatabaseBuilder:
                     # Extract name types as parts of speech
                     name_types = trans.get('type', [])
                     parts_of_speech_list.extend(name_types)
+                    
+                    # Debug logging for JMnedict tag extraction
+                    if is_jmnedict_source:
+                        kanji_forms_debug = [k['text'] for k in entry.get('kanji', [])]
+                        if '上' in kanji_forms_debug:
+                            print(f"   🔍 JMnedict tag extraction for 上: name_types={name_types}")
             else:
                 # Old format fallback
                 meanings = entry.get('meanings', [])
@@ -526,16 +795,35 @@ class DatabaseBuilder:
             is_entry_from_jmnedict = 1 if is_jmnedict_source else 0
             # jmnedict_specific_type is REMOVED from here.
 
+            # Build forms with their metadata
             forms_to_insert = []
+            kanji_entries = entry.get('kanji', [])
+            kana_entries = entry.get('kana', [])
+            
             if kanji_forms:
-                for kanji in kanji_forms:
-                    for kana in kana_forms:
-                        forms_to_insert.append((kanji, kana))
+                for kanji_text in kanji_forms:
+                    # Find the kanji entry object for this text
+                    kanji_entry = next((k for k in kanji_entries if k['text'] == kanji_text), {})
+                    kanji_common = kanji_entry.get('common', False)
+                    
+                    for kana_text in kana_forms:
+                        # Find the kana entry object for this text
+                        kana_entry = next((k for k in kana_entries if k['text'] == kana_text), {})
+                        kana_common = kana_entry.get('common', False)
+                        
+                        # Form is common if both kanji and kana are common
+                        form_common = kanji_common and kana_common
+                        
+                        forms_to_insert.append((kanji_text, kana_text, form_common))
             elif kana_forms:
-                for kana in kana_forms:
-                    forms_to_insert.append((None, kana))
+                for kana_text in kana_forms:
+                    # Find the kana entry object for this text
+                    kana_entry = next((k for k in kana_entries if k['text'] == kana_text), {})
+                    kana_common = kana_entry.get('common', False)
+                    
+                    forms_to_insert.append((None, kana_text, kana_common))
 
-            for kanji_form, kana_form in forms_to_insert:
+            for kanji_form, kana_form, form_is_common in forms_to_insert:
                 # OPTIONAL: Apply Romaji normalization here if desired
                 # normalized_kana_form = self.normalize_romaji(kana_form)
                 # normalized_kanji_form = self.normalize_romaji(kanji_form) if kanji_form else None
@@ -564,13 +852,24 @@ class DatabaseBuilder:
                         INSERT OR IGNORE INTO dictionary_entries
                         (kanji, reading, meanings, parts_of_speech, is_common,
                          frequency, tokenized_kanji, tokenized_reading,
-                         is_jmnedict_entry) -- UPDATED: jmnedict_type removed
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         is_jmnedict_entry, form_is_common)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (kanji_form, kana_form, meanings_json, parts_of_speech_json,
                           1 if is_common else 0, frequency, tokenized_kanji, tokenized_reading,
-                          is_entry_from_jmnedict)) # UPDATED: jmnedict_specific_type removed
+                          is_entry_from_jmnedict, 1 if form_is_common else 0))
 
-                    entry_id = cursor.lastrowid
+                    # Get the entry ID - check if entry was actually inserted
+                    if cursor.rowcount > 0:
+                        # Entry was inserted successfully
+                        entry_id = cursor.lastrowid
+                    else:
+                        # INSERT was ignored (duplicate), fetch the existing entry's ID
+                        cursor.execute("""
+                            SELECT id FROM dictionary_entries 
+                            WHERE reading = ? AND (kanji IS ? OR (kanji IS NULL AND ? IS NULL)) AND is_jmnedict_entry = ?
+                        """, (kana_form, kanji_form, kanji_form, is_entry_from_jmnedict))
+                        result = cursor.fetchone()
+                        entry_id = result[0] if result else None
                     
                     # Debug logging for みる entries - check if insertion was successful
                     if kana_form == 'みる':
@@ -590,15 +889,32 @@ class DatabaseBuilder:
                             else:
                                 print(f"      No conflicting entry found - insertion failed for other reason")
 
-                    for tag in parts_of_speech_list:
-                        try:
-                            cursor.execute("""
-                                INSERT OR REPLACE INTO word_tags (entry_id, tag)
-                                VALUES (?, ?)
-                            """, (entry_id, tag))
-                            tags_added += 1
-                        except sqlite3.Error:
-                            pass
+                    # Debug logging for JMnedict entries
+                    if is_entry_from_jmnedict and kanji_form == '上':
+                        print(f"   🔍 DEBUG JMnedict: {kanji_form}/{kana_form}")
+                        print(f"      entry_id: {entry_id}")
+                        print(f"      parts_of_speech_list: {parts_of_speech_list}")
+                        print(f"      tags to insert: {len(parts_of_speech_list)}")
+
+                    if entry_id:
+                        for tag in parts_of_speech_list:
+                            try:
+                                cursor.execute("""
+                                    INSERT OR REPLACE INTO word_tags (entry_id, tag)
+                                    VALUES (?, ?)
+                                """, (entry_id, tag))
+                                tags_added += 1
+                                
+                                # Debug logging for JMnedict entries
+                                if is_entry_from_jmnedict and kanji_form == '上':
+                                    print(f"         ✅ Inserted tag: {tag}")
+                            except sqlite3.Error as e:
+                                if is_entry_from_jmnedict and kanji_form == '上':
+                                    print(f"         ❌ Failed to insert tag: {tag}, error: {e}")
+                                pass
+                    else:
+                        if is_entry_from_jmnedict and kanji_form == '上':
+                            print(f"   ❌ No valid entry_id for {kanji_form}/{kana_form}")
                     entries_added += 1
                 except sqlite3.Error as e:
                     error_count += 1
@@ -658,10 +974,10 @@ class DatabaseBuilder:
             BEGIN
                 INSERT INTO entries_fts5(rowid, kanji, reading, meanings, tokenized_kanji,
                                         tokenized_reading, parts_of_speech,
-                                        is_common, frequency, is_jmnedict_entry)
+                                        is_common, frequency, is_jmnedict_entry, form_is_common)
                 VALUES (new.id, new.kanji, new.reading, new.meanings, new.tokenized_kanji,
                         new.tokenized_reading, new.parts_of_speech,
-                        new.is_common, new.frequency, new.is_jmnedict_entry);
+                        new.is_common, new.frequency, new.is_jmnedict_entry, new.form_is_common);
             END
         """)
 
@@ -672,10 +988,10 @@ class DatabaseBuilder:
             BEGIN
                 INSERT INTO entries_fts5(entries_fts5, rowid, kanji, reading, meanings, tokenized_kanji,
                                         tokenized_reading, parts_of_speech,
-                                        is_common, frequency, is_jmnedict_entry)
+                                        is_common, frequency, is_jmnedict_entry, form_is_common)
                 VALUES ('delete', old.id, old.kanji, old.reading, old.meanings, old.tokenized_kanji,
                         old.tokenized_reading, old.parts_of_speech,
-                        old.is_common, old.frequency, old.is_jmnedict_entry);
+                        old.is_common, old.frequency, old.is_jmnedict_entry, old.form_is_common);
             END
         """)
 
@@ -686,16 +1002,16 @@ class DatabaseBuilder:
             BEGIN
                 INSERT INTO entries_fts5(entries_fts5, rowid, kanji, reading, meanings, tokenized_kanji,
                                         tokenized_reading, parts_of_speech,
-                                        is_common, frequency, is_jmnedict_entry)
+                                        is_common, frequency, is_jmnedict_entry, form_is_common)
                 VALUES ('delete', old.id, old.kanji, old.reading, old.meanings, old.tokenized_kanji,
                         old.tokenized_reading, old.parts_of_speech,
-                        old.is_common, old.frequency, old.is_jmnedict_entry);
+                        old.is_common, old.frequency, old.is_jmnedict_entry, old.form_is_common);
                 INSERT INTO entries_fts5(rowid, kanji, reading, meanings, tokenized_kanji,
                                         tokenized_reading, parts_of_speech,
-                                        is_common, frequency, is_jmnedict_entry)
+                                        is_common, frequency, is_jmnedict_entry, form_is_common)
                 VALUES (new.id, new.kanji, new.reading, new.meanings, new.tokenized_kanji,
                         new.tokenized_reading, new.parts_of_speech,
-                        new.is_common, new.frequency, new.is_jmnedict_entry);
+                        new.is_common, new.frequency, new.is_jmnedict_entry, new.form_is_common);
             END
         """)
 
@@ -847,8 +1163,17 @@ class DatabaseBuilder:
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS radical_decomposition_mapping (
+                radical TEXT PRIMARY KEY,
+                components TEXT NOT NULL,
+                component_count INTEGER NOT NULL
+            )
+        """)
+
         # Create indexes for radical tables
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_radical_stroke_count ON radical_kanji_mapping(stroke_count)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_decomposition_component_count ON radical_decomposition_mapping(component_count)")
 
         # No FTS5 tables needed for kanji - direct lookup is sufficient
 
@@ -922,16 +1247,32 @@ class DatabaseBuilder:
         # Build radical -> kanji mapping from kradfile
         radical_to_kanji = {}
         
+        print("  📝 Inverting kradfile (kanji → components) to (radical → kanji list)...")
         for kanji, components in kradfile_data.items():
             if isinstance(components, list):
                 for radical in components:
                     if radical not in radical_to_kanji:
                         radical_to_kanji[radical] = []
                     radical_to_kanji[radical].append(kanji)
+                    
+                    # Debug 人 radical specifically
+                    if radical == '人' and kanji == '火':
+                        print(f"    🎯 Found 火 with 人 component in kradfile!")
+        
+        print(f"  📊 Built mapping for {len(radical_to_kanji)} unique radicals from kradfile")
+        
+        # Check 人 radical from kradfile inversion
+        if '人' in radical_to_kanji:
+            person_kanji_from_krad = radical_to_kanji['人']
+            has_fire = '火' in person_kanji_from_krad
+            print(f"  🎯 人 radical from kradfile inversion: {len(person_kanji_from_krad)} kanji, contains 火: {has_fire}")
+        else:
+            print("  ❌ 人 radical not found in kradfile inversion!")
         
         # Get stroke counts from radkfile if available
         radical_stroke_counts = {}
         if radkfile_data:
+            print("  📏 Getting stroke counts from radkfile...")
             for radical, info in radkfile_data.items():
                 stroke_count = info.get('strokeCount', 0)
                 radical_stroke_counts[radical] = stroke_count
@@ -991,6 +1332,245 @@ class DatabaseBuilder:
         
         conn.commit()
         print(f"✅ Added {len(radkfile_data)} radical kanji mappings")
+
+    def parse_makemeahanzi_decomposition(self, decomposition: str) -> List[str]:
+        """
+        Parse makemeahanzi decomposition field, extracting component radicals
+        
+        Args:
+            decomposition: The decomposition string like "⿻亅八" or "⿰氵青"
+            
+        Returns:
+            List of component radicals (without IDC symbols)
+        """
+        if not decomposition:
+            return []
+
+        # IDC (Ideographic Description Characters) to ignore
+        idc_chars = {
+            '⿰', '⿱', '⿲', '⿳', '⿴', '⿵', '⿶', '⿷', '⿸', '⿹', '⿺', '⿻'
+        }
+
+        # Extract all characters except IDC symbols
+        components = []
+        for char in decomposition:
+            if char not in idc_chars and char.strip():
+                components.append(char)
+
+        return components
+
+    def load_makemeahanzi_decomposition_data(self, makemeahanzi_path: str = None) -> Dict[str, List[str]]:
+        """
+        Load makemeahanzi decomposition data from downloaded dictionary.txt
+        
+        Args:
+            makemeahanzi_path: Optional path to makemeahanzi file, if None will try to download
+            
+        Returns:
+            Dictionary mapping radicals to their component radicals
+        """
+        print("📖 Loading makemeahanzi decomposition data...")
+        
+        # If no path provided, try to download makemeahanzi data
+        temp_dir = None
+        if not makemeahanzi_path:
+            try:
+                # Try to use the same download logic from preserve_modifications.py
+                import tempfile
+                import urllib.request
+                import zipfile
+                
+                temp_dir = tempfile.mkdtemp()
+                makemeahanzi_zip = os.path.join(temp_dir, "makemeahanzi.zip")
+                makemeahanzi_path = os.path.join(temp_dir, "dictionary.txt")
+                
+                print("⬇️  Downloading makemeahanzi data...")
+                urllib.request.urlretrieve(
+                    "https://github.com/skishore/makemeahanzi/archive/refs/heads/master.zip",
+                    makemeahanzi_zip
+                )
+                
+                with zipfile.ZipFile(makemeahanzi_zip, 'r') as zip_ref:
+                    zip_ref.extract("makemeahanzi-master/dictionary.txt", temp_dir)
+                    
+                # Move the extracted file to the expected location
+                extracted_path = os.path.join(temp_dir, "makemeahanzi-master", "dictionary.txt")
+                if os.path.exists(extracted_path):
+                    shutil.move(extracted_path, makemeahanzi_path)
+                
+                print(f"✅ Downloaded makemeahanzi to {makemeahanzi_path}")
+                
+            except Exception as e:
+                print(f"⚠️  Could not download makemeahanzi data: {e}")
+                return {}
+        
+        if not os.path.exists(makemeahanzi_path):
+            print(f"⚠️  Makemeahanzi file not found at {makemeahanzi_path}")
+            return {}
+        
+        radical_decompositions = {}
+        
+        try:
+            with open(makemeahanzi_path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    try:
+                        entry = json.loads(line)
+                        character = entry.get("character")
+                        decomposition = entry.get("decomposition")
+                        
+                        if character and decomposition:
+                            components = self.parse_makemeahanzi_decomposition(decomposition)
+                            if components and len(components) > 1:  # Only include composites
+                                radical_decompositions[character] = components
+                    
+                    except json.JSONDecodeError:
+                        continue
+                        
+        except Exception as e:
+            print(f"❌ Error parsing makemeahanzi data: {e}")
+            return {}
+        
+        print(f"✅ Parsed {len(radical_decompositions)} radical decompositions from makemeahanzi")
+        
+        # Clean up temporary files if we downloaded them
+        if temp_dir and os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
+        
+        return radical_decompositions
+
+    def populate_radical_decomposition_mapping(self, conn: sqlite3.Connection, decomposition_data: Dict[str, List[str]], existing_radicals: set) -> None:
+        """
+        Populate radical_decomposition_mapping table with makemeahanzi decomposition data
+        
+        Args:
+            conn: Database connection
+            decomposition_data: Dictionary mapping radicals to component lists
+            existing_radicals: Set of radicals that exist in the radical system
+        """
+        cursor = conn.cursor()
+        
+        print("🔧 Populating radical decomposition mapping...")
+        
+        # Chinese → Japanese radical substitutions
+        chinese_to_japanese_substitutions = {
+            # Fire and line radicals
+            '灬': '⺣',  # Chinese fire dots → Japanese fire radical
+            '丨': '｜',  # CJK radical stick → Japanese fullwidth vertical line
+            
+            # Common stroke/shape radicals
+            '丿': 'ノ',  # Left-falling stroke → katakana no (similar shape/meaning)
+            '乚': '乙',  # Hook stroke → second/hook radical
+            '亻': '人',  # Person radical variant → person radical
+            
+            # Note: 廿 and 卄 should decompose naturally:
+            # 廿 → ['廾', '一'] and 卄 → ['十', '丨'] → ['十', '｜']
+            # So no direct substitution needed for these
+            
+            # Add more substitutions as we research them
+        }
+        
+        # Manual corrections for known issues in makemeahanzi data
+        manual_corrections = {
+            '丷': ['丶', '丶'],  # Two dots - makemeahanzi has corrupted data with '？'
+            '肉': ['冂', '人', '人'],  # Meat - flattened from 冂,仌 → 冂,人,人
+            # Add more corrections here if needed
+        }
+        
+        # Apply manual corrections first
+        corrected_count = 0
+        for radical, components in manual_corrections.items():
+            if radical in existing_radicals:
+                valid_components = [comp for comp in components if comp in existing_radicals]
+                if valid_components and len(valid_components) > 1:
+                    components_str = ",".join(valid_components)
+                    component_count = len(valid_components)
+                    
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO radical_decomposition_mapping (radical, components, component_count)
+                        VALUES (?, ?, ?)
+                    """, (radical, components_str, component_count))
+                    
+                    corrected_count += 1
+                    print(f"    🔧 Manual correction: {radical} → {valid_components}")
+        
+        def apply_substitutions_and_expansion(components):
+            """Apply Chinese→Japanese substitutions and recursive expansion"""
+            expanded_components = []
+            
+            for comp in components:
+                # Apply Chinese → Japanese substitutions first
+                if comp in chinese_to_japanese_substitutions:
+                    substitute = chinese_to_japanese_substitutions[comp]
+                    expanded_components.append(substitute)
+                    print(f"      🔄 Substituted: {comp} → {substitute}")
+                # Recursive expansion for missing components that have decompositions
+                elif comp not in existing_radicals and comp in decomposition_data:
+                    # Recursively expand missing component
+                    sub_components = decomposition_data[comp]
+                    # Apply substitutions recursively (but avoid infinite loops)
+                    if comp != '仌':  # Prevent infinite recursion for ice radical
+                        recursive_expansion = apply_substitutions_and_expansion(sub_components)
+                        expanded_components.extend(recursive_expansion)
+                        print(f"      🔄 Expanded: {comp} → {recursive_expansion}")
+                    else:
+                        # Special case for ice radical: 仌 → ['人', '人']
+                        expanded_components.extend(['人', '人'])
+                        print(f"      🔄 Expanded ice: {comp} → ['人', '人']")
+                else:
+                    # Keep component as-is
+                    expanded_components.append(comp)
+            
+            return expanded_components
+        
+        valid_decompositions = 0
+        substitution_count = 0
+        for radical, components in decomposition_data.items():
+            # Skip if we already applied a manual correction
+            if radical in manual_corrections:
+                continue
+                
+            # Only include decompositions where the radical exists in our radical system
+            if radical in existing_radicals:
+                # Apply substitutions and recursive expansion
+                expanded_components = apply_substitutions_and_expansion(components)
+                
+                # Filter to only include components that exist as radicals after expansion
+                valid_components = [comp for comp in expanded_components if comp in existing_radicals]
+                
+                # Allow single components for important hierarchical radicals, otherwise require 2+
+                important_single_decompositions = {'冂', '⺣'}  # Box and fire radical create useful hierarchical paths
+                min_components = 1 if radical in important_single_decompositions else 2
+                
+                if valid_components and len(valid_components) >= min_components:
+                    components_str = ",".join(valid_components)
+                    component_count = len(valid_components)
+                    
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO radical_decomposition_mapping (radical, components, component_count)
+                        VALUES (?, ?, ?)
+                    """, (radical, components_str, component_count))
+                    
+                    valid_decompositions += 1
+                    
+                    # Track substitutions made
+                    if len(expanded_components) != len(components):
+                        substitution_count += 1
+                    
+                    # Debug specific examples
+                    if radical in ['魚', '肉', '鳥', '馬', '丷'] or len(expanded_components) != len(components):
+                        print(f"    🎯 Added decomposition: {radical} → {valid_components} (from {components})")
+        
+        conn.commit()
+        print(f"✅ Added {valid_decompositions} radical decompositions from makemeahanzi")
+        print(f"✅ Added {corrected_count} manual corrections")
+        print(f"🔄 Applied substitutions/expansions to {substitution_count} radicals")
 
     def load_kanjidic_data(self, file_path: str) -> List[Dict]:
         """Load KanjiDic data from JSON file"""
@@ -1180,40 +1760,6 @@ class DatabaseBuilder:
             print("Please ensure you have jmnedict.json file in the assets directory")
             return []
 
-    def load_jmnedict_tags_data(self, tags_file_path: str) -> Dict[str, List[str]]:
-        """Load JMnedict tags data from jmnedict_tags.json file"""
-        print(f"📛 Loading JMnedict tags data from {tags_file_path}...")
-
-        if not os.path.exists(tags_file_path):
-            print(f"⚠️  JMnedict tags file not found at {tags_file_path}")
-            return {}
-
-        try:
-            with open(tags_file_path, 'r', encoding='utf-8') as f:
-                tag_data = json.load(f)
-
-            # Process the tags data - JMnedict structure
-            all_tags = {}
-            for word, tag_info in tag_data.items():
-                if isinstance(tag_info, dict) and 'senses' in tag_info:
-                    name_types = []
-                    for sense in tag_info['senses']:
-                        # Get name types from JMnedict structure
-                        if 'name_types' in sense:
-                            name_types.extend(sense['name_types'])
-                        # Also collect from other fields that might indicate a type
-                        for field in ['gender', 'category', 'specific']:
-                            if field in sense and isinstance(sense[field], str) and sense[field].strip():
-                                name_types.append(sense[field].strip())
-
-                    if name_types:
-                        all_tags[word] = list(set(name_types)) # Remove duplicates
-
-            print(f"✅ Loaded tags for {len(all_tags)} words from JMnedict tags file")
-            return all_tags
-        except Exception as e:
-            print(f"❌ Failed to load JMnedict tags file: {e}")
-            return {}
 
     def rebuild_kanji_only(self) -> bool:
         """Rebuild only the kanji_entries table in existing database"""
@@ -1273,34 +1819,211 @@ class DatabaseBuilder:
             conn.execute("PRAGMA synchronous = NORMAL;") # Optimize write performance
 
             # Create schema
+            print("📋 Creating database schema...")
             self.create_database_schema(conn)
 
             # Populate tag definitions (JMdict POS tags and JMnedict types)
+            print("🏷️  Populating tag definitions...")
             self.populate_tag_definitions(conn)
 
+            # Process KANJI and RADICAL data FIRST (faster to test)
+            print("\n" + "="*50)
+            print("🔧 PROCESSING KANJI & RADICAL DATA (FAST)")
+            print("="*50)
+            
+            # Load and populate kradfile data (kanji → components)
+            print("\n🔄 Processing kradfile data...")
+            kradfile_data = self.load_kradfile_data(kradfile_path)
+            if kradfile_data:
+                print(f"📊 Loaded {len(kradfile_data)} kanji entries from kradfile")
+                self.populate_kanji_radical_mapping(conn, kradfile_data)
+            else:
+                print("⚠️  No kradfile data found, skipping kanji radical mapping.")
+            
+            # Load radkfile data (for stroke counts and additional radicals)
+            print("\n🔄 Loading radkfile data...")
+            radkfile_data = self.load_radkfile_data(radkfile_path)
+            if radkfile_data:
+                print(f"📊 Loaded {len(radkfile_data)} radicals from radkfile")
+                
+                # Show sample radical data for debugging
+                sample_radicals = list(radkfile_data.keys())[:5]
+                for radical in sample_radicals:
+                    kanji_count = len(radkfile_data[radical].get('kanji', []))
+                    stroke_count = radkfile_data[radical].get('strokeCount', 0)
+                    print(f"  🔍 {radical}: {kanji_count} kanji, {stroke_count} strokes")
+                
+                # Check specifically for 人 radical
+                if '人' in radkfile_data:
+                    person_kanji = radkfile_data['人']['kanji']
+                    has_fire = '火' in person_kanji
+                    print(f"  🎯 人 radical: {len(person_kanji)} kanji, contains 火: {has_fire}")
+                else:
+                    print("  ❌ 人 radical not found in radkfile!")
+            else:
+                print("⚠️  No radkfile data found!")
+
+            # Build radical → kanji mapping from kradfile (primary) with radkfile support
+            print("\n🔧 Building radical → kanji mapping...")
+            if kradfile_data:
+                self.populate_radical_kanji_mapping_from_kradfile(conn, kradfile_data, radkfile_data)
+                
+                # Verify the database entries
+                print("\n🔍 Verifying radical database entries...")
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM radical_kanji_mapping")
+                radical_count = cursor.fetchone()[0]
+                print(f"  📊 Total radicals in database: {radical_count}")
+                
+                # Check 人 radical specifically
+                cursor.execute("SELECT radical, stroke_count, kanji_list FROM radical_kanji_mapping WHERE radical = '人'")
+                person_result = cursor.fetchone()
+                if person_result:
+                    radical, strokes, kanji_list = person_result
+                    kanji_count = len(kanji_list.split(', ')) if kanji_list else 0
+                    has_fire = '火' in kanji_list if kanji_list else False
+                    print(f"  🎯 Database 人 radical: {kanji_count} kanji, {strokes} strokes, contains 火: {has_fire}")
+                    if has_fire:
+                        print("    ✅ SUCCESS: 火 found in 人 radical!")
+                    else:
+                        print("    ❌ ISSUE: 火 NOT found in 人 radical")
+                else:
+                    print("  ❌ 人 radical not found in database!")
+                    
+            elif radkfile_data:
+                # Fallback to old method if only radkfile is available
+                self.populate_radical_kanji_mapping(conn, radkfile_data)
+            else:
+                print("⚠️  No radical data found, skipping radical kanji mapping.")
+            
+            # POST-PROCESSING: Override ALL radicals with enhanced radkfile data
+            if radkfile_data:
+                print("\n🔧 POST-PROCESSING: Enhancing ALL radicals with radkfile data...")
+                cursor = conn.cursor()
+                
+                updated_count = 0
+                for radical, info in radkfile_data.items():
+                    enhanced_kanji_list = info.get('kanji', [])
+                    if enhanced_kanji_list:  # Only update if there's data
+                        kanji_str = ", ".join(enhanced_kanji_list)
+                        
+                        # Debug 人 radical specifically
+                        if radical == '人':
+                            print(f"  🔍 Updating 人 radical with {len(enhanced_kanji_list)} kanji")
+                            print(f"  🔍 火 in list: {'火' in enhanced_kanji_list}")
+                            print(f"  🔍 First 10 kanji: {enhanced_kanji_list[:10]}")
+                        
+                        cursor.execute("""
+                            UPDATE radical_kanji_mapping 
+                            SET kanji_list = ?
+                            WHERE radical = ?
+                        """, (kanji_str, radical))
+                        
+                        if cursor.rowcount > 0:
+                            updated_count += 1
+                            if radical == '人':
+                                print(f"  ✅ Successfully updated 人 radical (rowcount={cursor.rowcount})")
+                
+                conn.commit()
+                print(f"  ✅ Updated {updated_count} radicals with enhanced data")
+                
+                # Verify 人 radical specifically
+                cursor.execute("SELECT radical, stroke_count, kanji_list FROM radical_kanji_mapping WHERE radical = '人'")
+                result = cursor.fetchone()
+                if result:
+                    radical, strokes, kanji_list = result
+                    kanji_count = len(kanji_list.split(', ')) if kanji_list else 0
+                    has_fire = '火' in kanji_list if kanji_list else False
+                    print(f"  🎯 人 radical after update: {kanji_count} kanji, contains 火: {has_fire}")
+                    if has_fire:
+                        print("    ✅ SUCCESS: 火 found in 人 radical!")
+                
+                print("  ✅ Post-processing complete!")
+                
+                # Final verification before moving on
+                print("\n🔍 FINAL VERIFICATION of radical data...")
+                cursor.execute("SELECT radical, stroke_count, kanji_list FROM radical_kanji_mapping WHERE radical = '人'")
+                final_result = cursor.fetchone()
+                if final_result:
+                    radical, strokes, kanji_list = final_result
+                    kanji_count = len(kanji_list.split(', ')) if kanji_list else 0
+                    has_fire = '火' in kanji_list if kanji_list else False
+                    print(f"  🎯 FINAL CHECK - 人 radical: {kanji_count} kanji, contains 火: {has_fire}")
+                    
+                    # Also check a few specific kanji
+                    if kanji_list:
+                        kanji_array = kanji_list.split(', ')
+                        print(f"  📝 First 5 kanji: {kanji_array[:5]}")
+                        if '火' in kanji_array:
+                            fire_index = kanji_array.index('火')
+                            print(f"  🔥 火 is at position {fire_index + 1}")
+                else:
+                    print("  ❌ 人 radical not found in final check!")
+
+            # RADICAL DECOMPOSITION: Load and populate makemeahanzi decomposition data
+            print("\n🧩 Processing radical decomposition data...")
+            decomposition_data = self.load_makemeahanzi_decomposition_data()
+            if decomposition_data:
+                # Get existing radicals from the database to filter valid decompositions
+                cursor.execute("SELECT radical FROM radical_kanji_mapping")
+                existing_radicals = {row[0] for row in cursor.fetchall()}
+                print(f"📊 Found {len(existing_radicals)} existing radicals in database")
+                
+                self.populate_radical_decomposition_mapping(conn, decomposition_data, existing_radicals)
+                
+                # Verify specific decomposition example
+                cursor.execute("SELECT radical, components FROM radical_decomposition_mapping WHERE radical = '丷'")
+                result = cursor.fetchone()
+                if result:
+                    radical, components = result
+                    print(f"  🎯 Example decomposition: {radical} → {components}")
+                else:
+                    print("  ⚠️  No decomposition example found for 丷")
+            else:
+                print("⚠️  No makemeahanzi decomposition data found, skipping radical decomposition.")
+
+            # Load and populate KanjiDic data
+            print("\n📖 Processing KanjiDic data...")
+            kanjidic_data = self.load_kanjidic_data(kanjidic_path)
+            if kanjidic_data:
+                print(f"📊 Loaded {len(kanjidic_data)} kanji from KanjiDic")
+                self.populate_kanji_entries(conn, kanjidic_data)
+            else:
+                print("⚠️  No KanjiDic data found, skipping KanjiDic entries.")
+
+            print("\n" + "="*50)
+            print("🎉 KANJI & RADICAL DATA COMPLETE!")
+            print("You can test the radical search now or continue with full build...")
+            print("="*50)
+            
+            # Process DICTIONARY data LAST (slower, for complete build)
+            print("\n📖 Processing JMdict data (this will take time)...")
+            
             # Load JMdict data from single file
             jmdict_data = self.load_jmdict_data(jmdict_path)
             if not jmdict_data:
                 print("🚨 No JMdict data loaded. Cannot build dictionary.")
                 return False
 
+            print(f"📊 Loaded {len(jmdict_data)} entries from JMdict")
+
             # Load JMDict specific tags data
             tags_file_path = os.path.join(os.path.dirname(jmdict_path), "tags.json")
             tags_data_jmdict = self.load_tags_data(tags_file_path)
 
             # Populate dictionary data with JMdict entries
-            print("\n📖 Processing JMdict data...")
+            print("🔄 Populating JMdict entries...")
             self.populate_dictionary_entries(conn, jmdict_data, tags_data_jmdict, is_jmnedict_source=False)
 
             # Load and populate JMnedict data (names dictionary) from single file
             print("\n📛 Processing JMnedict data...")
             jmnedict_data = self.load_jmnedict_data(jmnedict_path)
             if jmnedict_data:
-                jmnedict_tags_file = os.path.join(os.path.dirname(jmnedict_path), "jmnedict_tags.json")
-                jmnedict_tags_data = self.load_jmnedict_tags_data(jmnedict_tags_file)
+                print(f"📊 Loaded {len(jmnedict_data)} entries from JMnedict")
+                # JMnedict tags are embedded in the main file, pass empty dict for tags_data
                 print(f"📛 Adding {len(jmnedict_data)} JMnedict entries to dictionary tables...")
                 # Pass True for is_jmnedict_source for all JMnedict entries
-                self.populate_dictionary_entries(conn, jmnedict_data, jmnedict_tags_data, is_jmnedict_source=True)
+                self.populate_dictionary_entries(conn, jmnedict_data, {}, is_jmnedict_source=True)
             else:
                 print("⚠️  No JMnedict data found, skipping name entries.")
 
@@ -1312,26 +2035,7 @@ class DatabaseBuilder:
             else:
                 print("⚠️  No KanjiDic data found, skipping kanji tables.")
 
-            # Load and populate kradfile data (kanji → components)
-            print("\n🔄 Processing kradfile data...")
-            kradfile_data = self.load_kradfile_data(kradfile_path)
-            if kradfile_data:
-                self.populate_kanji_radical_mapping(conn, kradfile_data)
-            else:
-                print("⚠️  No kradfile data found, skipping kanji radical mapping.")
-
-            # Load radkfile data (for stroke counts and additional radicals)
-            print("\n🔄 Loading radkfile data...")
-            radkfile_data = self.load_radkfile_data(radkfile_path)
-            
-            # Build radical → kanji mapping from kradfile (primary) with radkfile support
-            if kradfile_data:
-                self.populate_radical_kanji_mapping_from_kradfile(conn, kradfile_data, radkfile_data)
-            elif radkfile_data:
-                # Fallback to old method if only radkfile is available
-                self.populate_radical_kanji_mapping(conn, radkfile_data)
-            else:
-                print("⚠️  No radical data found, skipping radical kanji mapping.")
+            # NOTE: kradfile and radkfile processing already done at the beginning with post-processing
 
             # Populate FTS tables (after all data is inserted into main table)
             self.populate_fts_tables(conn)
@@ -1343,10 +2047,31 @@ class DatabaseBuilder:
             if not self.verify_database(conn):
                 return False
 
+            # Check 人 radical before optimization
+            print("\n🔍 Checking 人 radical BEFORE optimization...")
+            cursor = conn.cursor()
+            cursor.execute("SELECT radical, stroke_count, kanji_list FROM radical_kanji_mapping WHERE radical = '人'")
+            before_result = cursor.fetchone()
+            if before_result:
+                radical, strokes, kanji_list = before_result
+                kanji_count = len(kanji_list.split(', ')) if kanji_list else 0
+                has_fire = '火' in kanji_list if kanji_list else False
+                print(f"  🎯 BEFORE VACUUM - 人 radical: {kanji_count} kanji, contains 火: {has_fire}")
+            
             # Optimize database
-            print("🔧 Optimizing database...")
+            print("\n🔧 Optimizing database...")
             conn.execute("VACUUM")
             conn.execute("ANALYZE")
+            
+            # Check 人 radical after optimization
+            print("\n🔍 Checking 人 radical AFTER optimization...")
+            cursor.execute("SELECT radical, stroke_count, kanji_list FROM radical_kanji_mapping WHERE radical = '人'")
+            after_result = cursor.fetchone()
+            if after_result:
+                radical, strokes, kanji_list = after_result
+                kanji_count = len(kanji_list.split(', ')) if kanji_list else 0
+                has_fire = '火' in kanji_list if kanji_list else False
+                print(f"  🎯 AFTER VACUUM - 人 radical: {kanji_count} kanji, contains 火: {has_fire}")
 
             conn.close()
 

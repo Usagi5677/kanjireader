@@ -176,6 +176,11 @@ class RadicalSearchActivity : AppCompatActivity() {
             val kanjiCards = database.convertToKanjiCardInfo(currentKanjiResults)
             kanjiCardAdapter.updateData(kanjiCards)
             
+            // Auto-scroll to top when results change (especially after radical selection)
+            if (kanjiCards.isNotEmpty()) {
+                kanjiResultsRecyclerView.scrollToPosition(0)
+            }
+            
             // Update the results counter - show only if there are results
             if (kanjiCards.isNotEmpty()) {
                 resultsCounter.visibility = android.view.View.VISIBLE
@@ -184,7 +189,7 @@ class RadicalSearchActivity : AppCompatActivity() {
                 resultsCounter.visibility = android.view.View.GONE
             }
             
-            Log.d(TAG, "Updated kanji grid with ${kanjiCards.size} results")
+            Log.d(TAG, "Updated kanji grid with ${kanjiCards.size} results (fast sorting)")
         }
     }
 

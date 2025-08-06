@@ -69,7 +69,9 @@ data class KanjiCardInfo(
     val kunReadings: String, // Comma-separated for display
     val primaryMeaning: String, // First 2-3 meanings for card display
     val jlptLevel: Int? = null,
-    val grade: Int? = null
+    val grade: Int? = null,
+    val commonalityScore: Int = 0,  // Higher score = more common kanji
+    val hasReadings: Boolean = true  // False for "No readings available" cases
 )
 
 data class WordCardInfo(

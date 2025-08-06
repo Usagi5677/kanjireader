@@ -25,7 +25,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
     companion object {
         private const val TAG = "DictionaryDatabaseFTS" // More descriptive tag
         private const val DATABASE_NAME = "jmdict_fts5.db"
-        private const val DATABASE_VERSION = 14 // IMPORTANT: Increment to trigger upgrade!
+        private const val DATABASE_VERSION = 15 // IMPORTANT: Increment to trigger upgrade!
 
         @Volatile
         private var INSTANCE: DictionaryDatabase? = null
@@ -70,6 +70,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         const val TABLE_ENGLISH_FTS = "english_fts"
         const val TABLE_KANJI_RADICAL_MAPPING = "kanji_radical_mapping"
         const val TABLE_RADICAL_KANJI_MAPPING = "radical_kanji_mapping"
+        const val TABLE_RADICAL_DECOMPOSITION_MAPPING = "radical_decomposition_mapping"
         const val COL_ID = "id"
         const val COL_KANJI = "kanji"
         const val COL_READING = "reading"
@@ -80,6 +81,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         const val COL_IS_JMNEDICT_ENTRY = "is_jmnedict_entry"
         const val COL_TOKENIZED_KANJI = "tokenized_kanji"
         const val COL_TOKENIZED_READING = "tokenized_reading"
+        const val COL_FORM_IS_COMMON = "form_is_common"
 
         // Kanji radical mapping table columns
         const val COL_KRM_KANJI = "kanji"
@@ -89,6 +91,11 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         const val COL_RKM_RADICAL = "radical"
         const val COL_RKM_STROKE_COUNT = "stroke_count"
         const val COL_RKM_KANJI_LIST = "kanji_list"
+        
+        // Radical decomposition mapping table columns
+        const val COL_RDM_RADICAL = "radical"
+        const val COL_RDM_COMPONENTS = "components"
+        const val COL_RDM_COMPONENT_COUNT = "component_count"
 
         // FTS Table names and columns
         // Note: FTS columns are implicitly part of the FTS table definition,
@@ -107,6 +114,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 $COL_IS_COMMON INTEGER DEFAULT 0,
                 $COL_TOKENIZED_KANJI TEXT,
                 $COL_TOKENIZED_READING TEXT,
+                form_is_common INTEGER DEFAULT 0,
                 UNIQUE($COL_KANJI, $COL_READING)
             )
         """
@@ -263,6 +271,14 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 $COL_RKM_RADICAL TEXT PRIMARY KEY,
                 $COL_RKM_STROKE_COUNT INTEGER,
                 $COL_RKM_KANJI_LIST TEXT NOT NULL
+            )
+        """
+        
+        private const val CREATE_RADICAL_DECOMPOSITION_MAPPING_TABLE = """
+            CREATE TABLE IF NOT EXISTS $TABLE_RADICAL_DECOMPOSITION_MAPPING (
+                $COL_RDM_RADICAL TEXT PRIMARY KEY,
+                $COL_RDM_COMPONENTS TEXT NOT NULL,
+                $COL_RDM_COMPONENT_COUNT INTEGER NOT NULL
             )
         """
         
@@ -474,6 +490,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             Log.d(TAG, "STEP 7: Creating kanji radical mapping tables...")
             db.execSQL(CREATE_KANJI_RADICAL_MAPPING_TABLE)
             db.execSQL(CREATE_RADICAL_KANJI_MAPPING_TABLE)
+            db.execSQL(CREATE_RADICAL_DECOMPOSITION_MAPPING_TABLE)
             Log.d(TAG, "✅ STEP 7 COMPLETE: Kanji radical mapping tables created")
 
             // Step 8: Verify table creation (empty tables expected)
@@ -603,7 +620,11 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         Log.d(TAG, "UPGRADE STEP 2: Adding tokenized columns if needed...")
         addColumnIfNotExists(db, TABLE_ENTRIES, COL_TOKENIZED_KANJI, "TEXT")
         addColumnIfNotExists(db, TABLE_ENTRIES, COL_TOKENIZED_READING, "TEXT NOT NULL DEFAULT ''")
-        Log.d(TAG, "✅ UPGRADE STEP 2 COMPLETE: Tokenized columns checked/added")
+        
+        // Add new per-form columns for form-specific common flag
+        Log.d(TAG, "UPGRADE STEP 2b: Adding per-form common flag column if needed...")
+        addColumnIfNotExists(db, TABLE_ENTRIES, COL_FORM_IS_COMMON, "INTEGER DEFAULT 0")
+        Log.d(TAG, "✅ UPGRADE STEP 2 COMPLETE: Tokenized and per-form columns checked/added")
 
         // Drop existing FTS tables and triggers to ensure clean recreation
         Log.d(TAG, "UPGRADE STEP 3: Dropping old FTS tables and triggers...")
@@ -667,6 +688,14 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             Log.d(TAG, "✅ $TABLE_RADICAL_KANJI_MAPPING table created")
         } else {
             Log.d(TAG, "✅ $TABLE_RADICAL_KANJI_MAPPING table already exists")
+        }
+        
+        if (!checkTableExists(db, TABLE_RADICAL_DECOMPOSITION_MAPPING)) {
+            Log.d(TAG, "Creating $TABLE_RADICAL_DECOMPOSITION_MAPPING table...")
+            db.execSQL(CREATE_RADICAL_DECOMPOSITION_MAPPING_TABLE)
+            Log.d(TAG, "✅ $TABLE_RADICAL_DECOMPOSITION_MAPPING table created")
+        } else {
+            Log.d(TAG, "✅ $TABLE_RADICAL_DECOMPOSITION_MAPPING table already exists")
         }
         Log.d(TAG, "✅ UPGRADE STEP 9 COMPLETE: Kanji radical mapping tables handled")
 
@@ -885,7 +914,8 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             TABLE_WORD_TAGS to CREATE_WORD_TAGS_TABLE,
             TABLE_KANJI_ENTRIES to CREATE_KANJI_ENTRIES_TABLE,
             TABLE_KANJI_RADICAL_MAPPING to CREATE_KANJI_RADICAL_MAPPING_TABLE,
-            TABLE_RADICAL_KANJI_MAPPING to CREATE_RADICAL_KANJI_MAPPING_TABLE
+            TABLE_RADICAL_KANJI_MAPPING to CREATE_RADICAL_KANJI_MAPPING_TABLE,
+            TABLE_RADICAL_DECOMPOSITION_MAPPING to CREATE_RADICAL_DECOMPOSITION_MAPPING_TABLE
         )
 
         for ((tableName, createSql) in tablesToVerify) {
@@ -987,13 +1017,15 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 T1.$COL_IS_COMMON,
                 T1.$COL_FREQUENCY,
                 T1.$COL_IS_JMNEDICT_ENTRY,
-                1.0 AS fts_relevance_rank
+                1.0 AS fts_relevance_rank,
+                T1.$COL_FORM_IS_COMMON
             FROM $TABLE_ENTRIES AS T1
             WHERE T1.$COL_ID IN (
                 SELECT rowid FROM entries_fts5
                 WHERE (kanji MATCH ?) OR (reading MATCH ?) OR (tokenized_kanji MATCH ?) OR (tokenized_reading MATCH ?)
             )
             ORDER BY
+                T1.$COL_FORM_IS_COMMON DESC,
                 T1.$COL_IS_COMMON DESC,
                 T1.$COL_FREQUENCY DESC,
                 LENGTH(T1.$COL_READING) ASC,
@@ -1020,7 +1052,8 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                         isCommon = cursor.getInt(5) == 1,
                         frequency = cursor.getInt(6),
                         isJMNEDictEntry = cursor.getInt(7) == 1,
-                        rank = cursor.getDouble(8) // fts_relevance_rank from SQL
+                        rank = cursor.getDouble(8), // fts_relevance_rank from SQL
+                        formIsCommon = cursor.getInt(9) == 1
                         // Note: highlightedKanji and highlightedReading are not selected in this test
                     ))
                 }
@@ -1087,13 +1120,15 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 $COL_FREQUENCY,
                 1.0 AS relevance_score,
                 '' AS highlighted_meanings,
-                '' AS highlighted_parts_of_speech
+                '' AS highlighted_parts_of_speech,
+                $COL_FORM_IS_COMMON
             FROM $TABLE_ENTRIES
             WHERE $COL_ID IN (
                 SELECT entry_id FROM $TABLE_ENGLISH_FTS 
                 WHERE meanings MATCH ? OR parts_of_speech MATCH ?
             )
             ORDER BY
+                $COL_FORM_IS_COMMON DESC,
                 $COL_IS_COMMON DESC,
                 $COL_FREQUENCY DESC,
                 LENGTH($COL_MEANINGS) ASC
@@ -1113,7 +1148,8 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                         frequency = cursor.getInt(6),
                         rank = cursor.getDouble(7),
                         highlightedKanji = null, // English search, kanji won't be highlighted here
-                        highlightedReading = null // English search, reading won't be highlighted here
+                        highlightedReading = null, // English search, reading won't be highlighted here
+                        formIsCommon = cursor.getInt(10) == 1
                     ))
                 }
             }
@@ -1263,7 +1299,8 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                     partsOfSpeech = it.getString(it.getColumnIndexOrThrow(COL_PARTS_OF_SPEECH)),
                     frequency = it.getInt(it.getColumnIndexOrThrow(COL_FREQUENCY)),
                     tokenizedKanji = it.getString(it.getColumnIndexOrThrow(COL_TOKENIZED_KANJI)),
-                    tokenizedReading = it.getString(it.getColumnIndexOrThrow(COL_TOKENIZED_READING))
+                    tokenizedReading = it.getString(it.getColumnIndexOrThrow(COL_TOKENIZED_READING)),
+                    formIsCommon = it.getInt(it.getColumnIndexOrThrow(COL_FORM_IS_COMMON)) == 1
                 )
             } else null
         }
@@ -1531,15 +1568,18 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         
         val db = readableDatabase
         
+        // Expand the radical selection to include composite radicals
+        val expandedRadicals = expandRadicalSelection(radicals)
+        
         // Build query to find kanji that appear in all radical lists
-        val placeholders = radicals.joinToString(",") { "?" }
+        val placeholders = expandedRadicals.joinToString(",") { "?" }
         val sql = """
             SELECT $COL_RKM_RADICAL, $COL_RKM_KANJI_LIST
             FROM $TABLE_RADICAL_KANJI_MAPPING 
             WHERE $COL_RKM_RADICAL IN ($placeholders)
         """
         
-        val cursor = db.rawQuery(sql, radicals.toTypedArray())
+        val cursor = db.rawQuery(sql, expandedRadicals.toTypedArray())
         
         return cursor.use {
             // Map each radical to its kanji set
@@ -1555,13 +1595,33 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 }
             }
             
-            // Find intersection of all radical kanji sets (kanji that appear in ALL radical sets)
-            if (radicalToKanjiSets.size != radicals.size) {
-                // Some radicals had no results
+            // For each original radical, find all kanji that satisfy it (directly or through composites)
+            val originalRadicalSatisfiedKanji = mutableListOf<Set<String>>()
+            
+            for (originalRadical in radicals) {
+                // Get expansion for this specific radical
+                val expansionForRadical = expandRadicalSelection(listOf(originalRadical))
+                
+                // Union all kanji sets for radicals that satisfy this original radical
+                var satisfiedKanji = emptySet<String>()
+                for (expandedRadical in expansionForRadical) {
+                    radicalToKanjiSets[expandedRadical]?.let { kanjiSet ->
+                        satisfiedKanji = satisfiedKanji.union(kanjiSet)
+                    }
+                }
+                
+                if (satisfiedKanji.isNotEmpty()) {
+                    originalRadicalSatisfiedKanji.add(satisfiedKanji)
+                }
+            }
+            
+            // Find intersection of all satisfied kanji sets (kanji that satisfy ALL original radicals)
+            if (originalRadicalSatisfiedKanji.size != radicals.size) {
+                // Some original radicals had no results
                 emptyList()
             } else {
-                var result = radicalToKanjiSets.values.first()
-                for (kanjiSet in radicalToKanjiSets.values.drop(1)) {
+                var result = originalRadicalSatisfiedKanji.first()
+                for (kanjiSet in originalRadicalSatisfiedKanji.drop(1)) {
                     result = result.intersect(kanjiSet)
                 }
                 result.sorted() // Return sorted list
@@ -1597,6 +1657,84 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         }
         
         return allRadicals
+    }
+
+    /**
+     * Get composite radicals that contain any of the given component radicals
+     * Used for hierarchical radical search expansion
+     */
+    fun getCompositeRadicalsForComponents(components: List<String>): Set<String> {
+        if (components.isEmpty()) return emptySet()
+        
+        val db = readableDatabase
+        val compositeRadicals = mutableSetOf<String>()
+        
+        // For each component, find composite radicals that contain it
+        for (component in components) {
+            val sql = """
+                SELECT $COL_RDM_RADICAL
+                FROM $TABLE_RADICAL_DECOMPOSITION_MAPPING 
+                WHERE $COL_RDM_COMPONENTS LIKE ?
+            """
+            
+            val cursor = db.rawQuery(sql, arrayOf("%$component%"))
+            
+            cursor.use {
+                while (it.moveToNext()) {
+                    val radical = it.getString(0)
+                    if (!radical.isNullOrBlank()) {
+                        // Verify this component is actually in the decomposition
+                        val componentsList = getRadicalComponents(radical)
+                        if (componentsList.contains(component)) {
+                            compositeRadicals.add(radical)
+                        }
+                    }
+                }
+            }
+        }
+        
+        return compositeRadicals
+    }
+
+    /**
+     * Get the component radicals for a given composite radical
+     */
+    fun getRadicalComponents(radical: String): List<String> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_RADICAL_DECOMPOSITION_MAPPING,
+            arrayOf(COL_RDM_COMPONENTS),
+            "$COL_RDM_RADICAL = ?",
+            arrayOf(radical),
+            null, null, null
+        )
+        
+        return cursor.use {
+            if (it.moveToFirst()) {
+                val componentsString = it.getString(0)
+                if (!componentsString.isNullOrBlank()) {
+                    componentsString.split(",").map { component -> component.trim() }
+                } else {
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
+        }
+    }
+
+    /**
+     * Expand a set of selected radicals to include composite radicals
+     * that can be formed from the selected components
+     */
+    fun expandRadicalSelection(selectedRadicals: List<String>): Set<String> {
+        val expandedSet = selectedRadicals.toMutableSet()
+        
+        // Add composite radicals that contain any of the selected radicals as components
+        val compositeRadicals = getCompositeRadicalsForComponents(selectedRadicals)
+        expandedSet.addAll(compositeRadicals)
+        
+        return expandedSet
     }
 
     /**
@@ -1705,9 +1843,12 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
      * Convert KanjiDatabaseEntry to KanjiCardInfo for display in card UI
      */
     fun convertToKanjiCardInfo(kanjiList: List<String>): List<KanjiCardInfo> {
+        if (kanjiList.isEmpty()) return emptyList()
+        
         val kanjiEntries = getKanjiByCharacters(kanjiList)
         val kanjiMap = kanjiEntries.associateBy { it.kanji }
         
+        // PERFORMANCE: Simple conversion without expensive commonality scoring
         return kanjiList.mapNotNull { kanji ->
             kanjiMap[kanji]?.let { entry ->
                 // Clean up readings - remove brackets and quotes
@@ -1732,16 +1873,165 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                     ?.joinToString(", ")
                     ?: ""
                 
+                // Check if readings are available
+                val hasReadings = cleanOnReadings.isNotBlank() || cleanKunReadings.isNotBlank()
+                
+                // Basic score from JLPT/grade only (no expensive database queries)
+                val basicScore = calculateBasicCommonalityScore(entry)
+                
                 KanjiCardInfo(
                     kanji = entry.kanji,
                     onReadings = cleanOnReadings,
                     kunReadings = cleanKunReadings,
                     primaryMeaning = cleanMeanings,
                     jlptLevel = entry.jlptLevel,
-                    grade = entry.grade
+                    grade = entry.grade,
+                    commonalityScore = basicScore,
+                    hasReadings = hasReadings
                 )
             }
+        }.sortedWith(compareByDescending<KanjiCardInfo> { it.hasReadings }
+            .thenByDescending { it.commonalityScore })
+    }
+    
+    /**
+     * PERFORMANCE: Calculate commonality scores for multiple kanji using fast FTS5 queries
+     * This replaces individual queries with optimized FTS5 batch queries
+     */
+    private fun calculateKanjiCommonalityScoresBatch(kanjiList: List<String>, kanjiMap: Map<String, KanjiDatabaseEntry>): Map<String, Int> {
+        if (kanjiList.isEmpty()) return emptyMap()
+        
+        val db = readableDatabase
+        val scores = mutableMapOf<String, Int>()
+        
+        try {
+            // Initialize scores for all kanji
+            kanjiList.forEach { scores[it] = 0 }
+            
+            // Use FTS5 for fast kanji searches - much faster than LIKE queries
+            val kanjiStats = mutableMapOf<String, MutableList<Pair<Boolean, Int>>>()
+            
+            // Process each kanji with FTS5 search using entries_fts5 table
+            kanjiList.forEach { targetKanji ->
+                val cursor = db.rawQuery("""
+                    SELECT e.${COL_IS_COMMON}, e.${COL_FREQUENCY}
+                    FROM entries_fts5 f
+                    JOIN ${TABLE_ENTRIES} e ON f.rowid = e.id
+                    WHERE entries_fts5 MATCH ?
+                    ORDER BY e.${COL_FREQUENCY} DESC
+                    LIMIT 10
+                """, arrayOf(targetKanji))
+                
+                cursor.use {
+                    val stats = mutableListOf<Pair<Boolean, Int>>()
+                    while (it.moveToNext()) {
+                        val isCommon = it.getInt(0) == 1
+                        val frequency = it.getInt(1)
+                        stats.add(Pair(isCommon, frequency))
+                    }
+                    if (stats.isNotEmpty()) {
+                        kanjiStats[targetKanji] = stats
+                    }
+                }
+            }
+            
+            // Calculate scores from collected stats
+            kanjiStats.forEach { (kanji, stats) ->
+                var score = 0
+                var totalFrequency = 0
+                var commonEntries = 0
+                
+                stats.forEach { (isCommon, frequency) ->
+                    if (isCommon) commonEntries++
+                    totalFrequency += frequency
+                }
+                
+                // Base score from frequency and common entries
+                score += (totalFrequency / 1000).coerceAtMost(1000)
+                score += commonEntries * 100
+                score += stats.size * 10
+                
+                // Add JLPT and grade bonuses from kanji data
+                kanjiMap[kanji]?.let { entry ->
+                    when (entry.jlptLevel) {
+                        5 -> score += 500 // N5 most common
+                        4 -> score += 400 // N4
+                        3 -> score += 300 // N3
+                        2 -> score += 200 // N2
+                        1 -> score += 100 // N1
+                    }
+                    
+                    when (entry.grade) {
+                        1 -> score += 600 // 1st grade most common
+                        2 -> score += 500 // 2nd grade
+                        3 -> score += 400 // 3rd grade
+                        4 -> score += 300 // 4th grade
+                        5 -> score += 200 // 5th grade
+                        6 -> score += 100 // 6th grade
+                        // Grades 7-12 get no bonus
+                    }
+                }
+                
+                scores[kanji] = score
+            }
+            
+            // Add JLPT/grade scores for kanji that didn't match any FTS5 entries
+            kanjiList.forEach { kanji ->
+                if (!scores.containsKey(kanji)) {
+                    scores[kanji] = kanjiMap[kanji]?.let { calculateBasicCommonalityScore(it) } ?: 0
+                }
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error calculating FTS5 batch commonality scores", e)
         }
+        
+        return scores
+    }
+    
+    /**
+     * Calculate basic commonality score from kanji entry data only (JLPT + grade)
+     * Used as fallback when batch scoring fails
+     */
+    private fun calculateBasicCommonalityScore(entry: KanjiDatabaseEntry): Int {
+        var score = 0
+        
+        // Bonus for JLPT level (lower level = higher score)
+        when (entry.jlptLevel) {
+            5 -> score += 500 // N5 most common
+            4 -> score += 400 // N4
+            3 -> score += 300 // N3
+            2 -> score += 200 // N2
+            1 -> score += 100 // N1
+        }
+        
+        // Bonus for school grade (lower grade = higher score)
+        when (entry.grade) {
+            1 -> score += 600 // 1st grade most common
+            2 -> score += 500 // 2nd grade
+            3 -> score += 400 // 3rd grade
+            4 -> score += 300 // 4th grade
+            5 -> score += 200 // 5th grade
+            6 -> score += 100 // 6th grade
+            // Grades 7-12 get no bonus
+        }
+        
+        return score
+    }
+    
+    /**
+     * Calculate commonality score for a kanji based on:
+     * - Dictionary entries containing this kanji (frequency and common flags)
+     * - JLPT level (lower level = more common)
+     * - School grade (lower grade = more common)
+     * 
+     * NOTE: This method is kept for compatibility but should use batch version when possible
+     */
+    private fun calculateKanjiCommonalityScore(kanji: String): Int {
+        // Use batch method for single kanji (requires kanji entry for JLPT/grade bonuses)
+        val kanjiEntry = getKanjiByCharacters(listOf(kanji)).firstOrNull()
+        val kanjiMap = if (kanjiEntry != null) mapOf(kanji to kanjiEntry) else emptyMap()
+        return calculateKanjiCommonalityScoresBatch(listOf(kanji), kanjiMap)[kanji] ?: 0
     }
 
 }
@@ -1761,7 +2051,8 @@ data class SearchResult(
     val rank: Double = 0.0,
     val isJMNEDictEntry: Boolean = false,
     val highlightedKanji: String? = null,
-    val highlightedReading: String? = null
+    val highlightedReading: String? = null,
+    val formIsCommon: Boolean = false
 )
 
 data class DatabaseDictionaryEntry(
@@ -1772,7 +2063,8 @@ data class DatabaseDictionaryEntry(
     val partsOfSpeech: String?,
     val frequency: Int,
     val tokenizedKanji: String?,
-    val tokenizedReading: String
+    val tokenizedReading: String,
+    val formIsCommon: Boolean
 )
 
 data class KanjiDatabaseEntry(

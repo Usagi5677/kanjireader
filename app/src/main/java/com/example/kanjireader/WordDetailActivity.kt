@@ -99,6 +99,12 @@ class WordDetailActivity : AppCompatActivity() {
         val reading = intent.getStringExtra("reading") ?: ""
         val meanings = intent.getStringArrayListExtra("meanings") ?: arrayListOf()
         val frequency = intent.getIntExtra("frequency", 0)
+        val isJMNEDict = intent.getBooleanExtra("isJMNEDict", false)
+        
+        // Debug logging for JMnedict entries
+        if (word == "上") {
+            Log.d("WordDetailActivity", "🔍 Intent data: word='$word', reading='$reading', isJMNEDict=$isJMNEDict")
+        }
 
         // Immediately display basic data to prevent blank screen
         displayBasicWordData(word, reading, meanings)
@@ -109,24 +115,46 @@ class WordDetailActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             // Search for the word to get full details using the new FTS5 search
-            val searchResults = repository.search(word, limit = 20)
+            // For JMNEDict entries, we need to search more broadly to include proper nouns
+            val searchResults = if (isJMNEDict) {
+                repository.search(word, limit = 500) // Get many more results to find JMNEDict entries which are deprioritized
+            } else {
+                repository.search(word, limit = 100) // Increased from 20 to catch more variants
+            }
+
+            // Debug logging for JMnedict entries
+            if (word == "上") {
+                Log.d("WordDetailActivity", "🔍 Search found ${searchResults.size} results")
+                val jmnedictResults = searchResults.filter { it.isJMNEDictEntry }
+                Log.d("WordDetailActivity", "🔍 JMnedict results: ${jmnedictResults.size}")
+                jmnedictResults.take(5).forEach {
+                    Log.d("WordDetailActivity", "🔍   ${it.kanji}/${it.reading} isJMNEDict=${it.isJMNEDictEntry}")
+                }
+            }
 
             // Find the exact match - respect whether user clicked kanji or hiragana entry
             val exactMatch = searchResults.firstOrNull {
                 if (isKanjiString(word)) {
-                    // User clicked kanji entry - match kanji exactly
-                    it.kanji == word && it.reading == reading
+                    // User clicked kanji entry - match kanji exactly with reading
+                    // For JMNEDict entries, also check if it's actually a JMNEDict entry
+                    it.kanji == word && it.reading == reading && 
+                    (!isJMNEDict || it.isJMNEDictEntry == isJMNEDict)
                 } else {
                     // User clicked hiragana entry - match reading exactly and ensure no kanji
                     it.reading == word && it.kanji.isNullOrEmpty()
                 }
             } ?: searchResults.firstOrNull {
-                // Fallback: broader match but still respect entry type
+                // Fallback: broader match but still respect entry type and JMNEDict status
                 if (isKanjiString(word)) {
-                    it.kanji == word
+                    it.kanji == word && (!isJMNEDict || it.isJMNEDictEntry == isJMNEDict)
                 } else {
                     it.reading == word
                 }
+            }
+            
+            // Debug logging for JMnedict entries
+            if (word == "上") {
+                Log.d("WordDetailActivity", "🔍 Exact match found: ${exactMatch?.kanji}/${exactMatch?.reading} isJMNEDict=${exactMatch?.isJMNEDictEntry}")
             }
             
 

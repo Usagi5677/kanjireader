@@ -68,13 +68,14 @@ class DictionaryUpdateOrchestrator:
     
     
     
-    def update_dictionaries(self, jmdict_only: bool = False, preserve_custom: bool = True) -> bool:
+    def update_dictionaries(self, jmdict_only: bool = False, preserve_custom: bool = True, enhance_makemeahanzi: bool = True) -> bool:
         """
         Main update process - downloads directly to assets folder
         
         Args:
             jmdict_only: Only update JMdict, skip Kanjidic
             preserve_custom: Apply custom modifications after update
+            enhance_makemeahanzi: Enhance radkfile with makemeahanzi decomposition data (default: True)
         """
         print("=== Dictionary Update System ===")
         print("Starting automated dictionary update process...")
@@ -103,7 +104,7 @@ class DictionaryUpdateOrchestrator:
         # Step 3: Apply custom modifications (if requested)
         if preserve_custom:
             print("\n[3/4] Applying custom modifications...")
-            if not self.preserver.preserve_and_apply():
+            if not self.preserver.preserve_and_apply(enhance_with_makemeahanzi=enhance_makemeahanzi):
                 print("✗ Failed to apply custom modifications")
                 return False
         else:
@@ -187,6 +188,8 @@ def main():
                        help='Only update JMdict, skip Kanjidic')
     parser.add_argument('--no-custom', action='store_true',
                        help='Skip applying custom modifications')
+    parser.add_argument('--no-makemeahanzi', action='store_true',
+                       help='Skip makemeahanzi decomposition enhancement (enabled by default)')
     parser.add_argument('--verify-only', action='store_true',
                        help='Only run verification, do not update')
     
@@ -213,7 +216,8 @@ def main():
     # Run the update
     success = orchestrator.update_dictionaries(
         jmdict_only=args.jmdict_only,
-        preserve_custom=not args.no_custom
+        preserve_custom=not args.no_custom,
+        enhance_makemeahanzi=not args.no_makemeahanzi
     )
     
     sys.exit(0 if success else 1)

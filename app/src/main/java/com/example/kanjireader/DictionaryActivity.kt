@@ -200,6 +200,7 @@ class DictionaryActivity : AppCompatActivity() {
             intent.putExtra("reading", unifiedEntry.primaryReading ?: unifiedEntry.primaryForm)
             intent.putExtra("meanings", ArrayList(unifiedEntry.meanings))
             intent.putExtra("frequency", unifiedEntry.frequency ?: 0)
+            intent.putExtra("isJMNEDict", unifiedEntry.isJMNEDictEntry)
             startActivity(intent)
         }
 
