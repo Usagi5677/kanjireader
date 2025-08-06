@@ -1,52 +1,117 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical">
 
-    <!-- RecyclerView for kanji data -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/kanjiRecyclerView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:padding="8dp"
-        android:clipToPadding="false" />
-
-    <!-- Empty State -->
+    <!-- Section Header with Counter and Draw Button -->
     <LinearLayout
-        android:id="@+id/emptyStateLayout"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="32dp"
-        android:visibility="gone">
-
-        <ImageView
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:layout_marginBottom="16dp"
-            android:src="@drawable/ic_book"
-            android:alpha="0.3"
-            android:contentDescription="No kanji found" />
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:background="@android:color/white"
+        android:elevation="2dp"
+        android:gravity="center_vertical">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="No kanji characters found"
-            android:textSize="18sp"
-            android:textColor="?android:attr/textColorSecondary"
-            android:layout_marginBottom="8dp"
-            android:gravity="center" />
+            android:text="Kanji Results"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@color/teal_700" />
 
         <TextView
+            android:id="@+id/resultsCounter"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="This word contains no kanji characters to display"
-            android:textSize="14sp"
-            android:textColor="?android:attr/textColorTertiary"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/circular_badge_background"
             android:gravity="center"
-            android:alpha="0.7" />
+            android:minWidth="28dp"
+            android:minHeight="28dp"
+            android:paddingHorizontal="8dp"
+            android:text="0"
+            android:textColor="@color/teal_900"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- Draw Kanji Button -->
+        <Button
+            android:id="@+id/drawButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Draw"
+            android:textSize="12sp"
+            android:textColor="@android:color/white"
+            android:background="@color/teal_600"
+            android:paddingHorizontal="16dp"
+            android:drawableStart="@drawable/ic_touch"
+            android:drawableTint="@android:color/white"
+            android:drawablePadding="6dp"
+            style="?android:attr/borderlessButtonStyle" />
 
     </LinearLayout>
 
-</FrameLayout>
+    <!-- Main Content Frame -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- RecyclerView for kanji data -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/kanjiRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="8dp"
+            android:clipToPadding="false" />
+
+        <!-- Empty State -->
+        <LinearLayout
+            android:id="@+id/emptyStateLayout"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="32dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_marginBottom="16dp"
+                android:src="@drawable/ic_book"
+                android:alpha="0.3"
+                android:contentDescription="No kanji found" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="No kanji characters found"
+                android:textSize="18sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:layout_marginBottom="8dp"
+                android:gravity="center" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="This word contains no kanji characters to display"
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorTertiary"
+                android:gravity="center"
+                android:alpha="0.7" />
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+</LinearLayout>

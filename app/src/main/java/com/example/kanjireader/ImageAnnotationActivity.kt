@@ -22,7 +22,6 @@ import android.content.Intent
 import android.view.ViewGroup
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
-import com.google.android.material.bottomsheet.BottomSheetBehavior
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
@@ -33,6 +32,7 @@ import java.io.File
 import com.google.android.material.navigation.NavigationView
 import kotlinx.coroutines.delay
 import androidx.appcompat.app.AlertDialog
+import androidx.recyclerview.widget.LinearLayoutManager
 
 
 class ImageAnnotationActivity : AppCompatActivity() {
@@ -43,7 +43,6 @@ class ImageAnnotationActivity : AppCompatActivity() {
 
     // Basic UI components
     private lateinit var imageView: ImageView
-    private lateinit var bottomSheetView: View
     private lateinit var ocrTextTitle: TextView
     private lateinit var textSelectionView: TextSelectionView
     private lateinit var copyOcrTextButton: ImageButton
@@ -51,6 +50,11 @@ class ImageAnnotationActivity : AppCompatActivity() {
     private lateinit var japaneseOnlyToggle: MaterialButton
     private lateinit var btnToggleWordList: FloatingActionButton
     private lateinit var btnSelectFromGallery: FloatingActionButton
+
+    // Word cards components
+    private lateinit var wordCardsRecyclerView: androidx.recyclerview.widget.RecyclerView
+    private lateinit var wordCountBadge: TextView
+    private lateinit var wordCardAdapter: WordCardAdapter
 
     // Top popup components
     private lateinit var topPopup: LinearLayout
@@ -66,8 +70,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
     private lateinit var furiganaToggle: MaterialButton
     private lateinit var furiganaProcessor: FuriganaProcessor
 
-    private lateinit var bottomSheetBehavior: BottomSheetBehavior<LinearLayout>
-    private var isBottomSheetVisible = true
+    private var isWordCardsVisible = true
 
     private var isFuriganaMode = false
 
@@ -79,6 +82,10 @@ class ImageAnnotationActivity : AppCompatActivity() {
     private var morphologyAnalyzer: MorphologicalAnalyzer? = null
     private var isJapaneseOnlyMode = true
     private var originalOcrText = ""
+    
+    // Word cards data
+    private var extractedWordCards = listOf<WordCardInfo>()
+    private var currentHighlightedCardIndex = -1
 
     private var deinflectionEngine: TenTenStyleDeinflectionEngine? = null
 
@@ -100,6 +107,9 @@ class ImageAnnotationActivity : AppCompatActivity() {
 
             // Setup click listeners
             setupClickListeners()
+            
+            // Setup word cards
+            setupWordCards()
 
             // Setup initial state
             wordExtractor = JapaneseWordExtractor()
@@ -164,7 +174,6 @@ class ImageAnnotationActivity : AppCompatActivity() {
     private fun initializeViews() {
         // Find all views
         imageView = findViewById(R.id.imageView)
-        bottomSheetView = findViewById(R.id.bottomSheet)
         ocrTextTitle = findViewById(R.id.ocrTextTitle)
         textSelectionView = findViewById(R.id.textSelectionView)
         copyOcrTextButton = findViewById(R.id.copyOcrTextButton)
@@ -172,6 +181,10 @@ class ImageAnnotationActivity : AppCompatActivity() {
         japaneseOnlyToggle = findViewById(R.id.japaneseOnlyToggle)
         btnToggleWordList = findViewById(R.id.btnToggleWordList)
         btnSelectFromGallery = findViewById(R.id.btnSelectFromGallery)
+
+        // Word cards components
+        wordCardsRecyclerView = findViewById(R.id.wordCardsRecyclerView)
+        wordCountBadge = findViewById(R.id.wordCountBadge)
 
         // Top popup components
         topPopup = findViewById<LinearLayout>(R.id.topPopup)
@@ -185,9 +198,6 @@ class ImageAnnotationActivity : AppCompatActivity() {
         notFoundWordText = topPopup.findViewById<TextView>(R.id.notFoundWordText)
 
         furiganaToggle = findViewById(R.id.furiganaToggle)
-
-        bottomSheetBehavior = BottomSheetBehavior.from(bottomSheetView as LinearLayout)
-        setupBottomSheetBehavior()
 
         drawerLayout = findViewById(R.id.drawerLayout)
         navigationView = findViewById(R.id.navigationView)
@@ -215,11 +225,93 @@ class ImageAnnotationActivity : AppCompatActivity() {
         }
 
         btnToggleWordList.setOnClickListener {
-            toggleBottomSheet()
+            toggleWordCards()
         }
 
         btnSelectFromGallery.setOnClickListener {
             launchGallerySelection()
+        }
+    }
+
+    private fun setupWordCards() {
+        // Initialize word card adapter
+        wordCardAdapter = WordCardAdapter(
+            onWordCardClick = { wordCard, position ->
+                onWordCardClicked(wordCard, position)
+            },
+            onWordCardScroll = { position ->
+                highlightWordInText(position)
+            }
+        )
+        
+        // Setup RecyclerView
+        wordCardsRecyclerView.apply {
+            layoutManager = LinearLayoutManager(this@ImageAnnotationActivity)
+            adapter = wordCardAdapter
+            
+            // Disable all animations to prevent "popping" effect during fast scrolling
+            itemAnimator = null
+            
+            // Add scroll listener for automatic highlighting using scroll-based point system
+            addOnScrollListener(object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
+                    super.onScrolled(recyclerView, dx, dy)
+                    
+                    val totalItems = extractedWordCards.size
+                    if (totalItems <= 0) return
+                    
+                    val layoutManager = recyclerView.layoutManager as LinearLayoutManager
+                    
+                    // Calculate scroll-based highlight position using mathematical mapping
+                    val scrollY = recyclerView.computeVerticalScrollOffset()
+                    val scrollRange = recyclerView.computeVerticalScrollRange() - recyclerView.height
+                    
+                    val highlightPosition = if (scrollRange > 0) {
+                        // Map scroll position to item index
+                        val scrollProgress = scrollY.toFloat() / scrollRange.toFloat()
+                        val calculatedPosition = (scrollProgress * (totalItems - 1)).toInt()
+                        
+                        // Clamp to valid range
+                        maxOf(0, minOf(calculatedPosition, totalItems - 1))
+                    } else {
+                        // No scroll possible, highlight first item
+                        0
+                    }
+                    
+                    Log.d(TAG, "Scroll: dy=$dy, scrollY=$scrollY, scrollRange=$scrollRange, totalItems=$totalItems, calculated=$highlightPosition, currentHighlight=$currentHighlightedCardIndex")
+                    
+                    // Update highlighting if the position changed
+                    if (highlightPosition != currentHighlightedCardIndex) {
+                        val oldPosition = currentHighlightedCardIndex
+                        currentHighlightedCardIndex = highlightPosition
+                        
+                        Log.d(TAG, "Highlighting changed: $oldPosition -> $highlightPosition")
+                        
+                        // Use post() to defer adapter update until after scroll event is complete
+                        recyclerView.post {
+                            wordCardAdapter.highlightCard(highlightPosition)
+                            // TODO: Re-enable text highlighting later - temporarily disabled to fix crash
+                            // highlightWordInText(highlightPosition)
+                        }
+                    }
+                }
+            })
+        }
+    }
+
+    private fun onWordCardClicked(wordCard: WordCardInfo, position: Int) {
+        // Removed highlighting logic - only scroll highlighting now
+        // TODO: Add word lookup functionality here if needed
+    }
+
+    private fun highlightWordInText(position: Int) {
+        if (position >= 0 && position < extractedWordCards.size) {
+            val wordCard = extractedWordCards[position]
+            Log.d(TAG, "Highlighting word: '${wordCard.word}' at position ${wordCard.startPosition}-${wordCard.endPosition}")
+            textSelectionView.highlightWord(wordCard.startPosition, wordCard.endPosition)
+        } else {
+            // Clear highlighting if position is invalid
+            textSelectionView.clearWordHighlight()
         }
     }
 
@@ -240,15 +332,20 @@ class ImageAnnotationActivity : AppCompatActivity() {
     }
 
     // Add new method to toggle bottom sheet:
-    private fun toggleBottomSheet() {
-        if (isBottomSheetVisible) {
-            // Hide completely
-            bottomSheetBehavior.state = BottomSheetBehavior.STATE_HIDDEN
-            Log.d(TAG, "Bottom sheet hidden")
+    private fun toggleWordCards() {
+        Log.d(TAG, "Toggle button pressed. Current state: $isWordCardsVisible")
+        val bottomHalf = findViewById<LinearLayout>(R.id.bottomHalfContainer)
+        
+        if (isWordCardsVisible) {
+            bottomHalf.visibility = View.GONE
+            isWordCardsVisible = false
+            btnToggleWordList.setImageResource(android.R.drawable.ic_menu_agenda)
+            Log.d(TAG, "Hiding word cards")
         } else {
-            // Show expanded
-            bottomSheetBehavior.state = BottomSheetBehavior.STATE_EXPANDED
-            Log.d(TAG, "Bottom sheet expanded")
+            bottomHalf.visibility = View.VISIBLE
+            isWordCardsVisible = true
+            btnToggleWordList.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            Log.d(TAG, "Showing word cards")
         }
     }
 
@@ -291,45 +388,6 @@ class ImageAnnotationActivity : AppCompatActivity() {
     }
 
     // Optional: Add state change listener to update button icon
-    private fun setupBottomSheetBehavior() {
-        bottomSheetBehavior.apply {
-            // Disable dragging
-            isDraggable = false
-
-            // Set states
-            state = BottomSheetBehavior.STATE_EXPANDED
-            skipCollapsed = true // This prevents the collapsed state
-
-            // Set peek height to 0 to completely hide when "collapsed"
-            peekHeight = 0
-
-            // Disable half-expanded state
-            isHideable = true
-            halfExpandedRatio = 0.001f // Effectively disables half-expanded
-
-            // Add state change callback
-            addBottomSheetCallback(object : BottomSheetBehavior.BottomSheetCallback() {
-                override fun onStateChanged(bottomSheet: View, newState: Int) {
-                    when (newState) {
-                        BottomSheetBehavior.STATE_EXPANDED -> {
-                            // Update button icon to collapse icon
-                            btnToggleWordList.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-                            isBottomSheetVisible = true
-                        }
-                        BottomSheetBehavior.STATE_HIDDEN -> {
-                            // Update button icon to expand icon
-                            btnToggleWordList.setImageResource(android.R.drawable.ic_menu_agenda)
-                            isBottomSheetVisible = false
-                        }
-                    }
-                }
-
-                override fun onSlide(bottomSheet: View, slideOffset: Float) {
-                    // Not needed since dragging is disabled
-                }
-            })
-        }
-    }
 
     private fun updateFuriganaToggleAppearance() {
         if (isFuriganaMode) {
@@ -449,13 +507,98 @@ class ImageAnnotationActivity : AppCompatActivity() {
             textSelectionView.setShowFurigana(true)
         }
 
-        // Ensure bottom sheet is visible after OCR
-        if (!isBottomSheetVisible) {
-            bottomSheetBehavior.state = BottomSheetBehavior.STATE_EXPANDED
-            isBottomSheetVisible = true
-        }
+        // Extract words and update word cards
+        extractAndDisplayWords(textToShow)
 
         Log.d(TAG, "Displayed text (Japanese only: $isJapaneseOnlyMode, Furigana: $isFuriganaMode)")
+    }
+
+    private fun extractAndDisplayWords(text: String) {
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "Starting word extraction from text: ${text.take(100)}...")
+                
+                if (text.isBlank()) {
+                    Log.w(TAG, "Text is blank, skipping word extraction")
+                    return@launch
+                }
+                
+                // Extract words with positions
+                val wordPositions = wordExtractor?.extractJapaneseWordsWithPositions(text) ?: emptyList()
+                Log.d(TAG, "Extracted ${wordPositions.size} word positions")
+                
+                if (wordPositions.isEmpty()) {
+                    Log.w(TAG, "No word positions found. Text: $text")
+                    // Show empty state
+                    extractedWordCards = emptyList()
+                    wordCardAdapter.updateData(emptyList())
+                    wordCountBadge.visibility = View.GONE
+                    return@launch
+                }
+                
+                // Get dictionary repository
+                val repository = DictionaryRepository.getInstance(this@ImageAnnotationActivity)
+                val wordCards = mutableListOf<WordCardInfo>()
+                
+                // Look up each word in dictionary
+                for (wordPos in wordPositions) {
+                    try {
+                        Log.d(TAG, "Looking up word: '${wordPos.word}' at position ${wordPos.startPosition}-${wordPos.endPosition}")
+                        val searchResults = repository.search(wordPos.word, limit = 1)
+                        
+                        if (searchResults.isNotEmpty()) {
+                            val result = searchResults.first()
+                            val meanings = result.meanings.take(3).joinToString(", ")
+                            
+                            val wordCard = WordCardInfo(
+                                word = wordPos.word,
+                                reading = result.reading,
+                                meanings = meanings,
+                                startPosition = wordPos.startPosition,
+                                endPosition = wordPos.endPosition
+                            )
+                            wordCards.add(wordCard)
+                            Log.d(TAG, "Added word card: ${wordCard.word} - ${wordCard.reading}")
+                        } else {
+                            Log.d(TAG, "No dictionary results for word: ${wordPos.word}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to look up word: ${wordPos.word}", e)
+                    }
+                }
+                
+                Log.d(TAG, "Total word cards created: ${wordCards.size}")
+                
+                // Update UI on main thread
+                extractedWordCards = wordCards
+                wordCardAdapter.updateData(wordCards)
+                
+                // Set first card as highlighted and update text highlighting
+                if (wordCards.isNotEmpty()) {
+                    currentHighlightedCardIndex = 0
+                    highlightWordInText(0)
+                }
+                
+                // Update word count badge
+                if (wordCards.isNotEmpty()) {
+                    wordCountBadge.visibility = View.VISIBLE
+                    wordCountBadge.text = wordCards.size.toString()
+                    Log.d(TAG, "Updated word count badge: ${wordCards.size}")
+                } else {
+                    wordCountBadge.visibility = View.GONE
+                    Log.w(TAG, "No words found in dictionary")
+                }
+                
+                Log.d(TAG, "Updated word cards: ${wordCards.size} words found")
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error extracting words", e)
+                // Show empty state on error
+                extractedWordCards = emptyList()
+                wordCardAdapter.updateData(emptyList())
+                wordCountBadge.visibility = View.GONE
+            }
+        }
     }
 
     private fun preparePopupForDisplay() {

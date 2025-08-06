@@ -75,6 +75,24 @@
                 android:value=".DictionaryActivity" />
         </activity>
 
+        <activity
+            android:name=".RadicalSearchActivity"
+            android:label="Kanji search"
+            android:parentActivityName=".DictionaryActivity">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".DictionaryActivity" />
+        </activity>
+
+        <activity
+            android:name=".KanjiDrawingActivity"
+            android:label="Draw Kanji"
+            android:parentActivityName=".DictionaryActivity">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".DictionaryActivity" />
+        </activity>
+
         <!-- xcdat Test Activity -->
         <activity
             android:name=".XcdatTestActivity"

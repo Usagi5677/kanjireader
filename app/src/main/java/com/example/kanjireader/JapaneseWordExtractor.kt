@@ -86,6 +86,51 @@ class JapaneseWordExtractor {
     }
 
     /**
+     * Extract Japanese words with their positions in the text
+     * Returns a list of WordPosition objects containing word and position info
+     */
+    fun extractJapaneseWordsWithPositions(text: String): List<WordPosition> {
+        val words = mutableListOf<WordPosition>()
+
+        // Find all Japanese word sequences with their positions
+        val matches = JAPANESE_WORD_PATTERN.findAll(text)
+
+        for (match in matches) {
+            val word = match.value
+            val startPos = match.range.first
+            val endPos = match.range.last + 1
+
+            // Add the full word if it's reasonable length
+            if (word.length >= 1) {
+                words.add(WordPosition(word, startPos, endPos))
+
+                // For multi-character words, also add individual kanji
+                if (word.length > 1) {
+                    var currentPos = startPos
+                    for (char in word) {
+                        if (isKanji(char.toString())) {
+                            words.add(WordPosition(char.toString(), currentPos, currentPos + 1))
+                        }
+                        currentPos++
+                    }
+                }
+            }
+        }
+
+        Log.d(TAG, "Extracted ${words.size} word positions")
+        return words
+    }
+
+    /**
+     * Data class to hold word and its position information
+     */
+    data class WordPosition(
+        val word: String,
+        val startPosition: Int,
+        val endPosition: Int
+    )
+
+    /**
      * Clean OCR text and normalize common OCR errors
      */
     fun cleanOCRText(text: String): String {

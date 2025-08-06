@@ -103,5 +103,9 @@ dependencies {
     implementation("com.caverock:androidsvg:1.4")
     implementation("com.google.android.flexbox:flexbox:3.0.0")
 
+    // TensorFlow Lite for kanji drawing recognition
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+
 }
 

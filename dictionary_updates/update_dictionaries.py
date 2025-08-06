@@ -68,20 +68,21 @@ class DictionaryUpdateOrchestrator:
     
     
     
-    def update_dictionaries(self, jmdict_only: bool = False, preserve_custom: bool = True) -> bool:
+    def update_dictionaries(self, jmdict_only: bool = False, preserve_custom: bool = True, enhance_makemeahanzi: bool = True) -> bool:
         """
         Main update process - downloads directly to assets folder
         
         Args:
             jmdict_only: Only update JMdict, skip Kanjidic
             preserve_custom: Apply custom modifications after update
+            enhance_makemeahanzi: Enhance radkfile with makemeahanzi decomposition data (default: True)
         """
         print("=== Dictionary Update System ===")
         print("Starting automated dictionary update process...")
         
         # Step 1: Download latest dictionaries 
-        print("\n[1/3] Downloading, extracting, and renaming dictionaries...")
-        jmdict_path, kanjidic_path, jmnedict_path = self.downloader.download_latest_dictionaries()
+        print("\n[1/4] Downloading, extracting, and renaming dictionaries...")
+        jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path = self.downloader.download_latest_dictionaries()
         
         if not jmdict_path:
             print("✗ Failed to download JMdict")
@@ -93,17 +94,24 @@ class DictionaryUpdateOrchestrator:
         
         print(f"✓ Files renamed and moved to {self.assets_dir}")
         
-        # Step 2: Apply custom modifications (if requested)
+        # Step 2: Create merged kradfile from Kradical + kensaku sources
+        print("\n[2/4] Creating merged kradfile...")
+        if not self.preserver.create_merged_kradfile(self.downloader):
+            print("✗ Failed to create merged kradfile")
+            return False
+        print("✓ Merged kradfile created successfully")
+        
+        # Step 3: Apply custom modifications (if requested)
         if preserve_custom:
-            print("\n[2/3] Applying custom modifications...")
-            if not self.preserver.preserve_and_apply():
+            print("\n[3/4] Applying custom modifications...")
+            if not self.preserver.preserve_and_apply(enhance_with_makemeahanzi=enhance_makemeahanzi):
                 print("✗ Failed to apply custom modifications")
                 return False
         else:
-            print("\n[2/3] Skipping custom modifications")
+            print("\n[3/4] Skipping custom modifications")
         
-        # Step 3: Cleanup
-        print("\n[3/3] Cleaning up temporary files...")
+        # Step 4: Cleanup
+        print("\n[4/4] Cleaning up temporary files...")
         try:
             # Remove downloaded ZIP files to save space (already done by downloader)
             print("  Temporary files cleaned up")
@@ -122,7 +130,7 @@ class DictionaryUpdateOrchestrator:
         print("\n=== Update Summary ===")
         
         # Check file sizes for single JSON files
-        assets_files = ["jmdict.json", "jmnedict.json", "kanjidic.json"]
+        assets_files = ["jmdict.json", "jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json"]
         
         for filename in assets_files:
             filepath = self.assets_dir / filename
@@ -154,7 +162,7 @@ class DictionaryUpdateOrchestrator:
             return False
         
         # Check optional files
-        optional_files = ["jmnedict.json", "kanjidic.json"]
+        optional_files = ["jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json"]
         for filename in optional_files:
             filepath = self.assets_dir / filename
             if filepath.exists():
@@ -180,6 +188,8 @@ def main():
                        help='Only update JMdict, skip Kanjidic')
     parser.add_argument('--no-custom', action='store_true',
                        help='Skip applying custom modifications')
+    parser.add_argument('--no-makemeahanzi', action='store_true',
+                       help='Skip makemeahanzi decomposition enhancement (enabled by default)')
     parser.add_argument('--verify-only', action='store_true',
                        help='Only run verification, do not update')
     
@@ -206,7 +216,8 @@ def main():
     # Run the update
     success = orchestrator.update_dictionaries(
         jmdict_only=args.jmdict_only,
-        preserve_custom=not args.no_custom
+        preserve_custom=not args.no_custom,
+        enhance_makemeahanzi=not args.no_makemeahanzi
     )
     
     sys.exit(0 if success else 1)

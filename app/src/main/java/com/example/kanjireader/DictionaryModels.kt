@@ -59,5 +59,27 @@ data class KanjiResult(
     val nanori: List<String>,
     val radicalNames: List<String>,
     val classicalRadical: Int?,
-    val radicalNumber: Int?
+    val radicalNumber: Int?,
+    val components: List<String> = emptyList()
+)
+
+data class KanjiCardInfo(
+    val kanji: String,
+    val onReadings: String,  // Comma-separated for display
+    val kunReadings: String, // Comma-separated for display
+    val primaryMeaning: String, // First 2-3 meanings for card display
+    val jlptLevel: Int? = null,
+    val grade: Int? = null,
+    val commonalityScore: Int = 0,  // Higher score = more common kanji
+    val hasReadings: Boolean = true,  // False for "No readings available" cases
+    val confidence: Int? = null  // Recognition confidence percentage (0-100) for drawing results
+)
+
+data class WordCardInfo(
+    val word: String,
+    val reading: String,
+    val meanings: String, // First 3 meanings, comma-separated
+    val startPosition: Int, // Start index in the original text
+    val endPosition: Int,   // End index in the original text
+    val isHighlighted: Boolean = false
 )

@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import shutil
 from datetime import datetime
+import urllib.request
+import re
 
 class ModificationPreserver:
     def __init__(self, assets_dir: str):
@@ -259,6 +261,470 @@ class ModificationPreserver:
         
         return jmdict_data
     
+    def merge_kradfile_data(self, kradical_data: Dict[str, Any], kensaku_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Merge Kradical kradfile (primary with correct Unicode) with additional kanji from kensaku
+        
+        Args:
+            kradical_data: Primary kradfile data from Kradical (uses proper Unicode like ⺣)
+            kensaku_data: Additional kradfile data from kensaku (may use different Unicode like 灬)
+        
+        Returns:
+            Merged kradfile data with comprehensive coverage and proper Unicode
+        """
+        print("Merging kradfile data from Kradical (primary) and kensaku (additional coverage)...")
+        
+        # Unicode normalization map (kensaku -> kradical)
+        unicode_normalization = {
+            "灬": "⺣",  # Fire radical - kensaku uses 灬, kradical uses ⺣
+            "辶": "⻌",  # Advance radical - kensaku uses 辶 (kanji form U+8FB6), kradical uses ⻌ (radical form)
+            "\uFA66": "⻌",  # Advance radical - compatibility character U+FA66 -> radical form
+            # Add more mappings if discovered
+        }
+        
+        # Start with Kradical as the base (proper Unicode) and normalize it
+        base_kanji = kradical_data.get("kanji", {})
+        normalized_base = {}
+        normalized_count = 0
+        
+        # Normalize the base kradical data first
+        for kanji, radicals in base_kanji.items():
+            normalized_radicals = []
+            for radical in radicals:
+                if radical in unicode_normalization:
+                    normalized_radicals.append(unicode_normalization[radical])
+                    normalized_count += 1
+                else:
+                    normalized_radicals.append(radical)
+            normalized_base[kanji] = normalized_radicals
+        
+        merged_data = {
+            "version": f"merged-kradical-kensaku-{datetime.now().strftime('%Y%m%d')}",
+            "kanji": normalized_base
+        }
+        
+        kensaku_kanji = kensaku_data.get("kanji", {})
+        added_count = 0
+        
+        # Add missing kanji from kensaku
+        for kanji, radicals in kensaku_kanji.items():
+            if kanji not in merged_data["kanji"]:
+                # Normalize Unicode characters in radicals list
+                normalized_radicals = []
+                for radical in radicals:
+                    if radical in unicode_normalization:
+                        normalized_radicals.append(unicode_normalization[radical])
+                        normalized_count += 1
+                    else:
+                        normalized_radicals.append(radical)
+                
+                merged_data["kanji"][kanji] = normalized_radicals
+                added_count += 1
+        
+        print(f"  ✅ Merged kradfile data:")
+        print(f"     - Base (Kradical): {len(kradical_data.get('kanji', {}))} kanji")
+        print(f"     - Additional (kensaku): {added_count} kanji added")
+        print(f"     - Unicode normalizations: {normalized_count} radical instances")
+        print(f"     - Total merged: {len(merged_data['kanji'])} kanji")
+        
+        return merged_data
+    
+    def final_unicode_normalization(self, merged_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Final pass to ensure ALL Unicode inconsistencies are normalized
+        This catches any remaining 辶 -> ⻌ conversions that might have been missed
+        """
+        print("Performing final comprehensive Unicode normalization...")
+        
+        unicode_map = {
+            "辶": "⻌",  # Advance radical: kanji form (U+8FB6) -> radical form
+            "\uFA66": "⻌",  # Advance radical: compatibility char (U+FA66) -> radical form
+            "灬": "⺣",  # Fire radical: alternative -> standard
+        }
+        
+        kanji_data = merged_data.get("kanji", {})
+        normalized_count = 0
+        
+        # Normalize ALL entries, regardless of source
+        for kanji, components in kanji_data.items():
+            normalized_components = []
+            for component in components:
+                if component in unicode_map:
+                    normalized_components.append(unicode_map[component])
+                    normalized_count += 1
+                else:
+                    normalized_components.append(component)
+            kanji_data[kanji] = normalized_components
+        
+        if normalized_count > 0:
+            print(f"  🔧 Final normalization: {normalized_count} component instances normalized")
+        else:
+            print("  ✅ No additional normalization needed")
+        
+        return merged_data
+    
+    def fix_missing_radkfile_strokes(self, radkfile_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Add missing radicals with correct stroke counts to radkfile data
+        
+        Args:
+            radkfile_data: The radkfile data to update
+            
+        Returns:
+            Updated radkfile data with missing radicals added
+        """
+        # Missing radicals and their correct stroke counts
+        missing_radicals = {
+            "刂": 2,   # knife radical variant
+            "并": 6,   # combine/together
+            "忄": 3,   # heart radical variant
+            "氵": 3,   # water radical variant
+            "滴": 14,  # drop
+            "犭": 3,   # dog radical variant
+            "疒": 5,   # sickness radical
+            "礻": 4,   # spirit/show radical variant
+            "禸": 5,   # track radical
+            "罒": 5,   # net radical
+            "衤": 5,   # clothes radical variant
+            "邑": 6    # city radical
+            # Note: NOT adding 辶 - we normalize it to ⻌ in kradfile instead
+            # ⻌ (U+2ECC) radical form has 3 strokes and is already in radkfile
+        }
+        
+        radicals_dict = radkfile_data.get("radicals", {})
+        added_count = 0
+        
+        for radical, stroke_count in missing_radicals.items():
+            if radical not in radicals_dict:
+                radicals_dict[radical] = {
+                    "strokeCount": stroke_count,
+                    "code": None,
+                    "kanji": []  # Will be populated by database builder
+                }
+                added_count += 1
+                print(f"  ➕ Added missing radical: {radical} ({stroke_count} strokes)")
+        
+        if added_count > 0:
+            print(f"  ✅ Added {added_count} missing radicals to radkfile")
+        
+        return radkfile_data
+    
+    def download_makemeahanzi_dictionary(self) -> Optional[Path]:
+        """
+        Download makemeahanzi dictionary.txt file
+        
+        Returns:
+            Path to downloaded file or None if failed
+        """
+        url = "https://raw.githubusercontent.com/skishore/makemeahanzi/master/dictionary.txt"
+        temp_dir = Path.cwd() / "temp_downloads"
+        temp_dir.mkdir(exist_ok=True)
+        
+        download_path = temp_dir / "makemeahanzi_dictionary.txt"
+        
+        try:
+            print(f"Downloading makemeahanzi dictionary from {url}...")
+            with urllib.request.urlopen(url) as response:
+                with open(download_path, 'wb') as f:
+                    f.write(response.read())
+            
+            print(f"✅ Downloaded makemeahanzi dictionary to {download_path}")
+            return download_path
+            
+        except Exception as e:
+            print(f"❌ Failed to download makemeahanzi dictionary: {e}")
+            return None
+    
+    def extract_radicals_from_decomposition(self, decomposition: str) -> List[str]:
+        """
+        Extract radicals from makemeahanzi decomposition field, ignoring IDC symbols
+        
+        Args:
+            decomposition: The decomposition string like "⿻亅八" or "⿰氵青"
+            
+        Returns:
+            List of radical components (without IDC symbols)
+        """
+        if not decomposition:
+            return []
+        
+        # IDC (Ideographic Description Characters) to ignore
+        idc_chars = {
+            '⿰', '⿱', '⿲', '⿳', '⿴', '⿵', '⿶', '⿷', '⿸', '⿹', '⿺', '⿻'
+        }
+        
+        # Extract all characters except IDC symbols
+        radicals = []
+        for char in decomposition:
+            if char not in idc_chars and char.strip():
+                radicals.append(char)
+        
+        return radicals
+    
+    def parse_makemeahanzi_data(self, makemeahanzi_path: Path) -> Dict[str, List[str]]:
+        """
+        Parse makemeahanzi dictionary.txt and extract character -> radicals mapping
+        
+        Args:
+            makemeahanzi_path: Path to the downloaded dictionary.txt file
+            
+        Returns:
+            Dictionary mapping characters to their component radicals
+        """
+        character_radicals = {}
+        
+        try:
+            with open(makemeahanzi_path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    try:
+                        # Parse JSON line
+                        entry = json.loads(line)
+                        character = entry.get("character")
+                        decomposition = entry.get("decomposition")
+                        
+                        if character and decomposition:
+                            radicals = self.extract_radicals_from_decomposition(decomposition)
+                            if radicals:
+                                character_radicals[character] = radicals
+                    
+                    except json.JSONDecodeError as e:
+                        print(f"Warning: Invalid JSON on line {line_num}: {e}")
+                        continue
+                        
+        except Exception as e:
+            print(f"❌ Error parsing makemeahanzi data: {e}")
+            return {}
+        
+        print(f"✅ Parsed {len(character_radicals)} characters with decomposition data")
+        return character_radicals
+    
+    def enhance_both_files_with_makemeahanzi(self, makemeahanzi_data: Dict[str, List[str]]) -> bool:
+        """
+        Enhance both radkfile.json and kradfile.json with makemeahanzi data
+        
+        Args:
+            makemeahanzi_data: Dictionary mapping characters to their component radicals
+            
+        Returns:
+            bool: Success status
+        """
+        radkfile_success = self.enhance_radkfile_with_makemeahanzi(makemeahanzi_data)
+        kradfile_success = self.enhance_kradfile_with_makemeahanzi(makemeahanzi_data)
+        
+        return radkfile_success and kradfile_success
+    
+    def enhance_radkfile_with_makemeahanzi(self, makemeahanzi_data: Dict[str, List[str]]) -> bool:
+        """
+        Enhance radkfile.json by adding characters to their component radicals' kanji lists
+        
+        Args:
+            makemeahanzi_data: Dictionary mapping characters to their component radicals
+            
+        Returns:
+            bool: Success status
+        """
+        radkfile_path = self.assets_dir / "radkfile.json"
+        
+        if not radkfile_path.exists():
+            print("❌ radkfile.json not found")
+            return False
+        
+        # Load current radkfile
+        radkfile_data = self.load_json_file(radkfile_path)
+        if not radkfile_data:
+            return False
+        
+        radicals_dict = radkfile_data.get("radicals", {})
+        enhancement_stats = {
+            "characters_processed": 0,
+            "radicals_enhanced": 0,
+            "new_kanji_added": 0
+        }
+        
+        # Process each character and its radicals
+        for character, component_radicals in makemeahanzi_data.items():
+            enhancement_stats["characters_processed"] += 1
+            
+            for radical in component_radicals:
+                if radical in radicals_dict:
+                    kanji_list = radicals_dict[radical].get("kanji", [])
+                    
+                    # Add character to radical's kanji list if not already present
+                    if character not in kanji_list:
+                        kanji_list.append(character)
+                        radicals_dict[radical]["kanji"] = kanji_list
+                        enhancement_stats["new_kanji_added"] += 1
+        
+        # Save enhanced radkfile
+        self.save_json_file(radkfile_path, radkfile_data)
+        
+        print(f"✅ Enhanced radkfile with makemeahanzi data:")
+        print(f"   - Characters processed: {enhancement_stats['characters_processed']}")
+        print(f"   - New kanji associations added: {enhancement_stats['new_kanji_added']}")
+        
+        return True
+    
+    def enhance_kradfile_with_makemeahanzi(self, makemeahanzi_data: Dict[str, List[str]]) -> bool:
+        """
+        Enhance kradfile.json by adding component radicals to characters
+        
+        Args:
+            makemeahanzi_data: Dictionary mapping characters to their component radicals
+            
+        Returns:
+            bool: Success status
+        """
+        kradfile_path = self.assets_dir / "kradfile.json"
+        
+        if not kradfile_path.exists():
+            print("❌ kradfile.json not found")
+            return False
+        
+        # Load current kradfile
+        kradfile_data = self.load_json_file(kradfile_path)
+        if not kradfile_data:
+            return False
+        
+        kanji_dict = kradfile_data.get("kanji", {})
+        enhancement_stats = {
+            "characters_processed": 0,
+            "characters_enhanced": 0,
+            "new_components_added": 0
+        }
+        
+        # Process each character and its radicals
+        for character, component_radicals in makemeahanzi_data.items():
+            enhancement_stats["characters_processed"] += 1
+            
+            # Get existing components or create new entry
+            existing_components = kanji_dict.get(character, [])
+            new_components = list(existing_components)  # Copy existing
+            
+            # Add new components from makemeahanzi
+            added_any = False
+            for radical in component_radicals:
+                if radical not in new_components:
+                    new_components.append(radical)
+                    enhancement_stats["new_components_added"] += 1
+                    added_any = True
+            
+            # Update if we added any new components
+            if added_any:
+                kanji_dict[character] = new_components
+                enhancement_stats["characters_enhanced"] += 1
+        
+        # Save enhanced kradfile
+        self.save_json_file(kradfile_path, kradfile_data)
+        
+        print(f"✅ Enhanced kradfile with makemeahanzi data:")
+        print(f"   - Characters processed: {enhancement_stats['characters_processed']}")
+        print(f"   - Characters enhanced: {enhancement_stats['characters_enhanced']}")
+        print(f"   - New components added: {enhancement_stats['new_components_added']}")
+        
+        return True
+    
+    def integrate_makemeahanzi_data(self) -> bool:
+        """
+        Complete makemeahanzi integration workflow
+        
+        Returns:
+            bool: Success status
+        """
+        print("=== Makemeahanzi Integration ===" )
+        
+        # Step 1: Download makemeahanzi dictionary
+        makemeahanzi_path = self.download_makemeahanzi_dictionary()
+        if not makemeahanzi_path:
+            return False
+        
+        # Step 2: Parse the data
+        makemeahanzi_data = self.parse_makemeahanzi_data(makemeahanzi_path)
+        if not makemeahanzi_data:
+            return False
+        
+        # Step 3: Enhance only radkfile (for radical search), keep kradfile unchanged (for kanji parts display)
+        success = self.enhance_radkfile_with_makemeahanzi(makemeahanzi_data)
+        
+        # Step 4: Cleanup
+        try:
+            if makemeahanzi_path.exists():
+                makemeahanzi_path.unlink()
+                temp_dir = makemeahanzi_path.parent
+                if temp_dir.name == "temp_downloads" and temp_dir.exists():
+                    temp_dir.rmdir()
+            print("🧹 Cleaned up temporary files")
+        except Exception as e:
+            print(f"Warning: Cleanup error: {e}")
+        
+        return success
+    
+    def create_merged_kradfile(self, downloader_instance) -> bool:
+        """
+        Create merged kradfile using downloader instance to get both data sources
+        
+        Args:
+            downloader_instance: Instance of DictionaryDownloader with required methods
+        
+        Returns:
+            bool: Success status
+        """
+        try:
+            print("Creating merged kradfile from Kradical + kensaku sources...")
+            
+            # Download Kradical kradfile (primary with proper Unicode)
+            kradical_path = downloader_instance.download_kradical_kradfile()
+            if not kradical_path:
+                print("❌ Failed to download Kradical kradfile")
+                return False
+            
+            # Load Kradical data
+            kradical_data = self.load_json_file(kradical_path)
+            if not kradical_data:
+                print("❌ Failed to load Kradical kradfile data")
+                return False
+            
+            # Download kensaku kradfile data for merging
+            kensaku_data = downloader_instance.download_kensaku_kradfile_for_merging()
+            if not kensaku_data:
+                print("❌ Failed to download kensaku kradfile data")
+                return False
+            
+            # Merge the data
+            merged_data = self.merge_kradfile_data(kradical_data, kensaku_data)
+            
+            # Final comprehensive normalization pass (ensure ALL 辶 -> ⻌)
+            merged_data = self.final_unicode_normalization(merged_data)
+            
+            # Save merged kradfile
+            kradfile_path = self.assets_dir / "kradfile.json"
+            self.save_json_file(kradfile_path, merged_data)
+            
+            print(f"✅ Created merged kradfile: {kradfile_path}")
+            
+            # Also fix the radkfile by adding missing radicals
+            print("Updating radkfile with missing radical stroke counts...")
+            radkfile_path = self.assets_dir / "radkfile.json"
+            if radkfile_path.exists():
+                radkfile_data = self.load_json_file(radkfile_path)
+                if radkfile_data:
+                    updated_radkfile = self.fix_missing_radkfile_strokes(radkfile_data)
+                    self.save_json_file(radkfile_path, updated_radkfile)
+                    print(f"✅ Updated radkfile: {radkfile_path}")
+                else:
+                    print("❌ Failed to load radkfile for updating")
+            else:
+                print("⚠️ radkfile.json not found, skipping radical stroke count fixes")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error creating merged kradfile: {e}")
+            return False
+    
     def apply_modifications_to_file(self, filename: str):
         """Apply custom modifications to a specific file"""
         if filename not in self.custom_modifications:
@@ -272,18 +738,18 @@ class ModificationPreserver:
         print(f"Applying modifications to {filename}...")
         
         # Load the file
-        jmdict_data = self.load_json_file(filepath)
-        if jmdict_data is None:
+        file_data = self.load_json_file(filepath)
+        if file_data is None:
             return
         
         # Apply each custom entry
         modifications = self.custom_modifications[filename]
         if "custom_entries" in modifications:
             for custom_entry in modifications["custom_entries"]:
-                jmdict_data = self.apply_custom_entry(jmdict_data, custom_entry)
+                file_data = self.apply_custom_entry(file_data, custom_entry)
         
         # Save the modified file
-        self.save_json_file(filepath, jmdict_data)
+        self.save_json_file(filepath, file_data)
     
     def verify_modifications(self) -> bool:
         """Verify that modifications were applied correctly"""
@@ -352,12 +818,13 @@ class ModificationPreserver:
             
         return all_verified
     
-    def preserve_and_apply(self, new_files_dir: Path = None) -> bool:
+    def preserve_and_apply(self, new_files_dir: Path = None, enhance_with_makemeahanzi: bool = True) -> bool:
         """
         Main method: Apply custom modifications to dictionary files
         
         Args:
             new_files_dir: Optional directory containing new files to copy first
+            enhance_with_makemeahanzi: Whether to enhance radkfile with makemeahanzi data (default: True)
         
         Returns:
             bool: Success status
@@ -369,7 +836,7 @@ class ModificationPreserver:
             print("Copying new dictionary files...")
             
             # Single JSON files
-            dictionary_files = ["jmdict.json", "jmnedict.json", "kanjidic.json"]
+            dictionary_files = ["jmdict.json", "jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json"]
             
             for filename in dictionary_files:
                 source = new_files_dir / filename
@@ -385,6 +852,13 @@ class ModificationPreserver:
         print("Applying custom modifications...")
         for filename in self.custom_modifications.keys():
             self.apply_modifications_to_file(filename)
+        
+        # Enhance with makemeahanzi data if requested
+        if enhance_with_makemeahanzi:
+            print("\nEnhancing radkfile with makemeahanzi data...")
+            if not self.integrate_makemeahanzi_data():
+                print("❌ Failed to enhance with makemeahanzi data")
+                return False
         
         # Verify modifications
         if self.verify_modifications():
@@ -409,9 +883,16 @@ def main():
     # Apply command
     apply_parser = subparsers.add_parser('apply', help='Apply modifications to dictionary files')
     apply_parser.add_argument('new_files_dir', nargs='?', help='Optional directory containing new files to copy first')
+    apply_parser.add_argument('--no-makemeahanzi', action='store_true', help='Skip makemeahanzi decomposition enhancement (enabled by default)')
     
     # Verify command
     verify_parser = subparsers.add_parser('verify', help='Verify current modifications')
+    
+    # Merge kradfile command
+    merge_parser = subparsers.add_parser('merge-kradfile', help='Create merged kradfile from Kradical + kensaku sources')
+    
+    # Enhance makemeahanzi command
+    enhance_parser = subparsers.add_parser('enhance-makemeahanzi', help='Enhance radkfile with makemeahanzi decomposition data')
     
     args = parser.parse_args()
     
@@ -429,12 +910,24 @@ def main():
                 print(f"Error: Directory {new_files_dir} does not exist")
                 sys.exit(1)
         
-        success = preserver.preserve_and_apply(new_files_dir)
+        success = preserver.preserve_and_apply(new_files_dir, enhance_with_makemeahanzi=not args.no_makemeahanzi)
         sys.exit(0 if success else 1)
     
     elif args.command == 'verify':
         success = preserver.verify_modifications()
         print("Verification:", "PASSED" if success else "FAILED")
+        sys.exit(0 if success else 1)
+    
+    elif args.command == 'merge-kradfile':
+        # Import here to avoid circular import
+        from .download_latest import DictionaryDownloader
+        
+        downloader = DictionaryDownloader(base_dir=".", assets_dir=args.assets_dir)
+        success = preserver.create_merged_kradfile(downloader)
+        sys.exit(0 if success else 1)
+    
+    elif args.command == 'enhance-makemeahanzi':
+        success = preserver.integrate_makemeahanzi_data()
         sys.exit(0 if success else 1)
 
 

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/radicalButton"
+    android:layout_width="40dp"
+    android:layout_height="40dp"
+    android:layout_margin="4dp"
+    android:text="一"
+    android:textSize="18sp"
+    android:textStyle="bold"
+    android:gravity="center"
+    android:background="@drawable/radical_button_background"
+    android:textColor="@color/teal_700"
+    android:clickable="true"
+    android:focusable="true" />
