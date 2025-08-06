@@ -440,15 +440,25 @@ class DictionaryDownloader:
     def cleanup_downloads(self):
         """Remove downloaded ZIP and JSON files to save space"""
         try:
+            cleaned_count = 0
+            
             # Clean up ZIP files
             for zip_file in self.downloads_dir.glob("*.zip"):
                 zip_file.unlink()
                 print(f"Cleaned up: {zip_file.name}")
+                cleaned_count += 1
             
             # Clean up any remaining JSON files in downloads
             for json_file in self.downloads_dir.glob("*.json"):
                 json_file.unlink()
                 print(f"Cleaned up: {json_file.name}")
+                cleaned_count += 1
+            
+            if cleaned_count == 0:
+                print("No temporary files to clean up")
+            else:
+                print(f"Cleaned up {cleaned_count} temporary files")
+                
         except OSError as e:
             print(f"Warning: Could not clean up downloads: {e}")
     
