@@ -20,7 +20,10 @@ class DaKanjiRecognitionEngine(private val context: Context) {
     companion object {
         private const val TAG = "DaKanjiRecognitionEngine"
         private const val MODEL_PATH = "v1.2/tflite/model.tflite"
-        private const val LABELS_PATH = "v1.2/labels_python_list.txt"
+        // Switch between label formats for testing
+        private const val LABELS_PATH = "v1.2/labels_python_list.txt"  // Python list format (2,967 kanji)
+        // private const val LABELS_PATH = "v1.2/labels_clean.txt"     // Character array format (all Japanese chars)
+        // private const val LABELS_PATH = "v1.2/labels_kanji_only.txt"  // Kanji-only format (6,355 kanji)
         private const val INPUT_SIZE = 64 // DaKanji typically uses 64x64 input
         private const val TOP_K = 20
     }

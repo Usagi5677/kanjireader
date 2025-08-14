@@ -24,7 +24,7 @@ enum class DetailChipType {
     JMNE_PERSON, JMNE_PLACE, JMNE_COMPANY, JMNE_ORGANIZATION, JMNE_GIVEN, JMNE_SURNAME, JMNE_STATION, JMNE_OTHER
 }
 
-class WordDetailActivity : AppCompatActivity() {
+class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountListener {
 
     companion object {
         const val EXTRA_WORD_RESULT = "word_result"
@@ -39,6 +39,7 @@ class WordDetailActivity : AppCompatActivity() {
     private lateinit var primaryMeaningsText: TextView
     private lateinit var tabLayout: TabLayout
     private lateinit var viewPager: ViewPager2
+    private var kanjiBadge: TextView? = null
 
     private lateinit var grammarChipGroup: ChipGroup
 
@@ -403,11 +404,17 @@ class WordDetailActivity : AppCompatActivity() {
         viewPager.offscreenPageLimit = 2
 
         TabLayoutMediator(tabLayout, viewPager) { tab, position ->
-            tab.text = when (position) {
-                0 -> "Kanji"
-                1 -> "Forms"
-                2 -> "Phrases"
-                else -> ""
+            when (position) {
+                0 -> {
+                    // Create custom view for Kanji tab with badge
+                    val customView = LayoutInflater.from(this).inflate(R.layout.custom_tab_with_badge, null)
+                    val titleView = customView.findViewById<TextView>(R.id.tabTitle)
+                    titleView.text = "Kanji"
+                    kanjiBadge = customView.findViewById(R.id.tabBadge)
+                    tab.customView = customView
+                }
+                1 -> tab.text = "Forms"
+                2 -> tab.text = "Phrases"
             }
         }.attach()
         
@@ -416,6 +423,18 @@ class WordDetailActivity : AppCompatActivity() {
         viewPager.registerOnPageChangeCallback(pageChangeCallback!!)
     }
 
+
+    override fun onKanjiCountUpdated(count: Int) {
+        // Update the badge in the Kanji tab
+        kanjiBadge?.apply {
+            if (count > 0) {
+                text = count.toString()
+                visibility = View.VISIBLE
+            } else {
+                visibility = View.GONE
+            }
+        }
+    }
 
     private fun getSimplifiedPos(pos: String): String {
         return when (pos) {
