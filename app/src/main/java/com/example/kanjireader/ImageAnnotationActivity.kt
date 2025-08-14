@@ -71,6 +71,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
     private lateinit var furiganaProcessor: FuriganaProcessor
 
     private var isWordCardsVisible = true
+    private var isOcrTextVisible = true
 
     private var isFuriganaMode = false
 
@@ -218,7 +219,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
         }
 
         closePopupButton.setOnClickListener {
-            hideTopPopup()
+            hideTopPopupOnly()
         }
         furiganaToggle.setOnClickListener {
             toggleFuriganaMode()
@@ -300,8 +301,61 @@ class ImageAnnotationActivity : AppCompatActivity() {
     }
 
     private fun onWordCardClicked(wordCard: WordCardInfo, position: Int) {
-        // Word card clicked - no action needed as highlighting is handled by scroll
-        Log.d(TAG, "Word card clicked: '${wordCard.word}' at position $position")
+        Log.d(TAG, "Word card clicked: '${wordCard.word}' - opening detail view")
+        
+        // Do a fresh dictionary lookup to get complete word information
+        lifecycleScope.launch {
+            try {
+                val repository = DictionaryRepository.getInstance(this@ImageAnnotationActivity)
+                val searchResults = repository.search(wordCard.word, limit = 10)
+                
+                if (searchResults.isNotEmpty()) {
+                    // Find the best matching result (same logic as in word extraction)
+                    val bestResult = searchResults.find { result ->
+                        result.kanji == wordCard.word || result.reading == wordCard.word
+                    } ?: searchResults.find { result ->
+                        isAllKatakana(wordCard.word) && result.reading == wordCard.word
+                    } ?: searchResults.first()
+                    
+                    // Launch WordDetailActivity with complete word information
+                    val intent = Intent(this@ImageAnnotationActivity, WordDetailActivity::class.java).apply {
+                        putExtra("word", wordCard.word)
+                        putExtra("reading", bestResult.reading)
+                        putExtra("meanings", ArrayList(bestResult.meanings))
+                        putExtra("frequency", bestResult.frequency)
+                        putExtra("isJMNEDict", bestResult.isJMNEDictEntry)
+                        putExtra("selectedText", wordCard.word) // For phrase searching
+                    }
+                    
+                    startActivity(intent)
+                } else {
+                    // Fallback to basic information if no dictionary entry found
+                    val intent = Intent(this@ImageAnnotationActivity, WordDetailActivity::class.java).apply {
+                        putExtra("word", wordCard.word)
+                        putExtra("reading", wordCard.reading)
+                        putExtra("meanings", ArrayList(wordCard.meanings.split(", ").filter { it.isNotBlank() }))
+                        putExtra("frequency", 0)
+                        putExtra("isJMNEDict", false)
+                        putExtra("selectedText", wordCard.word)
+                    }
+                    
+                    startActivity(intent)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error looking up word details for: ${wordCard.word}", e)
+                // Fallback to basic information on error
+                val intent = Intent(this@ImageAnnotationActivity, WordDetailActivity::class.java).apply {
+                    putExtra("word", wordCard.word)
+                    putExtra("reading", wordCard.reading)
+                    putExtra("meanings", ArrayList(wordCard.meanings.split(", ").filter { it.isNotBlank() }))
+                    putExtra("frequency", 0)
+                    putExtra("isJMNEDict", false)
+                    putExtra("selectedText", wordCard.word)
+                }
+                
+                startActivity(intent)
+            }
+        }
     }
 
     private fun highlightWordInText(position: Int) {
@@ -335,17 +389,24 @@ class ImageAnnotationActivity : AppCompatActivity() {
     private fun toggleWordCards() {
         Log.d(TAG, "Toggle button pressed. Current state: $isWordCardsVisible")
         val bottomHalf = findViewById<LinearLayout>(R.id.bottomHalfContainer)
+        val ocrTextContainer = findViewById<LinearLayout>(R.id.ocrTextContainer)
         
         if (isWordCardsVisible) {
+            // Hide both the word cards AND the OCR text container
             bottomHalf.visibility = View.GONE
+            ocrTextContainer.visibility = View.GONE
             isWordCardsVisible = false
+            isOcrTextVisible = false
             btnToggleWordList.setImageResource(android.R.drawable.ic_menu_agenda)
-            Log.d(TAG, "Hiding word cards")
+            Log.d(TAG, "Hiding word cards and OCR text container")
         } else {
+            // Show both the word cards AND the OCR text container
             bottomHalf.visibility = View.VISIBLE
+            ocrTextContainer.visibility = View.VISIBLE
             isWordCardsVisible = true
+            isOcrTextVisible = true
             btnToggleWordList.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-            Log.d(TAG, "Showing word cards")
+            Log.d(TAG, "Showing word cards and OCR text container")
         }
     }
 
@@ -490,6 +551,11 @@ class ImageAnnotationActivity : AppCompatActivity() {
     }
 
     private fun updateOcrTextDisplay() {
+        // Don't update or show OCR text if it should be hidden
+        if (!isOcrTextVisible) {
+            return
+        }
+        
         val textToShow = if (isJapaneseOnlyMode) {
             getFilteredJapaneseText()
         } else {
@@ -824,7 +890,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
             }
             // Then check if the top popup is visible
             topPopup.visibility == View.VISIBLE -> {
-                hideTopPopup()
+                hideTopPopupOnly()
                 Log.d(TAG, "Back button pressed - hiding top popup")
             }
             // No drawer or popup visible, go back to camera
@@ -1035,9 +1101,42 @@ class ImageAnnotationActivity : AppCompatActivity() {
                         Log.d(TAG, "Result[$index]: kanji='${result.kanji}', reading='${result.reading}'")
                     }
                     
+                    // Prioritize exact matches for both katakana and hiragana
+                    val isKatakanaSelection = selectedText.all { it.toInt() in 0x30A0..0x30FF }
+                    val sortedResults = if (isKatakanaSelection) {
+                        // For katakana, prioritize entries where reading field matches the selected text exactly
+                        // Most katakana words have null kanji and the word is in the reading field
+                        searchResults.sortedBy { result ->
+                            when {
+                                // For katakana entries, the word is usually in the reading field
+                                result.reading == selectedText -> 0  // Exact match in reading field
+                                result.kanji == selectedText -> 1  // Exact match in kanji field (rare for katakana)
+                                result.reading?.startsWith(selectedText) == true -> 2  // Starts with selected text
+                                result.kanji == null && result.reading != null -> 3  // Other katakana words
+                                else -> 4  // Kanji entries with the reading (like 帆)
+                            }
+                        }
+                    } else {
+                        // For hiragana and kanji searches, also prioritize exact matches
+                        searchResults.sortedBy { result ->
+                            when {
+                                result.reading == selectedText -> 0  // Exact match in reading (e.g., ため)
+                                result.kanji == selectedText -> 1  // Exact match in kanji
+                                result.reading?.startsWith(selectedText) == true -> 2  // Reading starts with text (e.g., ためす)
+                                result.kanji?.startsWith(selectedText) == true -> 3  // Kanji starts with text
+                                else -> 4  // Other matches
+                            }
+                        }
+                    }
+                    
+                    Log.d(TAG, "After sorting for katakana=$isKatakanaSelection:")
+                    sortedResults.take(3).forEachIndexed { index, result ->
+                        Log.d(TAG, "Sorted[$index]: kanji='${result.kanji}', reading='${result.reading}'")
+                    }
+                    
                     val enhanceStartTime = System.currentTimeMillis()
                     // Convert WordResult to EnhancedWordResult and enhance with tags
-                    val enhancedResults = searchResults.map { wordResult ->
+                    val enhancedResults = sortedResults.map { wordResult ->
                         var enhanced = tagDictLoader?.enhanceWordResult(wordResult) ?: EnhancedWordResult(
                             kanji = wordResult.kanji,
                             reading = wordResult.reading,
@@ -1048,13 +1147,20 @@ class ImageAnnotationActivity : AppCompatActivity() {
                         )
                         
                         // Use Kuromoji reading if available for more accurate pronunciation
+                        // BUT don't convert katakana to hiragana for katakana-only words
                         val wordToAnalyze = wordResult.kanji ?: wordResult.reading
-                        val kuromojiReading = furiganaProcessor.getWordReading(wordToAnalyze)
-                        if (kuromojiReading != null && kuromojiReading != enhanced.reading) {
-                            Log.d(TAG, "Using Kuromoji reading '$kuromojiReading' instead of dictionary reading '${enhanced.reading}' for result word '$wordToAnalyze'")
-                            enhanced = enhanced.copy(reading = kuromojiReading)
+                        val isKatakanaWord = wordResult.kanji == null && wordResult.reading?.all { it.toInt() in 0x30A0..0x30FF } == true
+                        
+                        if (!isKatakanaWord) {
+                            val kuromojiReading = furiganaProcessor.getWordReading(wordToAnalyze)
+                            if (kuromojiReading != null && kuromojiReading != enhanced.reading) {
+                                Log.d(TAG, "Using Kuromoji reading '$kuromojiReading' instead of dictionary reading '${enhanced.reading}' for result word '$wordToAnalyze'")
+                                enhanced = enhanced.copy(reading = kuromojiReading)
+                            } else {
+                                Log.d(TAG, "Using dictionary reading '${enhanced.reading}' for result word '$wordToAnalyze'")
+                            }
                         } else {
-                            Log.d(TAG, "Using dictionary reading '${enhanced.reading}' for result word '$wordToAnalyze'")
+                            Log.d(TAG, "Keeping katakana reading '${enhanced.reading}' for katakana word '$wordToAnalyze'")
                         }
                         
                         enhanced
@@ -1386,7 +1492,8 @@ class ImageAnnotationActivity : AppCompatActivity() {
         Log.d(TAG, "Top popup shown")
     }
 
-    private fun hideTopPopup() {
+    // Hide only the top popup (for closing word not found or word details)
+    private fun hideTopPopupOnly() {
         topPopup.animate()
             .translationY(-400f)
             .setDuration(300)
@@ -1396,6 +1503,35 @@ class ImageAnnotationActivity : AppCompatActivity() {
             .start()
 
         Log.d(TAG, "Top popup hidden")
+    }
+    
+    // Hide everything (popup + OCR text + word cards) - used by toggle button
+    private fun hideTopPopup() {
+        topPopup.animate()
+            .translationY(-400f)
+            .setDuration(300)
+            .withEndAction {
+                topPopup.visibility = View.GONE
+            }
+            .start()
+
+        // Also hide the bottom half (extracted text view and word cards)
+        val bottomHalf = findViewById<LinearLayout>(R.id.bottomHalfContainer)
+        bottomHalf.visibility = View.GONE
+        isWordCardsVisible = false
+        btnToggleWordList.setImageResource(android.R.drawable.ic_menu_agenda)
+
+        // Also hide the OCR text container (contains furigana button and extracted text view)
+        val ocrTextContainer = findViewById<LinearLayout>(R.id.ocrTextContainer)
+        if (ocrTextContainer != null) {
+            ocrTextContainer.visibility = View.GONE
+            isOcrTextVisible = false
+            Log.d(TAG, "OCR text container found and hidden")
+        } else {
+            Log.e(TAG, "OCR text container not found!")
+        }
+
+        Log.d(TAG, "Top popup, bottom half, and OCR text container hidden")
     }
 
     private suspend fun saveExtractedWords() {

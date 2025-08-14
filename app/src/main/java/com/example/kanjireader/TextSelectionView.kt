@@ -487,23 +487,59 @@ class TextSelectionView @JvmOverloads constructor(
 
                     // Position furigana over just the kanji part
                     val kanjiX = x + preKanjiWidth
-                    val furiganaX = kanjiX + (kanjiWidth - furiganaWidth) / 2
+                    var furiganaX = kanjiX + (kanjiWidth - furiganaWidth) / 2
                     val furiganaY = baselineY - textPaint.textSize - FURIGANA_SPACING
+
 
                     canvas.drawText(segment.furigana, furiganaX, furiganaY, furiganaPaint)
                 } else {
                     // Fallback: center over entire segment if no kanji found
                     val segmentWidth = textPaint.measureText(segment.text)
                     val furiganaWidth = furiganaPaint.measureText(segment.furigana)
-                    val furiganaX = x + (segmentWidth - furiganaWidth) / 2
+                    var furiganaX = x + (segmentWidth - furiganaWidth) / 2
                     val furiganaY = baselineY - textPaint.textSize - FURIGANA_SPACING
+
 
                     canvas.drawText(segment.furigana, furiganaX, furiganaY, furiganaPaint)
                 }
             }
 
-            // Draw main text
-            canvas.drawText(segment.text, x, baselineY, textPaint)
+            // Draw main text with word highlighting support
+            val segmentEnd = segmentStart + segment.text.length
+            val highlightRange = highlightedWordRange
+            
+            if (highlightRange != null) {
+                val (highlightStart, highlightEnd) = highlightRange
+                
+                // Check if this segment overlaps with highlighted range
+                val overlapStart = maxOf(segmentStart, highlightStart)
+                val overlapEnd = minOf(segmentEnd, highlightEnd)
+                
+                if (overlapStart < overlapEnd && overlapStart < segmentEnd && overlapEnd > segmentStart) {
+                    // This segment has highlighting - draw character by character
+                    var charX = x
+                    for (i in segment.text.indices) {
+                        val charIndex = segmentStart + i
+                        val char = segment.text[i]
+                        
+                        // Choose paint based on whether this character is highlighted
+                        val paint = if (charIndex in highlightStart until highlightEnd) {
+                            highlightedTextPaint
+                        } else {
+                            textPaint
+                        }
+                        
+                        canvas.drawText(char.toString(), charX, baselineY, paint)
+                        charX += paint.measureText(char.toString())
+                    }
+                } else {
+                    // No highlighting in this segment, draw normally
+                    canvas.drawText(segment.text, x, baselineY, textPaint)
+                }
+            } else {
+                // No highlighting, draw normally
+                canvas.drawText(segment.text, x, baselineY, textPaint)
+            }
             
             // Move to next position
             currentPos = segmentStart + segment.text.length
@@ -829,10 +865,17 @@ class TextSelectionView @JvmOverloads constructor(
         val lineTop = layout.getLineTop(lineIndex)
         val lineBottom = layout.getLineBottom(lineIndex)
         
-        // Add padding and translation offset
-        val paddingTop = 16f + (if (showFurigana) TOP_MARGIN_FOR_FURIGANA else 0f)
-        val wordTop = (lineTop + paddingTop).toInt()
-        val wordBottom = (lineBottom + paddingTop).toInt()
+        // Add padding and translation offset, accounting for furigana spacing
+        val basePaddingTop = 16f
+        val furiganaOffset = if (showFurigana) {
+            val furiganaHeight = furiganaPaint.textSize + FURIGANA_SPACING
+            TOP_MARGIN_FOR_FURIGANA + (lineIndex * furiganaHeight)
+        } else {
+            0f
+        }
+        
+        val wordTop = (lineTop + basePaddingTop + furiganaOffset).toInt()
+        val wordBottom = (lineBottom + basePaddingTop + furiganaOffset).toInt()
         
         // Get ScrollView dimensions
         val scrollViewHeight = scrollView.height
