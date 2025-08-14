@@ -240,6 +240,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
                 onWordCardClicked(wordCard, position)
             },
             onWordCardScroll = { position ->
+                // Initial highlighting when data is loaded
                 highlightWordInText(position)
             }
         )
@@ -290,8 +291,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
                         // Use post() to defer adapter update until after scroll event is complete
                         recyclerView.post {
                             wordCardAdapter.highlightCard(highlightPosition)
-                            // TODO: Re-enable text highlighting later - temporarily disabled to fix crash
-                            // highlightWordInText(highlightPosition)
+                            highlightWordInText(highlightPosition)
                         }
                     }
                 }
@@ -300,8 +300,8 @@ class ImageAnnotationActivity : AppCompatActivity() {
     }
 
     private fun onWordCardClicked(wordCard: WordCardInfo, position: Int) {
-        // Removed highlighting logic - only scroll highlighting now
-        // TODO: Add word lookup functionality here if needed
+        // Word card clicked - no action needed as highlighting is handled by scroll
+        Log.d(TAG, "Word card clicked: '${wordCard.word}' at position $position")
     }
 
     private fun highlightWordInText(position: Int) {
@@ -523,9 +523,12 @@ class ImageAnnotationActivity : AppCompatActivity() {
                     return@launch
                 }
                 
-                // Extract words with positions
-                val wordPositions = wordExtractor?.extractJapaneseWordsWithPositions(text) ?: emptyList()
-                Log.d(TAG, "Extracted ${wordPositions.size} word positions")
+                // Get dictionary repository
+                val repository = DictionaryRepository.getInstance(this@ImageAnnotationActivity)
+                
+                // Extract words using Kuromoji for proper segmentation
+                val wordPositions = wordExtractor?.extractWordsWithKuromoji(text, repository) ?: emptyList()
+                Log.d(TAG, "Extracted ${wordPositions.size} words using Kuromoji")
                 
                 if (wordPositions.isEmpty()) {
                     Log.w(TAG, "No word positions found. Text: $text")
@@ -536,23 +539,29 @@ class ImageAnnotationActivity : AppCompatActivity() {
                     return@launch
                 }
                 
-                // Get dictionary repository
-                val repository = DictionaryRepository.getInstance(this@ImageAnnotationActivity)
                 val wordCards = mutableListOf<WordCardInfo>()
                 
-                // Look up each word in dictionary
+                // Look up each word in dictionary to get full details
                 for (wordPos in wordPositions) {
                     try {
-                        Log.d(TAG, "Looking up word: '${wordPos.word}' at position ${wordPos.startPosition}-${wordPos.endPosition}")
-                        val searchResults = repository.search(wordPos.word, limit = 1)
+                        Log.d(TAG, "Looking up word details: '${wordPos.word}' at position ${wordPos.startPosition}-${wordPos.endPosition}")
+                        val searchResults = repository.search(wordPos.word, limit = 10) // Get more results to find best match
                         
                         if (searchResults.isNotEmpty()) {
-                            val result = searchResults.first()
-                            val meanings = result.meanings.take(3).joinToString(", ")
+                            // Find the best matching result - prioritize exact matches
+                            val bestResult = searchResults.find { result ->
+                                // Exact match on kanji or reading
+                                result.kanji == wordPos.word || result.reading == wordPos.word
+                            } ?: searchResults.find { result ->
+                                // For katakana words, also check if reading matches without conversion
+                                isAllKatakana(wordPos.word) && result.reading == wordPos.word
+                            } ?: searchResults.first() // Fallback to first result
+                            
+                            val meanings = bestResult.meanings.take(3).joinToString(", ")
                             
                             val wordCard = WordCardInfo(
                                 word = wordPos.word,
-                                reading = result.reading,
+                                reading = bestResult.reading,
                                 meanings = meanings,
                                 startPosition = wordPos.startPosition,
                                 endPosition = wordPos.endPosition
@@ -560,7 +569,16 @@ class ImageAnnotationActivity : AppCompatActivity() {
                             wordCards.add(wordCard)
                             Log.d(TAG, "Added word card: ${wordCard.word} - ${wordCard.reading}")
                         } else {
-                            Log.d(TAG, "No dictionary results for word: ${wordPos.word}")
+                            // Even if not in dictionary (like single kanji), still add it
+                            val wordCard = WordCardInfo(
+                                word = wordPos.word,
+                                reading = wordPos.word, // Use the word itself as reading
+                                meanings = "", // No meanings available
+                                startPosition = wordPos.startPosition,
+                                endPosition = wordPos.endPosition
+                            )
+                            wordCards.add(wordCard)
+                            Log.d(TAG, "Added word card without dictionary entry: ${wordCard.word}")
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to look up word: ${wordPos.word}", e)
@@ -625,6 +643,13 @@ class ImageAnnotationActivity : AppCompatActivity() {
         readingText.text = ""
         meaningsText.visibility = View.GONE
         meaningsText.text = ""
+    }
+
+    private fun isAllKatakana(text: String): Boolean {
+        return text.all { char ->
+            val codePoint = char.code
+            codePoint in 0x30A0..0x30FF // Katakana range
+        }
     }
 
     private fun getFilteredJapaneseText(): String {

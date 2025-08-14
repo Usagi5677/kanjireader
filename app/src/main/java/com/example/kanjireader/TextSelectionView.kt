@@ -9,6 +9,7 @@ import android.util.AttributeSet
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import android.widget.ScrollView
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.text.Text
 import kotlinx.coroutines.*
@@ -80,10 +81,11 @@ class TextSelectionView @JvmOverloads constructor(
     
     // Word highlighting
     private var highlightedWordRange: Pair<Int, Int>? = null
-    private val wordHighlightPaint = Paint().apply {
-        color = 0x66009688 // Semi-transparent teal
+    private val highlightedTextPaint = TextPaint().apply {
+        textSize = 48f
+        color = ContextCompat.getColor(context, R.color.blue_700) // Blue color from forms tab
         isAntiAlias = true
-        style = Paint.Style.FILL
+        isFakeBoldText = true // Make highlighted text bold
     }
     
     // Debounce mechanism to prevent duplicate callbacks
@@ -150,6 +152,9 @@ class TextSelectionView @JvmOverloads constructor(
     fun highlightWord(startPosition: Int, endPosition: Int) {
         highlightedWordRange = Pair(startPosition, endPosition)
         invalidate()
+        
+        // Auto-scroll to show the highlighted word
+        scrollToHighlightedWord(startPosition, endPosition)
     }
     
     /**
@@ -334,7 +339,13 @@ class TextSelectionView @JvmOverloads constructor(
         } else {
             // Normal drawing without furigana
             canvas.translate(0f, if (showFurigana) TOP_MARGIN_FOR_FURIGANA else 0f)
-            layout.draw(canvas)
+            
+            // Draw text with word highlighting (color-based)
+            if (highlightedWordRange != null) {
+                drawTextWithWordHighlight(canvas, layout)
+            } else {
+                layout.draw(canvas)
+            }
         }
 
         canvas.restore()
@@ -346,10 +357,7 @@ class TextSelectionView @JvmOverloads constructor(
             drawPersistentSelection(canvas)
         }
         
-        // Draw word highlighting
-        highlightedWordRange?.let { (start, end) ->
-            drawWordHighlight(canvas, start, end)
-        }
+        // Word highlighting is now handled in drawTextWithWordHighlight method
 
         // Draw dot only if dragging
         if (isDragging) {
@@ -357,28 +365,47 @@ class TextSelectionView @JvmOverloads constructor(
         }
     }
     
-    private fun drawWordHighlight(canvas: Canvas, startPos: Int, endPos: Int) {
-        if (startPos < 0 || endPos <= startPos || endPos > displayText.length) return
+    private fun drawTextWithWordHighlight(canvas: Canvas, layout: StaticLayout) {
+        val highlightRange = highlightedWordRange ?: return
+        val (startPos, endPos) = highlightRange
         
-        val layout = staticLayout ?: return
-        
-        // Find character bounds within the highlighted range
-        val highlightChars = characterBounds.filter { char ->
-            char.charIndex in startPos until endPos
+        if (startPos < 0 || endPos <= startPos || endPos > displayText.length) {
+            layout.draw(canvas)
+            return
         }
         
-        if (highlightChars.isEmpty()) return
+        // Draw text character by character with different colors
+        val lineCount = layout.lineCount
         
-        canvas.save()
-        canvas.translate(16f, 16f + if (showFurigana) TOP_MARGIN_FOR_FURIGANA else 0f)
-        
-        // Draw highlight rectangles for each character in the word
-        for (char in highlightChars) {
-            val rect = RectF(char.bounds)
-            canvas.drawRect(rect, wordHighlightPaint)
+        for (lineIndex in 0 until lineCount) {
+            val lineStart = layout.getLineStart(lineIndex)
+            val lineEnd = layout.getLineEnd(lineIndex)
+            val lineText = displayText.substring(lineStart, lineEnd)
+            
+            val lineTop = layout.getLineTop(lineIndex).toFloat()
+            val lineBaseline = layout.getLineBaseline(lineIndex).toFloat()
+            
+            var x = layout.getLineLeft(lineIndex)
+            
+            // Draw each character with appropriate color
+            for (i in lineText.indices) {
+                val charIndex = lineStart + i
+                val char = lineText[i]
+                
+                // Choose paint based on whether this character is in the highlighted range
+                val paint = if (charIndex in startPos until endPos) {
+                    highlightedTextPaint
+                } else {
+                    textPaint
+                }
+                
+                // Draw the character
+                canvas.drawText(char.toString(), x, lineBaseline, paint)
+                
+                // Move to next character position
+                x += paint.measureText(char.toString())
+            }
         }
-        
-        canvas.restore()
     }
 
     private fun findKanjiPortion(text: String): KanjiInfo? {
@@ -771,5 +798,81 @@ class TextSelectionView @JvmOverloads constructor(
         super.onDetachedFromWindow()
         // Cancel any ongoing furigana processing
         furiganaJob?.cancel()
+    }
+    
+    /**
+     * Auto-scroll to show the highlighted word in the parent ScrollView
+     */
+    private fun scrollToHighlightedWord(startPosition: Int, endPosition: Int) {
+        // Find the parent ScrollView
+        val scrollView = findParentScrollView() ?: return
+        
+        // Get the layout to calculate line positions
+        val layout = staticLayout ?: return
+        
+        if (startPosition < 0 || startPosition >= displayText.length) return
+        
+        // Find which line contains the highlighted word
+        var lineIndex = -1
+        for (i in 0 until layout.lineCount) {
+            val lineStart = layout.getLineStart(i)
+            val lineEnd = layout.getLineEnd(i)
+            if (startPosition >= lineStart && startPosition < lineEnd) {
+                lineIndex = i
+                break
+            }
+        }
+        
+        if (lineIndex == -1) return
+        
+        // Calculate the Y position of the highlighted line
+        val lineTop = layout.getLineTop(lineIndex)
+        val lineBottom = layout.getLineBottom(lineIndex)
+        
+        // Add padding and translation offset
+        val paddingTop = 16f + (if (showFurigana) TOP_MARGIN_FOR_FURIGANA else 0f)
+        val wordTop = (lineTop + paddingTop).toInt()
+        val wordBottom = (lineBottom + paddingTop).toInt()
+        
+        // Get ScrollView dimensions
+        val scrollViewHeight = scrollView.height
+        val currentScrollY = scrollView.scrollY
+        
+        // Calculate if the word is visible
+        val wordVisibleTop = wordTop - currentScrollY
+        val wordVisibleBottom = wordBottom - currentScrollY
+        
+        // Scroll if the word is not fully visible
+        val targetScrollY = when {
+            wordVisibleTop < 0 -> {
+                // Word is above visible area - scroll up to show it at top
+                wordTop - 50 // Add some padding
+            }
+            wordVisibleBottom > scrollViewHeight -> {
+                // Word is below visible area - scroll down to show it
+                wordBottom - scrollViewHeight + 100 // Add some padding
+            }
+            else -> {
+                // Word is already visible, no need to scroll
+                return
+            }
+        }
+        
+        // Smooth scroll to the target position
+        scrollView.smoothScrollTo(0, maxOf(0, targetScrollY))
+    }
+    
+    /**
+     * Find the parent ScrollView of this view
+     */
+    private fun findParentScrollView(): ScrollView? {
+        var parent = this.parent
+        while (parent != null) {
+            if (parent is ScrollView) {
+                return parent
+            }
+            parent = parent.parent
+        }
+        return null
     }
 }

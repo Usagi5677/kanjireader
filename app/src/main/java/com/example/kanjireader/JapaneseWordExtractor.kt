@@ -265,4 +265,266 @@ class JapaneseWordExtractor {
         }
     }
 
+    /**
+     * Extract words from text using Kuromoji morphological analyzer
+     * This provides proper Japanese word segmentation
+     * 
+     * @param text The text to extract words from
+     * @param repository The dictionary repository (optional, for filtering)
+     * @return List of word positions from Kuromoji tokenization
+     */
+    suspend fun extractWordsWithKuromoji(
+        text: String,
+        repository: DictionaryRepository? = null
+    ): List<WordPosition> {
+        val results = mutableListOf<WordPosition>()
+        val particles = setOf("を", "は", "が", "に", "で", "と", "も", "の", "へ", "から", "まで", "より", "や", "か", "ね", "よ", "わ", "さ", "ぞ", "な", "だ", "です", "ます")
+        
+        // Preprocess text to remove spaces within Japanese words
+        val processedText = reconnectJapaneseWords(text)
+        Log.d(TAG, "Original text: '$text'")
+        Log.d(TAG, "Processed text: '$processedText'")
+        
+        try {
+            // Use Kuromoji tokenizer to segment the processed text
+            val tokenizer = com.atilika.kuromoji.ipadic.Tokenizer()
+            val tokens = tokenizer.tokenize(processedText)
+            
+            var currentPosition = 0
+            
+            for (token in tokens) {
+                val surface = token.surface
+                val pos1 = token.partOfSpeechLevel1
+                val pos2 = token.partOfSpeechLevel2
+                val baseForm = token.baseForm ?: surface
+                
+                // Find the actual position of this token in the ORIGINAL text
+                // We need to map from processed text position to original text position
+                val tokenStartInProcessed = processedText.indexOf(surface, currentPosition)
+                if (tokenStartInProcessed == -1) {
+                    Log.w(TAG, "Could not find token '$surface' in processed text starting from position $currentPosition")
+                    continue
+                }
+                
+                // Map back to original text position (accounting for removed spaces)
+                val tokenStart = findOriginalPosition(text, processedText, tokenStartInProcessed, surface)
+                if (tokenStart == -1) {
+                    Log.w(TAG, "Could not map token '$surface' back to original text")
+                    currentPosition = tokenStartInProcessed + surface.length
+                    continue
+                }
+                val tokenEnd = tokenStart + surface.length
+                
+                // Update current position for next search (in processed text)
+                currentPosition = tokenStartInProcessed + surface.length
+                
+                // Skip punctuation and symbols
+                if (pos1 == "記号" || surface.all { it.isWhitespace() }) {
+                    Log.d(TAG, "Skipping punctuation/symbol: '$surface'")
+                    continue
+                }
+                
+                // Skip numbers and numeric expressions
+                if (surface.all { it.isDigit() || it == '.' || it == ',' } || pos1 == "名詞" && pos2 == "数") {
+                    Log.d(TAG, "Skipping number: '$surface'")
+                    continue
+                }
+                
+                // Skip single hyphens, dashes, and other connecting symbols
+                if (surface in setOf("-", "－", "—", "–", "_", "/", "\\", "|")) {
+                    Log.d(TAG, "Skipping connector symbol: '$surface'")
+                    continue
+                }
+                
+                // Skip particles unless they're part of compound words
+                if (pos1 == "助詞" && surface in particles) {
+                    Log.d(TAG, "Skipping particle: '$surface'")
+                    continue
+                }
+                
+                // Skip auxiliary verbs that are just conjugation helpers
+                if (pos1 == "助動詞" && surface in setOf("だ", "です", "ます", "た", "ない")) {
+                    Log.d(TAG, "Skipping auxiliary: '$surface'")
+                    continue
+                }
+                
+                // Skip non-Japanese text (like English letters or symbols)
+                if (!surface.any { JAPANESE_CHAR.matches(it.toString()) }) {
+                    Log.d(TAG, "Skipping non-Japanese text: '$surface'")
+                    continue
+                }
+                
+                // For verbs and adjectives, try to use the base form if available
+                val wordToAdd = when {
+                    pos1 == "動詞" && baseForm != surface -> {
+                        // For verbs, use base form but keep surface position
+                        Log.d(TAG, "Verb: '$surface' -> base form: '$baseForm'")
+                        baseForm
+                    }
+                    pos1 == "形容詞" && baseForm != surface -> {
+                        // For adjectives, use base form but keep surface position
+                        Log.d(TAG, "Adjective: '$surface' -> base form: '$baseForm'")
+                        baseForm
+                    }
+                    else -> surface
+                }
+                
+                // Add the word with its position
+                results.add(WordPosition(wordToAdd, tokenStart, tokenEnd))
+                Log.d(TAG, "Added word: '$wordToAdd' at position $tokenStart-$tokenEnd (POS: $pos1/$pos2)")
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Kuromoji tokenization failed: ${e.message}", e)
+            // Fallback to simple extraction if Kuromoji fails
+            return extractJapaneseWordsWithPositions(text)
+        }
+        
+        Log.d(TAG, "Extracted ${results.size} words using Kuromoji")
+        return results
+    }
+    
+    /**
+     * Remove spaces within Japanese words that were incorrectly split by OCR
+     * Example: "輝か しい" -> "輝かしい"
+     */
+    private fun reconnectJapaneseWords(text: String): String {
+        val result = StringBuilder()
+        var i = 0
+        
+        while (i < text.length) {
+            val char = text[i]
+            
+            // If current char is Japanese
+            if (JAPANESE_CHAR.matches(char.toString())) {
+                result.append(char)
+                i++
+                
+                // Look ahead and skip any spaces between Japanese characters
+                while (i < text.length && text[i].isWhitespace()) {
+                    val nextNonSpace = findNextNonSpace(text, i)
+                    if (nextNonSpace != -1 && JAPANESE_CHAR.matches(text[nextNonSpace].toString())) {
+                        // Skip the space(s) - they're within a Japanese word
+                        i = nextNonSpace
+                    } else {
+                        // Keep the space - it's between Japanese and non-Japanese
+                        result.append(text[i])
+                        i++
+                        break
+                    }
+                }
+            } else {
+                // Non-Japanese character, keep as-is
+                result.append(char)
+                i++
+            }
+        }
+        
+        return result.toString()
+    }
+    
+    /**
+     * Find the next non-whitespace character position
+     */
+    private fun findNextNonSpace(text: String, startPos: Int): Int {
+        for (i in startPos until text.length) {
+            if (!text[i].isWhitespace()) {
+                return i
+            }
+        }
+        return -1
+    }
+    
+    /**
+     * Map a position in the processed text back to the original text
+     * This accounts for spaces that were removed during processing
+     */
+    private fun findOriginalPosition(
+        originalText: String, 
+        processedText: String, 
+        processedPos: Int,
+        surface: String
+    ): Int {
+        // Simple approach: search for the surface text in the original
+        // starting from an estimated position
+        
+        var originalPos = 0
+        var processedIndex = 0
+        
+        // Map to approximate position first
+        for (i in originalText.indices) {
+            if (processedIndex >= processedPos) {
+                originalPos = i
+                break
+            }
+            
+            val char = originalText[i]
+            if (JAPANESE_CHAR.matches(char.toString())) {
+                processedIndex++
+                // Skip spaces in original that were removed in processed
+                var j = i + 1
+                while (j < originalText.length && originalText[j].isWhitespace()) {
+                    val nextNonSpace = findNextNonSpace(originalText, j)
+                    if (nextNonSpace != -1 && JAPANESE_CHAR.matches(originalText[nextNonSpace].toString())) {
+                        // This space was removed in processing
+                        j = nextNonSpace - 1
+                    } else {
+                        break
+                    }
+                    j++
+                }
+            } else if (!originalText[i].isWhitespace() || 
+                      (i > 0 && !JAPANESE_CHAR.matches(originalText[i-1].toString()))) {
+                processedIndex++
+            }
+        }
+        
+        // Now search for the exact surface text near this position
+        // Account for possible spaces within the word in original text
+        val searchStart = maxOf(0, originalPos - 10)
+        val searchEnd = minOf(originalText.length, originalPos + surface.length + 20)
+        
+        // Try to find exact match first
+        var foundPos = originalText.indexOf(surface, searchStart)
+        if (foundPos != -1 && foundPos < searchEnd) {
+            return foundPos
+        }
+        
+        // Try to find with spaces removed
+        val surfaceNoSpaces = surface.replace(" ", "")
+        for (i in searchStart until searchEnd) {
+            if (matchesWithSpaces(originalText, i, surfaceNoSpaces)) {
+                return i
+            }
+        }
+        
+        return -1
+    }
+    
+    /**
+     * Check if text at position matches the target string, ignoring spaces
+     */
+    private fun matchesWithSpaces(text: String, startPos: Int, target: String): Boolean {
+        var textPos = startPos
+        var targetPos = 0
+        
+        while (targetPos < target.length && textPos < text.length) {
+            // Skip spaces in original text
+            while (textPos < text.length && text[textPos].isWhitespace()) {
+                textPos++
+            }
+            
+            if (textPos >= text.length) return false
+            
+            if (text[textPos] != target[targetPos]) {
+                return false
+            }
+            
+            textPos++
+            targetPos++
+        }
+        
+        return targetPos == target.length
+    }
+
 }
