@@ -3,6 +3,8 @@ package com.example.kanjireader
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
@@ -16,6 +18,10 @@ import com.google.android.material.chip.Chip
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import com.example.kanjireader.ui.AddToListBottomSheet
+import androidx.activity.viewModels
+import com.example.kanjireader.viewmodel.WordListViewModel
+import com.example.kanjireader.database.WordListEntity
 
 enum class DetailChipType {
     VERB_GODAN, VERB_ICHIDAN, VERB_TRANSITIVE, VERB_INTRANSITIVE, VERB_AUXILIARY,
@@ -50,6 +56,12 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
 
     // Data
     private var wordResult: EnhancedWordResult? = null
+    
+    // ViewModel for word list operations
+    private val wordListViewModel: WordListViewModel by viewModels()
+    
+    // Track current heart icon state
+    private var addToListMenuItem: MenuItem? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,6 +74,7 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         setupToolbar()
         loadWordData()
         setupTabs()
+        setupObservers()
     }
 
     private fun initializeViews() {
@@ -85,6 +98,102 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         navigationIcon?.setTint(ContextCompat.getColor(this, R.color.green_700))
         
         toolbar.setNavigationOnClickListener { finish() }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.menu_word_detail, menu)
+        addToListMenuItem = menu?.findItem(R.id.action_add_to_list)
+        updateHeartIcon()
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_add_to_list -> {
+                handleHeartClick()
+                true
+            }
+            R.id.action_manage_lists -> {
+                showAddToListBottomSheet()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun showAddToListBottomSheet() {
+        val currentWordResult = wordResult
+        if (currentWordResult == null) {
+            Log.w(TAG, "No word result available for adding to list")
+            return
+        }
+
+        val bottomSheet = AddToListBottomSheet.newInstance(currentWordResult)
+        bottomSheet.onWordListChanged = { updateHeartIcon() }
+        bottomSheet.show(supportFragmentManager, "AddToListBottomSheet")
+    }
+    
+    private fun handleHeartClick() {
+        val currentWordResult = wordResult
+        if (currentWordResult == null) {
+            Log.w(TAG, "No word result available for adding to list")
+            return
+        }
+        
+        lifecycleScope.launch {
+            try {
+                val listIds = wordListViewModel.getListIdsForWord(currentWordResult)
+                
+                if (listIds.isEmpty()) {
+                    // Word not in any list - add to first list automatically
+                    val allLists = wordListViewModel.getAllWordListsSync()
+                    if (allLists.isNotEmpty()) {
+                        val firstList = allLists.first()
+                        wordListViewModel.addWordToSingleList(currentWordResult, firstList.listId)
+                    } else {
+                        // No lists exist - show bottom sheet to create one
+                        showAddToListBottomSheet()
+                    }
+                } else {
+                    // Word is in lists - remove from first list only
+                    val allLists = wordListViewModel.getAllWordListsSync()
+                    if (allLists.isNotEmpty()) {
+                        val firstList = allLists.first()
+                        if (firstList.listId in listIds) {
+                            wordListViewModel.removeWordFromSingleList(firstList.listId, currentWordResult)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling heart click", e)
+            }
+        }
+    }
+    
+    private fun updateHeartIcon() {
+        val result = wordResult ?: return
+        
+        lifecycleScope.launch {
+            try {
+                // Small delay to ensure database operation completes
+                kotlinx.coroutines.delay(100)
+                
+                val listIds = wordListViewModel.getListIdsForWord(result)
+                val isInAnyList = listIds.isNotEmpty()
+                
+                // Update icon on main thread
+                runOnUiThread {
+                    addToListMenuItem?.icon = ContextCompat.getDrawable(
+                        this@WordDetailActivity,
+                        if (isInAnyList) R.drawable.ic_heart_filled else R.drawable.ic_heart_outline
+                    )
+                }
+                
+                Log.d(TAG, "Updated heart icon: isInAnyList=$isInAnyList, listIds=$listIds")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking word list status", e)
+            }
+        }
     }
 
     private fun loadWordData() {
@@ -172,6 +281,7 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
                     wordResult = updatedEnhanced
                     // Pass the original search result for JMNEDict tag handling
                     displayEnhancedWordData(updatedEnhanced, exactMatch)
+                    updateHeartIcon()
                 }
             } else {
                 // Use basic data from intent
@@ -185,7 +295,22 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
                 )
 
                 displayBasicWordData(word, reading, meanings)
+                updateHeartIcon()
             }
+        }
+    }
+    
+    private fun setupObservers() {
+        // Observe word list changes to update heart icon immediately
+        wordListViewModel.operationSuccess.observe(this) { message ->
+            if (message != null) {
+                updateHeartIcon()
+            }
+        }
+        
+        // Also observe when lists change to update icon
+        wordListViewModel.allWordLists.observe(this) {
+            updateHeartIcon()
         }
     }
 
@@ -237,9 +362,8 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
             runOnUiThread {
                 // Use database results (includes fallback for empty database)
                 for (kanjiDetail in kanjiDetails) {
-                    kanjiDetail.jlptLevel?.let { level ->
-                        addKanjiJlptChip(kanjiDetail.kanji, level)
-                    }
+                    // Show all kanji, even if they don't have JLPT levels
+                    addKanjiJlptChip(kanjiDetail.kanji, kanjiDetail.jlptLevel)
                 }
             }
         }
@@ -309,7 +433,7 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         grammarChipGroup.addView(chip)
     }
 
-    private fun addKanjiJlptChip(kanji: String, jlptLevel: Int) {
+    private fun addKanjiJlptChip(kanji: String, jlptLevel: Int?) {
         val inflater = LayoutInflater.from(this)
         val tagView = inflater.inflate(R.layout.kanji_jlpt_tag, tagChipGroup, false)
 
@@ -317,26 +441,34 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         val jlptChip = tagView.findViewById<Chip>(R.id.jlptChip)
 
         kanjiText.text = kanji
-        jlptChip.text = "JLPT N$jlptLevel"
-
-        // Set the chip background color based on JLPT level
-        val chipColorRes = when (jlptLevel) {
-            5 -> R.color.jlpt_n5_light  // Light green
-            4 -> R.color.jlpt_n4_light  // Lighter green
-            3 -> R.color.jlpt_n3_light  // Light amber
-            2 -> R.color.jlpt_n2_light  // Light orange
-            1 -> R.color.jlpt_n1_light  // Light red
-            else -> R.color.blue_100
+        
+        if (jlptLevel != null) {
+            jlptChip.text = "JLPT N$jlptLevel"
+            
+            // Set the chip background color based on JLPT level
+            val chipColorRes = when (jlptLevel) {
+                5 -> R.color.jlpt_n5_light  // Light green
+                4 -> R.color.jlpt_n4_light  // Lighter green
+                3 -> R.color.jlpt_n3_light  // Light amber
+                2 -> R.color.jlpt_n2_light  // Light orange
+                1 -> R.color.jlpt_n1_light  // Light red
+                else -> R.color.blue_100
+            }
+            jlptChip.chipBackgroundColor = ContextCompat.getColorStateList(this, chipColorRes)
+        } else {
+            // No JLPT level - show "N?" in light grey
+            jlptChip.text = "JLPT N?"
+            jlptChip.chipBackgroundColor = ContextCompat.getColorStateList(this, R.color.tag_light_grey)
         }
-        jlptChip.chipBackgroundColor = ContextCompat.getColorStateList(this, chipColorRes)
 
-        // Optionally set text color to match the darker version
+        // Set text color to match the darker version or light black for unknown
         val textColor = when (jlptLevel) {
             5 -> R.color.jlpt_n5
             4 -> R.color.jlpt_n4
             3 -> R.color.jlpt_n3
             2 -> R.color.jlpt_n2
             1 -> R.color.jlpt_n1
+            null -> R.color.text_light_black  // Light black for unknown JLPT
             else -> R.color.blue_100
         }
         jlptChip.setTextColor(ContextCompat.getColor(this, textColor))

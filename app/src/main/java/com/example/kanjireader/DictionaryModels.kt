@@ -1,5 +1,7 @@
 package com.example.kanjireader
 
+import java.io.Serializable
+
 /**
  * Data models for dictionary operations and search results
  */
@@ -15,9 +17,9 @@ data class EnhancedWordResult(
     val frequencyTags: List<String> = emptyList(),
     val fields: List<String> = emptyList(),
     val styles: List<String> = emptyList()
-)
+) : Serializable
 
-enum class VerbType {
+enum class VerbType : Serializable {
     ICHIDAN, 
     GODAN_K, GODAN_S, GODAN_T, GODAN_N, GODAN_B, 
     GODAN_M, GODAN_R, GODAN_G, GODAN_U, 

@@ -49,11 +49,22 @@
 
 
 
-        <!-- Readings List Activity -->
+        <!-- Readings List Activity (now Manage Lists) -->
         <activity
             android:name=".ReadingsListActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+
+        <!-- Word List Detail Activity -->
+        <activity
+            android:name=".WordListDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:parentActivityName=".ReadingsListActivity">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".ReadingsListActivity" />
+        </activity>
 
         <activity
             android:name=".DictionaryActivity"

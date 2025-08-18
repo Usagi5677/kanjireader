@@ -60,6 +60,11 @@ class KanjiDetailAdapter(
             // Keep the kanji text visible
             kanjiText.text = kanji.kanji
             kanjiText.visibility = View.VISIBLE
+            
+            // Make kanji text clickable
+            kanjiText.setOnClickListener {
+                openKanjiDetail(kanji.kanji)
+            }
 
             // Meanings
             meaningsText.text = kanji.meanings.joinToString(", ")
@@ -98,6 +103,11 @@ class KanjiDetailAdapter(
 
             // Load stroke order progression
             loadStrokeOrder(kanji.kanji)
+            
+            // Make stroke progression view clickable
+            strokeProgressionView.setOnClickListener {
+                openKanjiDetail(kanji.kanji)
+            }
         }
 
         private fun loadStrokeOrder(kanjiChar: String) {
@@ -121,15 +131,35 @@ class KanjiDetailAdapter(
             }
         }
 
+        private fun openKanjiDetail(kanjiChar: String) {
+            val intent = Intent(context, WordDetailActivity::class.java).apply {
+                putExtra("word", kanjiChar)
+                putExtra("is_single_kanji", true)
+            }
+            context.startActivity(intent)
+        }
+
         private fun handlePartClick(part: String) {
-            // Check if the part is a single kanji character
-            if (part.length == 1 && isKanji(part[0])) {
-                // Launch WordDetailActivity with the kanji
-                val intent = Intent(context, WordDetailActivity::class.java).apply {
-                    putExtra("word", part)  // Changed from "selected_word" to "word"
-                    putExtra("is_single_kanji", true)
+            if (part.length == 1) {
+                // Handle special radical-to-kanji mappings
+                val kanjiVersion = getKanjiVersionOfRadical(part[0])
+                if (kanjiVersion != null) {
+                    openKanjiDetail(kanjiVersion.toString())
+                    return
                 }
-                context.startActivity(intent)
+                
+                // Check if the part is a single kanji character
+                if (isKanji(part[0])) {
+                    openKanjiDetail(part)
+                }
+            }
+        }
+        
+        private fun getKanjiVersionOfRadical(char: Char): Char? {
+            return when (char) {
+                '⺣' -> '灬'  // Radical version -> Kanji version (fire radical)
+                // Add more radical-to-kanji mappings here if needed
+                else -> null
             }
         }
 

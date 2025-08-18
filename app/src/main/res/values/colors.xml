@@ -103,6 +103,8 @@
     <color name="jlpt_n3_light">#FFF8E1</color> <!-- Light Amber -->
     <color name="jlpt_n2_light">#FFF3E0</color> <!-- Light Orange -->
     <color name="jlpt_n1_light">#FFEBEE</color> <!-- Light Red -->
+    <color name="tag_light_grey">#F0F0F0</color> <!-- Light Grey for unknown JLPT -->
+    <color name="text_light_black">#666666</color> <!-- Light black (dark grey) for text -->
 
     <!-- JMNEDict (proper noun) tag colors - using consistent purple/lavender theme -->
     <color name="jmne_person_bg">#F3E5F5</color>       <!-- Light purple for person names -->
@@ -131,4 +133,7 @@
 
     <!-- Search highlighting colors -->
     <color name="search_highlight_text">#1976D2</color>  <!-- Blue text for highlighting -->
+    
+    <!-- Heart icon colors -->
+    <color name="heart_filled_color">#E91E63</color>  <!-- Pink heart when filled -->
 </resources>

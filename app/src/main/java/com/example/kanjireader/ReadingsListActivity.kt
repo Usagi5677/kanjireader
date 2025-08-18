@@ -1,41 +1,49 @@
 package com.example.kanjireader
 
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
 import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
+import android.widget.ImageButton
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
-import androidx.core.content.ContextCompat
+import androidx.appcompat.widget.SearchView
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.button.MaterialButton
 import com.google.android.material.navigation.NavigationView
+import com.example.kanjireader.viewmodel.WordListViewModel
+import com.example.kanjireader.viewmodel.WordListSortOrder
+import com.example.kanjireader.ui.CreateListDialog
+import com.example.kanjireader.ui.WordListManagementAdapter
+import com.example.kanjireader.ui.RenameListDialog
+import androidx.appcompat.app.AlertDialog
+import android.text.SpannableString
+import android.text.style.StyleSpan
+import android.graphics.Typeface
+import android.widget.Toast
+import androidx.core.content.ContextCompat
 
 class ReadingsListActivity : AppCompatActivity() {
 
     private lateinit var toolbar: Toolbar
-    private lateinit var kanjiRecyclerView: RecyclerView
+    private lateinit var recyclerView: RecyclerView
     private lateinit var noResultsLayout: LinearLayout
-    private lateinit var kanjiOnlyToggle: MaterialButton
+    private lateinit var createListButton: ImageButton
     private lateinit var searchView: SearchView
+    private lateinit var sortMenuButton: ImageButton
 
-    private lateinit var resultsAdapter: KanjiResultsAdapter
-    private var isKanjiOnlyMode = false
-    private var currentSearchQuery = ""
+    private lateinit var listAdapter: WordListManagementAdapter
+    private val wordListViewModel: WordListViewModel by viewModels()
 
     private lateinit var drawerLayout: DrawerLayout
     private lateinit var navigationView: NavigationView
-
-    private val updateListener = { updateWordList() }
+    
+    private var currentSearchQuery = ""
+    private var allWordLists: List<com.example.kanjireader.database.WordListEntity> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,25 +53,19 @@ class ReadingsListActivity : AppCompatActivity() {
         setupToolbar()
         setupNavigationDrawer()
         setupRecyclerView()
-        setupKanjiToggle()
+        setupCreateButton()
         setupSearchView()
-        updateWordList()
-
-        // Listen for changes in the readings list
-        ReadingsListManager.addListener(updateListener)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        ReadingsListManager.removeListener(updateListener)
+        setupSortMenu()
+        setupObservers()
     }
 
     private fun initializeViews() {
         toolbar = findViewById(R.id.toolbar)
-        kanjiRecyclerView = findViewById(R.id.kanjiRecyclerView)
+        recyclerView = findViewById(R.id.kanjiRecyclerView) // Reusing the same ID for now
         noResultsLayout = findViewById(R.id.noResultsLayout)
-        kanjiOnlyToggle = findViewById(R.id.kanjiOnlyToggle)
+        createListButton = findViewById(R.id.btnCreateList)
         searchView = findViewById(R.id.searchView)
+        sortMenuButton = findViewById(R.id.btnSortMenu)
         drawerLayout = findViewById(R.id.drawerLayout)
         navigationView = findViewById(R.id.navigationView)
     }
@@ -73,7 +75,7 @@ class ReadingsListActivity : AppCompatActivity() {
         // Change to hamburger menu
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setHomeAsUpIndicator(R.drawable.ic_menu)
-        supportActionBar?.title = "Saved Words"
+        supportActionBar?.title = "Manage Lists"
 
         // Update to open drawer instead of going back
         toolbar.setNavigationOnClickListener {
@@ -101,7 +103,7 @@ class ReadingsListActivity : AppCompatActivity() {
                     drawerLayout.closeDrawer(GravityCompat.START)
                 }
                 R.id.nav_saved_words -> {
-                    // Already in saved words, just close drawer
+                    // Already in manage lists, just close drawer
                     drawerLayout.closeDrawer(GravityCompat.START)
                 }
                 R.id.nav_dictionary -> {
@@ -125,41 +127,31 @@ class ReadingsListActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
-        resultsAdapter = KanjiResultsAdapter { wordResult: WordResult ->
-            // This callback is still required by the constructor but not used
-            // since we handle clicks directly in the adapter
-        }
+        listAdapter = WordListManagementAdapter(
+            onListClick = { wordList ->
+                val intent = Intent(this, WordListDetailActivity::class.java).apply {
+                    putExtra(WordListDetailActivity.EXTRA_LIST_ID, wordList.listId)
+                    putExtra(WordListDetailActivity.EXTRA_LIST_NAME, wordList.name)
+                }
+                startActivity(intent)
+            },
+            onListLongPress = { wordList ->
+                showDeleteListDialog(wordList)
+            },
+            onEditClick = { wordList ->
+                showRenameListDialog(wordList)
+            }
+        )
 
-        kanjiRecyclerView.apply {
+        recyclerView.apply {
             layoutManager = LinearLayoutManager(this@ReadingsListActivity)
-            adapter = resultsAdapter
+            adapter = listAdapter
         }
     }
 
-    private fun setupKanjiToggle() {
-        kanjiOnlyToggle.setOnClickListener {
-            isKanjiOnlyMode = !isKanjiOnlyMode
-            updateToggleAppearance()
-            updateWordList()
-        }
-        updateToggleAppearance()
-    }
-
-    private fun updateToggleAppearance() {
-        if (isKanjiOnlyMode) {
-            // Enabled state - filled button
-            kanjiOnlyToggle.backgroundTintList = ColorStateList.valueOf(
-                ContextCompat.getColor(this, R.color.teal_700)
-            )
-            kanjiOnlyToggle.setTextColor(ContextCompat.getColor(this, android.R.color.white))
-            kanjiOnlyToggle.strokeWidth = 0
-        } else {
-            // Disabled state - outlined button
-            kanjiOnlyToggle.backgroundTintList = ColorStateList.valueOf(
-                ContextCompat.getColor(this, android.R.color.transparent)
-            )
-            kanjiOnlyToggle.setTextColor(ContextCompat.getColor(this, R.color.teal_700))
-            kanjiOnlyToggle.strokeWidth = 2
+    private fun setupCreateButton() {
+        createListButton.setOnClickListener {
+            showCreateListDialog()
         }
     }
 
@@ -170,77 +162,153 @@ class ReadingsListActivity : AppCompatActivity() {
             }
 
             override fun onQueryTextChange(newText: String?): Boolean {
-                currentSearchQuery = newText ?: ""
-                updateWordList()
+                currentSearchQuery = newText?.trim() ?: ""
+                filterLists(currentSearchQuery)
                 return true
             }
         })
     }
 
-    private fun updateWordList() {
-        val words = if (currentSearchQuery.isNotBlank()) {
-            ReadingsListManager.searchWords(currentSearchQuery)
-        } else if (isKanjiOnlyMode) {
-            ReadingsListManager.getKanjiOnlyWords()
-        } else {
-            ReadingsListManager.getAllWords()
-        }
-
-        if (words.isNotEmpty()) {
-            showResults(words)
-            updateTitle(words.size)
-        } else {
-            showNoResults()
-            updateTitle(0)
+    private fun setupSortMenu() {
+        sortMenuButton.setOnClickListener { view ->
+            val popup = PopupMenu(this, view)
+            popup.menuInflater.inflate(R.menu.menu_sort_lists, popup.menu)
+            
+            popup.setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    R.id.sort_name_asc -> {
+                        wordListViewModel.setSortOrder(WordListSortOrder.NAME_ASC)
+                        true
+                    }
+                    R.id.sort_name_desc -> {
+                        wordListViewModel.setSortOrder(WordListSortOrder.NAME_DESC)
+                        true
+                    }
+                    R.id.sort_newest_first -> {
+                        wordListViewModel.setSortOrder(WordListSortOrder.NEWEST_FIRST)
+                        true
+                    }
+                    R.id.sort_oldest_first -> {
+                        wordListViewModel.setSortOrder(WordListSortOrder.OLDEST_FIRST)
+                        true
+                    }
+                    R.id.sort_most_words -> {
+                        wordListViewModel.setSortOrder(WordListSortOrder.MOST_WORDS)
+                        true
+                    }
+                    R.id.sort_fewest_words -> {
+                        wordListViewModel.setSortOrder(WordListSortOrder.FEWEST_WORDS)
+                        true
+                    }
+                    else -> false
+                }
+            }
+            
+            popup.show()
         }
     }
 
-    private fun showResults(results: List<WordResult>) {
-        kanjiRecyclerView.visibility = View.VISIBLE
+    private fun setupObservers() {
+        wordListViewModel.wordLists.observe(this) { wordLists ->
+            allWordLists = wordLists
+            filterLists(currentSearchQuery)
+        }
+        
+        wordListViewModel.operationError.observe(this) { errorMessage ->
+            errorMessage?.let {
+                android.widget.Toast.makeText(this, it, android.widget.Toast.LENGTH_LONG).show()
+                wordListViewModel.clearMessages()
+            }
+        }
+        
+        wordListViewModel.operationSuccess.observe(this) { successMessage ->
+            successMessage?.let {
+                android.widget.Toast.makeText(this, it, android.widget.Toast.LENGTH_SHORT).show()
+                wordListViewModel.clearMessages()
+            }
+        }
+    }
+    
+    private fun filterLists(query: String) {
+        val filteredLists = if (query.isEmpty()) {
+            allWordLists
+        } else {
+            allWordLists.filter { wordList ->
+                wordList.name.contains(query, ignoreCase = true)
+            }
+        }
+        
+        if (filteredLists.isNotEmpty()) {
+            showResults(filteredLists, query)
+        } else {
+            showNoResults()
+        }
+    }
+
+    private fun showCreateListDialog() {
+        val createListDialog = CreateListDialog(this) { listName ->
+            wordListViewModel.createWordList(listName)
+        }
+        createListDialog.show()
+    }
+
+    private fun showRenameListDialog(wordList: com.example.kanjireader.database.WordListEntity) {
+        val renameDialog = RenameListDialog(this, wordList.name) { newName ->
+            wordListViewModel.renameWordList(wordList.listId, newName)
+        }
+        renameDialog.show()
+    }
+
+    private fun showResults(wordLists: List<com.example.kanjireader.database.WordListEntity>, searchQuery: String? = null) {
+        recyclerView.visibility = View.VISIBLE
         noResultsLayout.visibility = View.GONE
 
-        resultsAdapter.updateResults(results)
+        // Use provided search query or current search query
+        val queryToHighlight = if (!searchQuery.isNullOrEmpty()) searchQuery else null
+        listAdapter.updateWithSearch(wordLists, queryToHighlight)
+        
+        // Scroll to top after the list has been updated - use post to ensure layout is complete
+        recyclerView.post {
+            (recyclerView.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(0, 0)
+        }
+        updateTitle(wordLists.size)
     }
 
     private fun showNoResults() {
-        kanjiRecyclerView.visibility = View.GONE
+        recyclerView.visibility = View.GONE
         noResultsLayout.visibility = View.VISIBLE
+        updateTitle(0)
     }
 
     private fun updateTitle(count: Int) {
-        val totalWords = ReadingsListManager.getWordCount()
-        val kanjiWords = ReadingsListManager.getKanjiWordCount()
+        supportActionBar?.title = "Manage Lists ($count)"
+    }
 
-        supportActionBar?.title = when {
-            currentSearchQuery.isNotBlank() -> "Search: $count results"
-            isKanjiOnlyMode -> "Kanji Words ($kanjiWords)"
-            else -> "Saved Words ($totalWords)"
+    private fun showDeleteListDialog(wordList: com.example.kanjireader.database.WordListEntity) {
+        val message = "Are you sure you want to delete the list '${wordList.name}'?\n\nThis will remove ${wordList.wordCount} words from this list."
+        val spannableMessage = SpannableString(message)
+        
+        // Make the list name bold (just the name, not the quotes)
+        val nameStart = message.indexOf(wordList.name)
+        val nameEnd = nameStart + wordList.name.length
+        if (nameStart >= 0) {
+            spannableMessage.setSpan(StyleSpan(Typeface.BOLD), nameStart, nameEnd, 0)
         }
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        menuInflater.inflate(R.menu.readings_list_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_clear_all -> {
-                showClearAllDialog()
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
-
-    private fun showClearAllDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Clear All Words")
-            .setMessage("Are you sure you want to delete all saved words? This cannot be undone.")
-            .setPositiveButton("Clear All") { _, _ ->
-                ReadingsListManager.clearAll()
+        
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Delete List")
+            .setMessage(spannableMessage)
+            .setPositiveButton("Delete") { _, _ ->
+                wordListViewModel.deleteWordList(wordList)
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+            
+        dialog.show()
+        
+        // Make delete button red
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(
+            ContextCompat.getColor(this, android.R.color.holo_red_dark)
+        )
     }
 }

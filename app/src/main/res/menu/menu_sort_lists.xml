@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <item
+        android:id="@+id/sort_name_asc"
+        android:title="Name (A-Z)" />
+    
+    <item
+        android:id="@+id/sort_name_desc"
+        android:title="Name (Z-A)" />
+    
+    <item
+        android:id="@+id/sort_newest_first"
+        android:title="Newest First" />
+    
+    <item
+        android:id="@+id/sort_oldest_first"
+        android:title="Oldest First" />
+    
+    <item
+        android:id="@+id/sort_most_words"
+        android:title="Most Words" />
+    
+    <item
+        android:id="@+id/sort_fewest_words"
+        android:title="Fewest Words" />
+    
+</menu>

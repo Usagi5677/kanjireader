@@ -22,7 +22,7 @@
         android:layout_height="wrap_content"
         android:background="@color/teal_500"
         android:elevation="4dp"
-        app:title="Saved Words"
+        app:title="Manage Lists"
         app:titleTextColor="@android:color/white"
         app:navigationIcon="@drawable/ic_arrow_back"
         app:navigationIconTint="@android:color/white"
@@ -46,26 +46,33 @@
         <androidx.appcompat.widget.SearchView
             android:id="@+id/searchView"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:layout_weight="1"
-            app:queryHint="Search words, readings, meanings..."
+            android:layout_marginEnd="8dp"
+            app:queryHint="Search your lists..."
             app:iconifiedByDefault="false" />
 
-        <!-- Kanji Toggle Button -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/kanjiOnlyToggle"
-            android:layout_width="wrap_content"
-            android:layout_height="40dp"
-            android:text="漢字"
-            android:textSize="14sp"
-            android:textAllCaps="false"
-            android:minWidth="70dp"
-            android:paddingHorizontal="16dp"
-            android:layout_marginStart="16dp"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            app:cornerRadius="20dp"
-            app:strokeColor="@color/teal_700"
-            app:strokeWidth="2dp" />
+        <!-- Create New List Button (Plus Icon) -->
+        <ImageButton
+            android:id="@+id/btnCreateList"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Create new list"
+            android:src="@drawable/ic_add_circle"
+            android:tint="@color/teal_700"
+            android:padding="12dp"
+            android:layout_marginEnd="8dp" />
+
+        <!-- Sort Menu Button -->
+        <ImageButton
+            android:id="@+id/btnSortMenu"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Sort options"
+            android:src="@drawable/ic_more_vert"
+            android:padding="12dp" />
 
     </LinearLayout>
 
@@ -98,14 +105,14 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="📚"
+            android:text="📋"
             android:textSize="48sp"
             android:layout_marginBottom="16dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="No saved words yet"
+            android:text="No word lists yet"
             android:textSize="18sp"
             android:textColor="@android:color/darker_gray"
             android:gravity="center" />
@@ -113,7 +120,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Take photos to start building your vocabulary!"
+            android:text="Create your first list to organize your vocabulary!"
             android:textSize="14sp"
             android:textColor="@android:color/darker_gray"
             android:gravity="center"
