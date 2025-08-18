@@ -1,5 +1,6 @@
 package com.example.kanjireader
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -76,6 +77,7 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         setupTabs()
         setupObservers()
     }
+    
 
     private fun initializeViews() {
         toolbar = findViewById(R.id.toolbar)

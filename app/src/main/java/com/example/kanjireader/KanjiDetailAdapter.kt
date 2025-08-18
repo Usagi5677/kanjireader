@@ -132,6 +132,15 @@ class KanjiDetailAdapter(
         }
 
         private fun openKanjiDetail(kanjiChar: String) {
+            // Get the current word from the activity to prevent opening the same kanji
+            val currentActivity = context as? WordDetailActivity
+            val currentWord = currentActivity?.intent?.getStringExtra("word")
+            
+            // If trying to open the same kanji that's already displayed, do nothing
+            if (kanjiChar == currentWord) {
+                return
+            }
+            
             val intent = Intent(context, WordDetailActivity::class.java).apply {
                 putExtra("word", kanjiChar)
                 putExtra("is_single_kanji", true)
