@@ -41,6 +41,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     // Repository and components
     private lateinit var repository: DictionaryRepository
     private var tagDictLoader: TagDictSQLiteLoader? = null
+    private val wordExtractor = JapaneseWordExtractor()
     // private lateinit var entryGrouper: DictionaryEntryGrouper  // No longer needed with Kuromoji
     
     // Enhanced DAT manager
@@ -172,10 +173,21 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                     return@launch
                 }
 
-                // Use FTS5 search via repository
+                // Detect if this is a paragraph that needs Kuromoji processing
+                val isParagraph = currentQuery.lines().size > 1 || currentQuery.length > 30
+                Log.d(TAG, "Query analysis: length=${currentQuery.length}, lines=${currentQuery.lines().size}, isParagraph=$isParagraph")
+                
                 val startTime = System.currentTimeMillis()
-                val searchResults: List<WordResult> = repository.search(currentQuery) // Get all results
-                Log.d(TAG, "FTS5 search for '$currentQuery' returned ${searchResults.size} results")
+                val searchResults: List<WordResult> = if (isParagraph) {
+                    // Use Kuromoji to extract individual words from paragraph
+                    Log.d(TAG, "Processing paragraph with Kuromoji word extraction")
+                    searchParagraphWithKuromoji(currentQuery)
+                } else {
+                    // Regular single word/phrase search
+                    Log.d(TAG, "Regular FTS5 search for single word/phrase")
+                    repository.search(currentQuery)
+                }
+                Log.d(TAG, "Search for '$currentQuery' returned ${searchResults.size} results (isParagraph: $isParagraph)")
                 val searchTime = System.currentTimeMillis() - startTime
                 Log.d(TAG, "⏱️ Search query took ${searchTime}ms")
 
@@ -189,7 +201,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                 }
 
                 // Convert WordResult to UnifiedDictionaryEntry directly (bypassing grouper)
-                val groupedResults: List<UnifiedDictionaryEntry> = searchResults.map { wordResult ->
+                val unsortedResults: List<UnifiedDictionaryEntry> = searchResults.map { wordResult ->
                     // Use the database flag to determine if we should show deinflection info
                     val shouldShowDeinflection = wordResult.isDeinflectedValidConjugation
                     
@@ -207,8 +219,15 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                         isDeinflectedResult = wordResult.isDeinflectedValidConjugation
                     )
                 }
-
-                Log.d(TAG, "Final results (no grouping): ${groupedResults.size}")
+                
+                // Sort results: regular dictionary entries first, JMNEDict entries (proper nouns) last
+                val groupedResults = unsortedResults.sortedBy { entry ->
+                    if (entry.isJMNEDictEntry) 1 else 0 // JMNEDict entries get priority 1 (last)
+                }
+                
+                val regularCount = groupedResults.count { !it.isJMNEDictEntry }
+                val jmneCount = groupedResults.count { it.isJMNEDictEntry }
+                Log.d(TAG, "Final results sorted: ${groupedResults.size} total (${regularCount} regular, ${jmneCount} proper nouns at bottom)")
 
                 // Store all results (no pagination)
                 allSearchResults = groupedResults.toMutableList()
@@ -226,6 +245,11 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                     UiState.Results(currentDisplayedCount, currentDisplayedCount)
                 }
                 
+                // Log paragraph processing summary
+                if (isParagraph) {
+                    Log.d(TAG, "PARAGRAPH SEARCH SUMMARY: Input length=${currentQuery.length}, Words extracted via Kuromoji, Total results=${groupedResults.size}")
+                }
+                
                 Log.d(TAG, "=== SEARCH COMPLETE === Query: '$currentQuery', Results: ${groupedResults.size}, State: ${_uiState.value}")
 
             } catch (e: Exception) {
@@ -241,6 +265,79 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /**
+     * Process paragraph text using Kuromoji to extract individual words and search for each
+     */
+    private suspend fun searchParagraphWithKuromoji(paragraph: String): List<WordResult> {
+        Log.d(TAG, "=== KUROMOJI PARAGRAPH PROCESSING START ===")
+        Log.d(TAG, "Input paragraph: '${paragraph.take(100)}${if (paragraph.length > 100) "..." else ""}'")
+        
+        val allResults = mutableListOf<WordResult>()
+        
+        try {
+            // Extract words using Kuromoji
+            val wordPositions = wordExtractor.extractWordsWithKuromoji(paragraph, repository)
+            Log.d(TAG, "Kuromoji extracted ${wordPositions.size} words")
+            
+            // Track unique words to avoid duplicates
+            val processedWords = mutableSetOf<String>()
+            
+            // Create set of all words actually found in the paragraph for filtering
+            val actualWordsInText = wordPositions.map { it.word }.toSet()
+            Log.d(TAG, "Actual words extracted from paragraph: ${actualWordsInText.joinToString(", ")}")
+            
+            for (wordPos in wordPositions) {
+                val word = wordPos.word
+                
+                // Skip if we've already processed this word
+                if (processedWords.contains(word)) {
+                    Log.d(TAG, "Skipping duplicate word: '$word'")
+                    continue
+                }
+                processedWords.add(word)
+                
+                try {
+                    Log.d(TAG, "Searching for extracted word: '$word' (${wordPos.startPosition}-${wordPos.endPosition})")
+                    
+                    // Search dictionary for this individual word
+                    val wordResults = repository.search(word, limit = 10) // Get more results for filtering
+                    
+                    if (wordResults.isNotEmpty()) {
+                        Log.d(TAG, "Found ${wordResults.size} dictionary results for word '$word'")
+                        
+                        // Filter results to only include words that actually appear in the paragraph
+                        val filteredResults = wordResults.filter { result ->
+                            val resultWord = result.kanji ?: result.reading
+                            val isInText = actualWordsInText.contains(resultWord)
+                            
+                            if (!isInText) {
+                                Log.d(TAG, "Filtering out '$resultWord' - not found in paragraph text")
+                            }
+                            
+                            isInText
+                        }
+                        
+                        Log.d(TAG, "After filtering: ${filteredResults.size} results for word '$word'")
+                        allResults.addAll(filteredResults)
+                    } else {
+                        Log.d(TAG, "No dictionary results for word '$word'")
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error searching for word '$word': ${e.message}")
+                }
+            }
+            
+            Log.d(TAG, "=== KUROMOJI PARAGRAPH PROCESSING COMPLETE ===")
+            Log.d(TAG, "Total unique words processed: ${processedWords.size}")
+            Log.d(TAG, "Total dictionary results found: ${allResults.size}")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in Kuromoji paragraph processing", e)
+        }
+        
+        return allResults
+    }
 
     fun clearSearch() {
         searchJob?.cancel()

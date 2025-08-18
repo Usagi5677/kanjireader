@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.drawerlayout.widget.DrawerLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/drawerLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+    <androidx.coordinatorlayout.widget.CoordinatorLayout
+        android:id="@+id/coordinatorLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/white">
+
+        <!-- Split Screen Container -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <!-- Top Half: Text Display -->
+            <FrameLayout
+                android:id="@+id/topHalfContainer"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@android:color/white">
+
+                <!-- Text Display Container -->
+                <LinearLayout
+                    android:id="@+id/textContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:background="@android:color/white"
+                    android:elevation="2dp">
+
+            <!-- Header with title and controls -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="12dp">
+
+                <!-- Title -->
+                <TextView
+                    android:id="@+id/textTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Text Reader"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/teal_700" />
+
+                <!-- Furigana Toggle -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/furiganaToggle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="ふりがな"
+                    android:textSize="14sp"
+                    android:minWidth="50dp"
+                    android:layout_marginEnd="12dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    app:cornerRadius="20dp"
+                    app:strokeColor="@color/teal_700"
+                    app:strokeWidth="1dp" />
+
+                <!-- Copy Button -->
+                <ImageButton
+                    android:id="@+id/copyTextButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_copy"
+                    android:contentDescription="Copy text"
+                    android:padding="8dp" />
+
+                <!-- Translate Button -->
+                <ImageButton
+                    android:id="@+id/translateTextButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_translate"
+                    android:contentDescription="Translate text"
+                    android:padding="8dp" />
+
+            </LinearLayout>
+
+            <!-- Text Display ScrollView -->
+            <ScrollView
+                android:id="@+id/textScrollView"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/ocr_text_background"
+                android:fillViewport="true"
+                android:clipToPadding="false">
+
+                <com.example.kanjireader.TextSelectionView
+                    android:id="@+id/textSelectionView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="200dp"
+                    android:padding="20dp"
+                    android:paddingTop="40dp" />
+
+            </ScrollView>
+
+                </LinearLayout>
+
+
+            </FrameLayout>
+
+            <!-- Bottom Half: Word Cards List -->
+            <LinearLayout
+                android:id="@+id/bottomHalfContainer"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:background="#F8F8F8">
+
+                <!-- Word Cards Header -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="12dp"
+                    android:background="@android:color/white"
+                    android:elevation="2dp"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Found Words"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/teal_700" />
+
+                    <TextView
+                        android:id="@+id/wordCountBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/circular_badge_background"
+                        android:gravity="center"
+                        android:minWidth="28dp"
+                        android:minHeight="28dp"
+                        android:paddingHorizontal="8dp"
+                        android:text="0"
+                        android:textColor="@color/teal_900"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+
+                <!-- Word Cards RecyclerView -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/wordCardsRecyclerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:padding="8dp"
+                    android:paddingBottom="400dp"
+                    android:clipToPadding="false" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Top Popup for Word Not Found (same as OCR view) -->
+        <LinearLayout
+            android:id="@+id/topPopup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:orientation="vertical"
+            android:background="@drawable/bottom_sheet_background"
+            android:elevation="12dp"
+            android:paddingBottom="16dp"
+            android:translationY="-400dp"
+            android:visibility="gone"
+            android:maxHeight="500dp">
+
+            <!-- Top Handle -->
+            <View
+                android:layout_width="60dp"
+                android:layout_height="6dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/bottom_sheet_handle" />
+
+            <!-- Header with close button -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="24dp"
+                android:paddingBottom="16dp">
+
+                <TextView
+                    android:id="@+id/selectedWordTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Selected Word"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/teal_700" />
+
+                <ImageButton
+                    android:id="@+id/closePopupButton"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_close"
+                    android:contentDescription="Close"
+                    android:padding="6dp" />
+
+            </LinearLayout>
+
+            <!-- Word Not Found Layout (same as OCR view) -->
+            <LinearLayout
+                android:id="@+id/wordNotFoundLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:paddingHorizontal="24dp"
+                android:paddingVertical="32dp"
+                android:visibility="gone">
+
+                <!-- Icon -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔍"
+                    android:textSize="64sp"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Selected Word Display -->
+                <TextView
+                    android:id="@+id/notFoundWordText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="選択された単語"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/teal_700"
+                    android:gravity="center"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Not Found Message -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Word not found in dictionary"
+                    android:textSize="18sp"
+                    android:textColor="@android:color/darker_gray"
+                    android:gravity="center"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Suggestion Text -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Try selecting individual characters or common word forms"
+                    android:textSize="14sp"
+                    android:textColor="@android:color/darker_gray"
+                    android:gravity="center"
+                    android:alpha="0.7" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </androidx.coordinatorlayout.widget.CoordinatorLayout>
+    <!-- Add Navigation View -->
+    <com.google.android.material.navigation.NavigationView
+        android:id="@+id/navigationView"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        app:headerLayout="@layout/nav_header_main"
+        app:menu="@menu/drawer_menu" />
+
+</androidx.drawerlayout.widget.DrawerLayout>

@@ -3,8 +3,10 @@ package com.example.kanjireader
 import android.content.Context
 import android.graphics.*
 import android.text.Layout
+import android.text.SpannableStringBuilder
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.style.ReplacementSpan
 import android.util.AttributeSet
 import android.util.Log
 import android.view.MotionEvent
@@ -14,6 +16,152 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.text.Text
 import kotlinx.coroutines.*
 
+/**
+ * Custom ReplacementSpan for rendering furigana (reading hints) above kanji characters.
+ * This span handles both measurement and drawing of text segments with furigana positioned only over kanji.
+ */
+class FuriganaReplacementSpan(
+    private val fullText: String,          // Full segment text (e.g., "出くわし")
+    private val furiganaText: String,      // Furigana for kanji only (e.g., "で")
+    private val textPaint: TextPaint,
+    private val furiganaPaint: TextPaint
+) : ReplacementSpan() {
+    
+    companion object {
+        private const val FURIGANA_SPACING = 4f // Space between furigana and main text
+    }
+    
+    // Find the kanji portion within the text
+    private fun findKanjiPortion(): Pair<Int, String>? {
+        var kanjiStart = -1
+        var kanjiEnd = -1
+        
+        for (i in fullText.indices) {
+            if (isKanji(fullText[i])) {
+                if (kanjiStart == -1) kanjiStart = i
+                kanjiEnd = i + 1
+            } else if (kanjiStart != -1) {
+                // Stop at first non-kanji after finding kanji
+                break
+            }
+        }
+        
+        return if (kanjiStart != -1) {
+            Pair(kanjiStart, fullText.substring(kanjiStart, kanjiEnd))
+        } else {
+            null
+        }
+    }
+    
+    private fun isKanji(char: Char): Boolean {
+        val codePoint = char.code
+        return (codePoint in 0x4E00..0x9FAF) || (codePoint in 0x3400..0x4DBF)
+    }
+    
+    override fun getSize(
+        paint: Paint,
+        text: CharSequence?,
+        start: Int,
+        end: Int,
+        fm: Paint.FontMetricsInt?
+    ): Int {
+        // Measure the full text width
+        val fullWidth = textPaint.measureText(fullText)
+        
+        // Check if we need extra width for furigana
+        val kanjiInfo = findKanjiPortion()
+        if (kanjiInfo != null) {
+            val (kanjiStart, kanjiText) = kanjiInfo
+            val preKanjiWidth = if (kanjiStart > 0) {
+                textPaint.measureText(fullText.substring(0, kanjiStart))
+            } else 0f
+            
+            val kanjiWidth = textPaint.measureText(kanjiText)
+            val furiganaWidth = furiganaPaint.measureText(furiganaText)
+            
+            // If furigana is wider than kanji, we need extra space
+            if (furiganaWidth > kanjiWidth) {
+                val extraWidth = (furiganaWidth - kanjiWidth) / 2
+                val totalWidth = fullWidth + extraWidth
+                
+                // Update font metrics to account for furigana height
+                if (fm != null) {
+                    val kanjiMetrics = textPaint.fontMetricsInt
+                    val furiganaMetrics = furiganaPaint.fontMetricsInt
+                    
+                    val furiganaHeight = furiganaMetrics.bottom - furiganaMetrics.top
+                    val spacing = FURIGANA_SPACING.toInt()
+                    
+                    fm.top = kanjiMetrics.top - furiganaHeight - spacing
+                    fm.ascent = kanjiMetrics.ascent - furiganaHeight - spacing
+                    fm.descent = kanjiMetrics.descent
+                    fm.bottom = kanjiMetrics.bottom
+                    fm.leading = kanjiMetrics.leading
+                }
+                
+                return totalWidth.toInt()
+            }
+        }
+        
+        // Update font metrics even if no extra width needed
+        if (fm != null) {
+            val kanjiMetrics = textPaint.fontMetricsInt
+            val furiganaMetrics = furiganaPaint.fontMetricsInt
+            
+            val furiganaHeight = furiganaMetrics.bottom - furiganaMetrics.top
+            val spacing = FURIGANA_SPACING.toInt()
+            
+            fm.top = kanjiMetrics.top - furiganaHeight - spacing
+            fm.ascent = kanjiMetrics.ascent - furiganaHeight - spacing
+            fm.descent = kanjiMetrics.descent
+            fm.bottom = kanjiMetrics.bottom
+            fm.leading = kanjiMetrics.leading
+        }
+        
+        return fullWidth.toInt()
+    }
+    
+    override fun draw(
+        canvas: Canvas,
+        text: CharSequence?,
+        start: Int,
+        end: Int,
+        x: Float,
+        top: Int,
+        y: Int,
+        bottom: Int,
+        paint: Paint
+    ) {
+        // Draw the full text
+        canvas.drawText(fullText, x, y.toFloat(), textPaint)
+        
+        // Find kanji portion and draw furigana over it
+        val kanjiInfo = findKanjiPortion()
+        if (kanjiInfo != null) {
+            val (kanjiStart, kanjiText) = kanjiInfo
+            
+            // Calculate position for furigana
+            val preKanjiWidth = if (kanjiStart > 0) {
+                textPaint.measureText(fullText.substring(0, kanjiStart))
+            } else 0f
+            
+            val kanjiWidth = textPaint.measureText(kanjiText)
+            val furiganaWidth = furiganaPaint.measureText(furiganaText)
+            
+            // Center furigana over kanji portion only
+            val kanjiX = x + preKanjiWidth
+            val furiganaX = kanjiX + (kanjiWidth - furiganaWidth) / 2
+            val furiganaY = y - textPaint.textSize - FURIGANA_SPACING
+            
+            canvas.drawText(furiganaText, furiganaX, furiganaY, furiganaPaint)
+        }
+    }
+}
+
+/**
+ * A custom view for displaying Japanese text with selectable characters and optional furigana.
+ * This refactored version uses SpannableStringBuilder with ReplacementSpans for robust layout.
+ */
 class TextSelectionView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -24,8 +172,7 @@ class TextSelectionView @JvmOverloads constructor(
         private const val TAG = "TextSelectionView"
         private const val EXTRA_TOUCH_PADDING = 8f
         private const val FURIGANA_SIZE_RATIO = 0.4f // Furigana is 40% of main text size
-        private const val FURIGANA_SPACING = 8f // Space between furigana and main text
-        private const val TOP_MARGIN_FOR_FURIGANA = 24f // Extra top margin when furigana is shown
+        private const val VIEW_PADDING = 16f
     }
 
     // Text and layout properties
@@ -34,6 +181,7 @@ class TextSelectionView @JvmOverloads constructor(
     private var textPaint: TextPaint
     private var furiganaPaint: TextPaint
     private var staticLayout: StaticLayout? = null
+    private var spannableText: SpannableStringBuilder? = null
 
     // Furigana properties
     private var showFurigana = false
@@ -78,16 +226,16 @@ class TextSelectionView @JvmOverloads constructor(
     // Callbacks
     var onTextSelected: ((String) -> Unit)? = null
     var onWordLookup: ((String) -> Boolean)? = null
-    
+
     // Word highlighting
     private var highlightedWordRange: Pair<Int, Int>? = null
     private val highlightedTextPaint = TextPaint().apply {
         textSize = 48f
-        color = ContextCompat.getColor(context, R.color.blue_700) // Blue color from forms tab
+        color = ContextCompat.getColor(context, R.color.blue_700)
         isAntiAlias = true
-        isFakeBoldText = true // Make highlighted text bold
+        isFakeBoldText = true
     }
-    
+
     // Debounce mechanism to prevent duplicate callbacks
     private var lastCallbackText = ""
     private var lastCallbackTime = 0L
@@ -105,12 +253,14 @@ class TextSelectionView @JvmOverloads constructor(
             color = ContextCompat.getColor(context, android.R.color.black)
             isAntiAlias = true
         }
+        
+        // Update highlighted text paint to match
+        highlightedTextPaint.textSize = textPaint.textSize
     }
 
     fun setFuriganaProcessor(processor: FuriganaProcessor) {
         this.furiganaProcessor = processor
     }
-    
 
     fun setShowFurigana(show: Boolean) {
         if (showFurigana != show) {
@@ -118,11 +268,24 @@ class TextSelectionView @JvmOverloads constructor(
 
             clearSelection()
 
+            // Force complete layout recreation when furigana mode changes
+            staticLayout = null
+            characterBounds.clear()
+
             if (show) {
                 processFurigana()
+            } else {
+                // Clear furigana and recreate layout
+                requestLayout()
+                invalidate()
             }
-            requestLayout()
-            invalidate()
+
+            // Force parent to remeasure and relayout
+            parent?.let { parent ->
+                if (parent is View) {
+                    parent.requestLayout()
+                }
+            }
         }
     }
 
@@ -135,33 +298,43 @@ class TextSelectionView @JvmOverloads constructor(
 
         // Clear previous selection
         clearSelection()
-        clearWordHighlight() // Clear any existing word highlights
+        clearWordHighlight()
 
         // Process furigana if enabled
         if (showFurigana) {
             processFurigana()
+        } else {
+            // Request layout to trigger measurement
+            requestLayout()
         }
-
-        // Request layout to trigger measurement
-        requestLayout()
     }
-    
+
     /**
      * Highlight a word at the specified position range
      */
     fun highlightWord(startPosition: Int, endPosition: Int) {
         highlightedWordRange = Pair(startPosition, endPosition)
+        // Recreate layout with highlighting
+        val width = width
+        if (width > 0) {
+            createTextLayout(width)
+        }
         invalidate()
-        
+
         // Auto-scroll to show the highlighted word
         scrollToHighlightedWord(startPosition, endPosition)
     }
-    
+
     /**
      * Clear word highlighting
      */
     fun clearWordHighlight() {
         highlightedWordRange = null
+        // Recreate layout without highlighting
+        val width = width
+        if (width > 0) {
+            createTextLayout(width)
+        }
         invalidate()
     }
 
@@ -169,7 +342,7 @@ class TextSelectionView @JvmOverloads constructor(
         if (displayText.isNotEmpty()) {
             // Cancel previous furigana job
             furiganaJob?.cancel()
-            
+
             // Start new async furigana processing
             furiganaJob = CoroutineScope(Dispatchers.Main).launch {
                 try {
@@ -183,15 +356,15 @@ class TextSelectionView @JvmOverloads constructor(
                             return@withContext FuriganaText(emptyList(), displayText)
                         }
                     }
-                    
+
                     // Update UI on main thread
                     furiganaText = result
                     Log.d(TAG, "Processed furigana with ${result.segments.size} segments")
-                    
+
                     // Trigger redraw
-                    invalidate()
                     requestLayout()
-                    
+                    invalidate()
+
                 } catch (e: Exception) {
                     if (e !is CancellationException) {
                         Log.e(TAG, "Error processing furigana", e)
@@ -209,50 +382,34 @@ class TextSelectionView @JvmOverloads constructor(
 
         // Calculate height based on text layout
         val layout = staticLayout
-        val baseHeight = if (layout != null) {
-            layout.height + 32 // Base padding
+        val height = if (layout != null) {
+            layout.height + (VIEW_PADDING * 2).toInt()
         } else {
             200 // Minimum height
         }
 
-        // Add extra height for furigana if enabled
-        val extraHeight = if (showFurigana) {
-            calculateFuriganaExtraHeight()
-        } else {
-            0
-        }
-
-        setMeasuredDimension(width, baseHeight + extraHeight)
-    }
-
-    private fun calculateFuriganaExtraHeight(): Int {
-        val furiganaLineHeight = furiganaPaint.textSize + FURIGANA_SPACING
-        val layout = staticLayout ?: return 0
-
-        // Add top margin for first line furigana
-        val topMargin = TOP_MARGIN_FOR_FURIGANA
-
-        // Add furigana space for each line
-        val furiganaSpace = layout.lineCount * furiganaLineHeight
-
-        return (topMargin + furiganaSpace).toInt()
+        setMeasuredDimension(width, height)
     }
 
     private fun createTextLayout(width: Int) {
-        if (displayText.isEmpty() || width <= 32) {
+        if (displayText.isEmpty() || width <= (VIEW_PADDING * 2).toInt()) {
             staticLayout = null
             characterBounds.clear()
             return
         }
 
-        val textWidth = width - 32 // 16dp padding each side
+        val textWidth = width - (VIEW_PADDING * 2).toInt()
 
-        // Use original text without modification
+        // Build spannable text with furigana spans
+        val spannable = buildSpannableText()
+        spannableText = spannable
+
+        // Create StaticLayout with the spannable text
         staticLayout = StaticLayout.Builder
-            .obtain(displayText, 0, displayText.length, textPaint, textWidth)
+            .obtain(spannable, 0, spannable.length, textPaint, textWidth)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-            .setLineSpacing(12f, 1.3f)
-            .setIncludePad(false)
+            .setLineSpacing(0f, 1.0f) // Let spans handle spacing
+            .setIncludePad(true)
             .build()
 
         Log.d(TAG, "Created text layout with width: $textWidth, lines: ${staticLayout?.lineCount}")
@@ -261,55 +418,161 @@ class TextSelectionView @JvmOverloads constructor(
         buildCharacterBounds(width)
     }
 
+    /**
+     * Build a SpannableStringBuilder with FuriganaReplacementSpans for kanji segments
+     */
+    private fun buildSpannableText(): SpannableStringBuilder {
+        val spannable = SpannableStringBuilder()
+        
+        if (!showFurigana || furiganaText == null) {
+            // No furigana - build plain text with optional highlighting
+            spannable.append(displayText)
+            applyWordHighlighting(spannable)
+            return spannable
+        }
+
+        // Build text with furigana spans
+        val segments = furiganaText?.segments ?: listOf(
+            FuriganaSegment(displayText, null, false, 0, displayText.length)
+        )
+
+        var currentPos = 0
+        
+        for (segment in segments) {
+            val segmentStart = spannable.length
+            
+            if (segment.furigana != null && segment.isKanji) {
+                // Add text with furigana span
+                spannable.append(segment.text)
+                
+                val span = FuriganaReplacementSpan(
+                    fullText = segment.text,
+                    furiganaText = segment.furigana,
+                    textPaint = getTextPaintForPosition(currentPos),
+                    furiganaPaint = furiganaPaint
+                )
+                
+                spannable.setSpan(
+                    span,
+                    segmentStart,
+                    spannable.length,
+                    SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            } else {
+                // Add plain text without furigana
+                spannable.append(segment.text)
+            }
+            
+            currentPos += segment.text.length
+        }
+
+        applyWordHighlighting(spannable)
+        return spannable
+    }
+
+    /**
+     * Apply word highlighting to the spannable text
+     */
+    private fun applyWordHighlighting(spannable: SpannableStringBuilder) {
+        val highlightRange = highlightedWordRange ?: return
+        if (highlightRange.first < 0 || highlightRange.second > spannable.length) return
+        
+        // Create a custom span for highlighting
+        val highlightSpan = object : ReplacementSpan() {
+            override fun getSize(
+                paint: Paint,
+                text: CharSequence?,
+                start: Int,
+                end: Int,
+                fm: Paint.FontMetricsInt?
+            ): Int {
+                return highlightedTextPaint.measureText(text, start, end).toInt()
+            }
+            
+            override fun draw(
+                canvas: Canvas,
+                text: CharSequence?,
+                start: Int,
+                end: Int,
+                x: Float,
+                top: Int,
+                y: Int,
+                bottom: Int,
+                paint: Paint
+            ) {
+                if (text != null) {
+                    canvas.drawText(text, start, end, x, y.toFloat(), highlightedTextPaint)
+                }
+            }
+        }
+        
+        // Apply highlighting span only if it doesn't conflict with furigana spans
+        val existingSpans = spannable.getSpans(
+            highlightRange.first, 
+            highlightRange.second, 
+            ReplacementSpan::class.java
+        )
+        
+        if (existingSpans.isEmpty()) {
+            spannable.setSpan(
+                highlightSpan,
+                highlightRange.first,
+                highlightRange.second,
+                SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+    }
+
+    /**
+     * Get the appropriate text paint for a character position (for highlighting)
+     */
+    private fun getTextPaintForPosition(position: Int): TextPaint {
+        val highlightRange = highlightedWordRange
+        return if (highlightRange != null && position >= highlightRange.first && position < highlightRange.second) {
+            highlightedTextPaint
+        } else {
+            textPaint
+        }
+    }
+
     private fun buildCharacterBounds(viewWidth: Int) {
         characterBounds.clear()
         val layout = staticLayout ?: return
-
-        val furiganaOffset = if (showFurigana) {
-            furiganaPaint.textSize + FURIGANA_SPACING
-        } else {
-            0f
-        }
-
-        val topOffset = if (showFurigana) TOP_MARGIN_FOR_FURIGANA else 16f
+        val text = spannableText ?: SpannableStringBuilder(displayText)
 
         for (line in 0 until layout.lineCount) {
             val lineStart = layout.getLineStart(line)
             val lineEnd = layout.getLineEnd(line)
 
-            // Calculate line offset considering furigana
-            val lineOffset = topOffset + (line * furiganaOffset)
-
-            val lineTop = layout.getLineTop(line).toFloat() + lineOffset
-            val lineBottom = layout.getLineBottom(line).toFloat() + lineOffset
+            val lineTop = layout.getLineTop(line).toFloat()
+            val lineBottom = layout.getLineBottom(line).toFloat()
 
             for (charIndex in lineStart until lineEnd) {
-                if (charIndex < displayText.length) {
-                    val char = displayText[charIndex]
+                if (charIndex < text.length) {
+                    val char = text[charIndex]
                     if (char.isWhitespace()) continue
 
-                    val charLeft = layout.getPrimaryHorizontal(charIndex) + 16f
+                    val charLeft = layout.getPrimaryHorizontal(charIndex) + VIEW_PADDING
 
-                    val charRight = if (charIndex + 1 < displayText.length && charIndex + 1 < lineEnd) {
-                        layout.getPrimaryHorizontal(charIndex + 1) + 16f
+                    val charRight = if (charIndex + 1 < text.length && charIndex + 1 <= lineEnd) {
+                        layout.getPrimaryHorizontal(charIndex + 1) + VIEW_PADDING
                     } else {
                         val measuredWidth = textPaint.measureText(char.toString())
-                        val calculatedRight = charLeft + measuredWidth
-
-                        if (charIndex == lineEnd - 1) {
-                            val maxRight = viewWidth - 16f
-                            maxOf(calculatedRight, minOf(maxRight, charLeft + measuredWidth * 1.5f))
-                        } else {
-                            calculatedRight
-                        }
+                        charLeft + measuredWidth
                     }
 
-                    val visualBounds = RectF(charLeft, lineTop, charRight, lineBottom)
+                    val visualBounds = RectF(
+                        charLeft, 
+                        lineTop + VIEW_PADDING, 
+                        charRight, 
+                        lineBottom + VIEW_PADDING
+                    )
+                    
                     val touchBounds = RectF(
                         charLeft - EXTRA_TOUCH_PADDING,
-                        lineTop - EXTRA_TOUCH_PADDING,
+                        lineTop + VIEW_PADDING - EXTRA_TOUCH_PADDING,
                         charRight + EXTRA_TOUCH_PADDING,
-                        lineBottom + EXTRA_TOUCH_PADDING
+                        lineBottom + VIEW_PADDING + EXTRA_TOUCH_PADDING
                     )
 
                     characterBounds.add(
@@ -331,23 +594,10 @@ class TextSelectionView @JvmOverloads constructor(
 
         val layout = staticLayout ?: return
 
+        // Draw the text layout with all spans
         canvas.save()
-        canvas.translate(16f, 16f)
-
-        if (showFurigana && furiganaText != null) {
-            drawTextWithFurigana(canvas, layout)
-        } else {
-            // Normal drawing without furigana
-            canvas.translate(0f, if (showFurigana) TOP_MARGIN_FOR_FURIGANA else 0f)
-            
-            // Draw text with word highlighting (color-based)
-            if (highlightedWordRange != null) {
-                drawTextWithWordHighlight(canvas, layout)
-            } else {
-                layout.draw(canvas)
-            }
-        }
-
+        canvas.translate(VIEW_PADDING, VIEW_PADDING)
+        layout.draw(canvas)
         canvas.restore()
 
         // Draw selection highlight (both during drag and after)
@@ -356,193 +606,10 @@ class TextSelectionView @JvmOverloads constructor(
         } else if (lastSelectedChars.isNotEmpty()) {
             drawPersistentSelection(canvas)
         }
-        
-        // Word highlighting is now handled in drawTextWithWordHighlight method
 
         // Draw dot only if dragging
         if (isDragging) {
             canvas.drawCircle(dragCurrentX, dragCurrentY, 15f, dotPaint)
-        }
-    }
-    
-    private fun drawTextWithWordHighlight(canvas: Canvas, layout: StaticLayout) {
-        val highlightRange = highlightedWordRange ?: return
-        val (startPos, endPos) = highlightRange
-        
-        if (startPos < 0 || endPos <= startPos || endPos > displayText.length) {
-            layout.draw(canvas)
-            return
-        }
-        
-        // Draw text character by character with different colors
-        val lineCount = layout.lineCount
-        
-        for (lineIndex in 0 until lineCount) {
-            val lineStart = layout.getLineStart(lineIndex)
-            val lineEnd = layout.getLineEnd(lineIndex)
-            val lineText = displayText.substring(lineStart, lineEnd)
-            
-            val lineTop = layout.getLineTop(lineIndex).toFloat()
-            val lineBaseline = layout.getLineBaseline(lineIndex).toFloat()
-            
-            var x = layout.getLineLeft(lineIndex)
-            
-            // Draw each character with appropriate color
-            for (i in lineText.indices) {
-                val charIndex = lineStart + i
-                val char = lineText[i]
-                
-                // Choose paint based on whether this character is in the highlighted range
-                val paint = if (charIndex in startPos until endPos) {
-                    highlightedTextPaint
-                } else {
-                    textPaint
-                }
-                
-                // Draw the character
-                canvas.drawText(char.toString(), x, lineBaseline, paint)
-                
-                // Move to next character position
-                x += paint.measureText(char.toString())
-            }
-        }
-    }
-
-    private fun findKanjiPortion(text: String): KanjiInfo? {
-        if (text.isEmpty()) return null
-        
-        // Find the first kanji character
-        var kanjiStart = -1
-        for (i in text.indices) {
-            if (isKanji(text[i])) {
-                kanjiStart = i
-                break
-            }
-        }
-        
-        if (kanjiStart == -1) {
-            // No kanji found
-            return null
-        }
-        
-        // Find the end of the continuous kanji sequence
-        var kanjiEnd = kanjiStart
-        for (i in kanjiStart until text.length) {
-            if (isKanji(text[i])) {
-                kanjiEnd = i + 1
-            } else {
-                break
-            }
-        }
-        
-        val kanjiText = text.substring(kanjiStart, kanjiEnd)
-        Log.d(TAG, "Found kanji portion in '$text': startIndex=$kanjiStart, kanjiText='$kanjiText'")
-        
-        return KanjiInfo(
-            startIndex = kanjiStart,
-            kanjiText = kanjiText
-        )
-    }
-    
-    private fun isKanji(char: Char): Boolean {
-        val codePoint = char.code
-        return (codePoint in 0x4E00..0x9FAF) || (codePoint in 0x3400..0x4DBF)
-    }
-
-    private fun drawTextWithFurigana(canvas: Canvas, layout: StaticLayout) {
-        val segments = furiganaText?.segments ?: return
-
-        // Calculate the furigana height
-        val furiganaHeight = furiganaPaint.textSize + FURIGANA_SPACING
-
-        // Draw segments by reconstructing positions sequentially
-        var currentPos = 0
-        
-        for (segment in segments) {
-            if (currentPos >= displayText.length) break
-            
-            // Find the actual position of this segment in the current text
-            val segmentStart = displayText.indexOf(segment.text, currentPos)
-            if (segmentStart == -1) {
-                // Skip if segment not found
-                continue
-            }
-            
-            val line = layout.getLineForOffset(segmentStart)
-            
-            // Calculate positions using actual segment position
-            val x = layout.getPrimaryHorizontal(segmentStart)
-            val lineOffset = TOP_MARGIN_FOR_FURIGANA + (line * furiganaHeight)
-            val baselineY = layout.getLineBaseline(line).toFloat() + lineOffset
-
-            // Draw furigana if present
-            if (segment.furigana != null && segment.isKanji) {
-                // Find kanji portion within the segment
-                val kanjiInfo = findKanjiPortion(segment.text)
-                if (kanjiInfo != null) {
-                    // Calculate position for just the kanji portion
-                    val preKanjiWidth = textPaint.measureText(segment.text.substring(0, kanjiInfo.startIndex))
-                    val kanjiWidth = textPaint.measureText(kanjiInfo.kanjiText)
-                    val furiganaWidth = furiganaPaint.measureText(segment.furigana)
-
-                    // Position furigana over just the kanji part
-                    val kanjiX = x + preKanjiWidth
-                    var furiganaX = kanjiX + (kanjiWidth - furiganaWidth) / 2
-                    val furiganaY = baselineY - textPaint.textSize - FURIGANA_SPACING
-
-
-                    canvas.drawText(segment.furigana, furiganaX, furiganaY, furiganaPaint)
-                } else {
-                    // Fallback: center over entire segment if no kanji found
-                    val segmentWidth = textPaint.measureText(segment.text)
-                    val furiganaWidth = furiganaPaint.measureText(segment.furigana)
-                    var furiganaX = x + (segmentWidth - furiganaWidth) / 2
-                    val furiganaY = baselineY - textPaint.textSize - FURIGANA_SPACING
-
-
-                    canvas.drawText(segment.furigana, furiganaX, furiganaY, furiganaPaint)
-                }
-            }
-
-            // Draw main text with word highlighting support
-            val segmentEnd = segmentStart + segment.text.length
-            val highlightRange = highlightedWordRange
-            
-            if (highlightRange != null) {
-                val (highlightStart, highlightEnd) = highlightRange
-                
-                // Check if this segment overlaps with highlighted range
-                val overlapStart = maxOf(segmentStart, highlightStart)
-                val overlapEnd = minOf(segmentEnd, highlightEnd)
-                
-                if (overlapStart < overlapEnd && overlapStart < segmentEnd && overlapEnd > segmentStart) {
-                    // This segment has highlighting - draw character by character
-                    var charX = x
-                    for (i in segment.text.indices) {
-                        val charIndex = segmentStart + i
-                        val char = segment.text[i]
-                        
-                        // Choose paint based on whether this character is highlighted
-                        val paint = if (charIndex in highlightStart until highlightEnd) {
-                            highlightedTextPaint
-                        } else {
-                            textPaint
-                        }
-                        
-                        canvas.drawText(char.toString(), charX, baselineY, paint)
-                        charX += paint.measureText(char.toString())
-                    }
-                } else {
-                    // No highlighting in this segment, draw normally
-                    canvas.drawText(segment.text, x, baselineY, textPaint)
-                }
-            } else {
-                // No highlighting, draw normally
-                canvas.drawText(segment.text, x, baselineY, textPaint)
-            }
-            
-            // Move to next position
-            currentPos = segmentStart + segment.text.length
         }
     }
 
@@ -584,11 +651,6 @@ class TextSelectionView @JvmOverloads constructor(
                 bottom = maxOf(bottom, bounds.bottom)
             }
 
-            // Adjust top if furigana is shown to not cover it
-            if (showFurigana) {
-                top -= (furiganaPaint.textSize + FURIGANA_SPACING)
-            }
-
             val lineBounds = RectF(left - 6f, top - 6f, right + 6f, bottom + 6f)
             canvas.drawRoundRect(lineBounds, 12f, 12f, boundingBoxPaint)
         }
@@ -611,108 +673,12 @@ class TextSelectionView @JvmOverloads constructor(
         return selectedChars
     }
 
-    private fun checkWordBoundaryExtension(selectedChars: List<CharacterBound>): List<CharacterBound> {
-        if (selectedChars.isEmpty()) return selectedChars
-
-        // First check if the current selection is already a valid word
-        val currentText = selectedChars
-            .sortedBy { it.charIndex }
-            .map { it.char }
-            .joinToString("")
-        
-        // If current selection is a valid word, don't extend it
-        if (onWordLookup?.invoke(currentText) == true) {
-            Log.d(TAG, "Current selection '$currentText' is already a valid word - not extending")
-            return selectedChars
-        }
-
-        val sortedChars = selectedChars.sortedBy { it.charIndex }
-        val lastChar = sortedChars.last()
-        val lastCharLine = lastChar.lineNumber
-
-        val isLastOnLine = characterBounds
-            .filter { it.lineNumber == lastCharLine }
-            .none { it.charIndex > lastChar.charIndex }
-
-        if (!isLastOnLine) {
-            return selectedChars
-        }
-
-        if (!isWordCharacter(lastChar.char)) {
-            return selectedChars
-        }
-
-        return tryExtendToNextLine(selectedChars)
-    }
-
-    private fun tryExtendToNextLine(selectedChars: List<CharacterBound>): List<CharacterBound> {
-        val sortedChars = selectedChars.sortedBy { it.charIndex }
-        val lastChar = sortedChars.last()
-        val nextLineNumber = lastChar.lineNumber + 1
-
-        val nextLineChars = characterBounds
-            .filter { it.lineNumber == nextLineNumber }
-            .sortedBy { it.charIndex }
-
-        if (nextLineChars.isEmpty()) {
-            return selectedChars
-        }
-
-        val extendedChars = mutableListOf<CharacterBound>()
-        extendedChars.addAll(sortedChars)
-        
-        // Keep track of the longest valid word found
-        var longestValidChars: List<CharacterBound> = selectedChars
-        var longestValidText = ""
-
-        for (nextChar in nextLineChars) {
-            if (isPunctuationOrSpace(nextChar.char)) {
-                break
-            }
-
-            extendedChars.add(nextChar)
-
-            val testText = extendedChars
-                .sortedBy { it.charIndex }
-                .map { it.char }
-                .joinToString("")
-
-            // Check if this combination is a valid word
-            if (onWordLookup?.invoke(testText) == true) {
-                // Found a valid word - but keep testing for longer ones
-                longestValidChars = extendedChars.toList()
-                longestValidText = testText
-                Log.d(TAG, "Found valid word: $testText (length: ${testText.length})")
-            }
-        }
-        
-        // Return the longest valid word found, or original selection if none
-        if (longestValidText.isNotEmpty()) {
-            Log.d(TAG, "Selecting longest word: $longestValidText")
-            return longestValidChars
-        }
-
-        return selectedChars
-    }
-
-    private fun isWordCharacter(char: Char): Boolean {
-        val codePoint = char.code
-        return (codePoint in 0x3040..0x309F) ||
-                (codePoint in 0x30A0..0x30FF) ||
-                (codePoint in 0x4E00..0x9FAF) ||
-                (codePoint in 0x3400..0x4DBF)
-    }
-
-    private fun isPunctuationOrSpace(char: Char): Boolean {
-        return char.isWhitespace() || char in "。、！？「」『』（）［］｛｝〈〉《》・.,!?()[]{}\"'"
-    }
-
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 lastSelectedChars = emptyList()
                 lastSelectedText = ""
-                callbackInProgress = false  // Reset on new selection attempt
+                callbackInProgress = false
 
                 dragStartX = event.x
                 dragStartY = event.y
@@ -736,12 +702,7 @@ class TextSelectionView @JvmOverloads constructor(
             MotionEvent.ACTION_UP -> {
                 Log.d(TAG, "ACTION_UP: isDragging=$isDragging")
                 if (isDragging) {
-                    var selectedChars = getSelectedCharacters()
-
-                    // Temporarily disable word boundary extension to fix duplicate lookup issue
-                    // if (selectedChars.isNotEmpty() && onWordLookup != null) {
-                    //     selectedChars = checkWordBoundaryExtension(selectedChars)
-                    // }
+                    val selectedChars = getSelectedCharacters()
 
                     if (selectedChars.isNotEmpty()) {
                         val selectedText = selectedChars
@@ -753,23 +714,22 @@ class TextSelectionView @JvmOverloads constructor(
                         lastSelectedText = selectedText
 
                         copyToClipboard(selectedText)
-                        
+
                         // Prevent duplicate callbacks with simple flag + time-based debounce
                         val currentTime = System.currentTimeMillis()
                         val timeDiff = currentTime - lastCallbackTime
                         Log.d(TAG, "Debounce check: selectedText='$selectedText', lastCallbackText='$lastCallbackText', timeDiff=${timeDiff}ms, callbackInProgress=$callbackInProgress")
-                        
+
                         if (!callbackInProgress && (selectedText != lastCallbackText || timeDiff > 500)) {
                             Log.d(TAG, "Allowing callback for '$selectedText'")
                             callbackInProgress = true
                             lastCallbackText = selectedText
                             lastCallbackTime = currentTime
                             onTextSelected?.invoke(selectedText)
-                            // Note: callbackInProgress will be reset by clearPersistentSelection()
                         } else {
                             Log.d(TAG, "Ignoring duplicate callback for '$selectedText' (inProgress=$callbackInProgress, timeDiff=${timeDiff}ms)")
                         }
-                        
+
                         // Clear persistent selection immediately after callback to prevent duplicates
                         lastSelectedChars = emptyList()
                         lastSelectedText = ""
@@ -789,18 +749,17 @@ class TextSelectionView @JvmOverloads constructor(
         isDragging = false
         lastSelectedChars = emptyList()
         lastSelectedText = ""
-        callbackInProgress = false  // Reset the callback flag
+        callbackInProgress = false
         invalidate()
     }
-    
+
     fun clearPersistentSelection() {
         lastSelectedChars = emptyList()
         lastSelectedText = ""
-        // Note: callbackInProgress is now managed by setCallbackActive()
         Log.d(TAG, "Cleared persistent selection")
         invalidate()
     }
-    
+
     // Direct control of callback state from ImageAnnotationActivity
     fun setCallbackActive(active: Boolean) {
         callbackInProgress = active
@@ -817,37 +776,18 @@ class TextSelectionView @JvmOverloads constructor(
         }
     }
 
-    data class CharacterBound(
-        val char: Char,
-        val charIndex: Int,
-        val lineNumber: Int,
-        val bounds: RectF,
-        val visualBounds: RectF
-    )
-
-    data class KanjiInfo(
-        val startIndex: Int,
-        val kanjiText: String
-    )
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        // Cancel any ongoing furigana processing
-        furiganaJob?.cancel()
-    }
-    
     /**
      * Auto-scroll to show the highlighted word in the parent ScrollView
      */
     private fun scrollToHighlightedWord(startPosition: Int, endPosition: Int) {
         // Find the parent ScrollView
         val scrollView = findParentScrollView() ?: return
-        
+
         // Get the layout to calculate line positions
         val layout = staticLayout ?: return
-        
+
         if (startPosition < 0 || startPosition >= displayText.length) return
-        
+
         // Find which line contains the highlighted word
         var lineIndex = -1
         for (i in 0 until layout.lineCount) {
@@ -858,33 +798,24 @@ class TextSelectionView @JvmOverloads constructor(
                 break
             }
         }
-        
+
         if (lineIndex == -1) return
-        
+
         // Calculate the Y position of the highlighted line
         val lineTop = layout.getLineTop(lineIndex)
         val lineBottom = layout.getLineBottom(lineIndex)
-        
-        // Add padding and translation offset, accounting for furigana spacing
-        val basePaddingTop = 16f
-        val furiganaOffset = if (showFurigana) {
-            val furiganaHeight = furiganaPaint.textSize + FURIGANA_SPACING
-            TOP_MARGIN_FOR_FURIGANA + (lineIndex * furiganaHeight)
-        } else {
-            0f
-        }
-        
-        val wordTop = (lineTop + basePaddingTop + furiganaOffset).toInt()
-        val wordBottom = (lineBottom + basePaddingTop + furiganaOffset).toInt()
-        
+
+        val wordTop = (lineTop + VIEW_PADDING).toInt()
+        val wordBottom = (lineBottom + VIEW_PADDING).toInt()
+
         // Get ScrollView dimensions
         val scrollViewHeight = scrollView.height
         val currentScrollY = scrollView.scrollY
-        
+
         // Calculate if the word is visible
         val wordVisibleTop = wordTop - currentScrollY
         val wordVisibleBottom = wordBottom - currentScrollY
-        
+
         // Scroll if the word is not fully visible
         val targetScrollY = when {
             wordVisibleTop < 0 -> {
@@ -900,11 +831,11 @@ class TextSelectionView @JvmOverloads constructor(
                 return
             }
         }
-        
+
         // Smooth scroll to the target position
         scrollView.smoothScrollTo(0, maxOf(0, targetScrollY))
     }
-    
+
     /**
      * Find the parent ScrollView of this view
      */
@@ -918,4 +849,18 @@ class TextSelectionView @JvmOverloads constructor(
         }
         return null
     }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        // Cancel any ongoing furigana processing
+        furiganaJob?.cancel()
+    }
+
+    data class CharacterBound(
+        val char: Char,
+        val charIndex: Int,
+        val lineNumber: Int,
+        val bounds: RectF,
+        val visualBounds: RectF
+    )
 }

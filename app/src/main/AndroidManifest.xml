@@ -93,6 +93,15 @@
                 android:value=".DictionaryActivity" />
         </activity>
 
+        <activity
+            android:name=".DictionaryTextReaderActivity"
+            android:label="Text Reader"
+            android:parentActivityName=".DictionaryActivity">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".DictionaryActivity" />
+        </activity>
+
         <!-- xcdat Test Activity -->
         <activity
             android:name=".XcdatTestActivity"

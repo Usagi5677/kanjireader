@@ -43,46 +43,124 @@
         app:layout_constraintEnd_toEndOf="parent">
 
         <androidx.cardview.widget.CardView
+            android:id="@+id/searchCardView"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginEnd="8dp"
-            app:cardCornerRadius="24dp"
+            android:minHeight="48dp"
+            app:cardCornerRadius="8dp"
             app:cardElevation="2dp">
 
-            <androidx.appcompat.widget.SearchView
-                android:id="@+id/searchView"
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:background="@android:color/white"
-                app:queryHint="Search Japanese or English..."
-                app:iconifiedByDefault="false" />
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:orientation="horizontal">
+
+                <ScrollView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:maxHeight="120dp"
+                    android:fillViewport="false">
+
+                    <EditText
+                        android:id="@+id/searchEditText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="48dp"
+                        android:background="@android:color/white"
+                        android:hint="Search Japanese or English..."
+                        android:textSize="16sp"
+                        android:textColor="@android:color/black"
+                        android:textColorHint="@android:color/darker_gray"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="4dp"
+                        android:paddingTop="4dp"
+                        android:paddingBottom="4dp"
+                        android:gravity="center_vertical|start"
+                        android:inputType="textMultiLine|textNoSuggestions"
+                        android:maxLines="4"
+                        android:scrollbars="none"
+                        android:importantForAutofill="no" />
+
+                </ScrollView>
+
+                <ImageButton
+                    android:id="@+id/clearButton"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="top"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_close"
+                    android:contentDescription="Clear search"
+                    android:padding="6dp"
+                    android:visibility="gone" />
+
+            </LinearLayout>
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Radical Search Button -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@android:color/white">
+        <!-- Button Container (Radical Search + Word Navigation) -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/radicalSearchButton"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:text="字"
-                android:textSize="20sp"
-                android:textStyle="bold"
-                android:textColor="@color/teal_700"
-                android:background="@android:color/white"
-                android:gravity="center"
+            <!-- Radical Search Button -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="@android:color/white">
+
+                <TextView
+                    android:id="@+id/radicalSearchButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:text="字"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/teal_700"
+                    android:background="@android:color/white"
+                    android:gravity="center"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?android:attr/selectableItemBackground" />
+
+            </androidx.cardview.widget.CardView>
+
+            <!-- Word Navigation Button (appears when search bar expands) -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/wordNavigationButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:visibility="gone"
                 android:clickable="true"
                 android:focusable="true"
-                android:foreground="?android:attr/selectableItemBackground" />
+                android:foreground="?android:attr/selectableItemBackground"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="@android:color/white">
 
-        </androidx.cardview.widget.CardView>
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:src="@drawable/ic_list"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    app:tint="@color/teal_700"
+                    android:background="@android:color/white"
+                    android:contentDescription="Navigate words" />
+
+            </androidx.cardview.widget.CardView>
+
+        </LinearLayout>
 
     </LinearLayout>
 

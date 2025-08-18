@@ -6,7 +6,8 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SearchView
+import android.text.Editable
+import android.text.TextWatcher
 import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -68,7 +69,7 @@ class DictionaryActivity : AppCompatActivity() {
         // Observe search results
         viewModel.searchResults.observe(this) { results ->
             // Update the adapter when results change, pass current search query for highlighting
-            val currentQuery = binding.searchView.query.toString()
+            val currentQuery = binding.searchEditText.text.toString()
             unifiedAdapter.updateEntries(results, currentQuery)
             
             // Scroll to top when new search results arrive (not during loading more)
@@ -93,7 +94,7 @@ class DictionaryActivity : AppCompatActivity() {
                 }
                 is DictionaryViewModel.UiState.NoResults -> {
                     // We need the current query to show "no results for X"
-                    showNoResults(binding.searchView.query.toString())
+                    showNoResults(binding.searchEditText.text.toString())
                 }
                 else -> {
                     // Handle any unexpected states gracefully
@@ -242,24 +243,28 @@ class DictionaryActivity : AppCompatActivity() {
 
 
     private fun setupSearchView() {
-        binding.searchView.apply {
-            queryHint = getString(R.string.search_hint)
-            isIconified = false
+        binding.searchEditText.apply {
+            hint = getString(R.string.search_hint)
             requestFocus()
 
-            setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                override fun onQueryTextSubmit(query: String?): Boolean {
-                    searchJob?.cancel()
-                    binding.searchHelpText.visibility = View.GONE
-                    viewModel.search(query ?: "")
-                    return true
-                }
-
-                override fun onQueryTextChange(newText: String?): Boolean {
-                    Log.d(TAG, "=== QUERY CHANGE === '$newText'")
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                
+                override fun afterTextChanged(s: Editable?) {
+                    val newText = s?.toString() ?: ""
+                    Log.d(TAG, "=== TEXT CHANGE === '$newText'")
+                    
+                    // Show/hide clear button based on text content
+                    binding.clearButton.visibility = if (newText.isNotEmpty()) View.VISIBLE else View.GONE
+                    
+                    // Show/hide word navigation button when search bar has multi-line content
+                    val lineCount = binding.searchEditText.lineCount
+                    binding.wordNavigationButton.visibility = if (lineCount > 1 || newText.length > 30) View.VISIBLE else View.GONE
+                    
                     searchJob?.cancel()
                     
-                    if (newText.isNullOrEmpty()) {
+                    if (newText.isEmpty()) {
                         Log.d(TAG, "Empty query, clearing search")
                         viewModel.clearSearch()
                         binding.searchHelpText.visibility = View.VISIBLE
@@ -268,7 +273,7 @@ class DictionaryActivity : AppCompatActivity() {
                         
                         // Add minimal debouncing to avoid searching for every IME intermediate state
                         searchJob = lifecycleScope.launch {
-                            delay(30) // Reduced delay - just enough to skip IME intermediates
+                            delay(150) // Reduced delay for faster response
                             
                             // Skip if it looks like an IME intermediate state or is too short
                             if (!isIMEIntermediateState(newText) && !isSuspiciousQuery(newText)) {
@@ -279,9 +284,19 @@ class DictionaryActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    return true
                 }
             })
+        }
+        
+        // Setup clear button
+        binding.clearButton.setOnClickListener {
+            binding.searchEditText.text?.clear()
+            binding.searchEditText.requestFocus()
+        }
+        
+        // Setup word navigation button
+        binding.wordNavigationButton.setOnClickListener {
+            openWordNavigationView()
         }
     }
 
@@ -291,18 +306,40 @@ class DictionaryActivity : AppCompatActivity() {
             startActivity(intent)
         }
     }
+    
+    private fun openWordNavigationView() {
+        val currentQuery = binding.searchEditText.text.toString()
+        
+        if (currentQuery.trim().isEmpty()) {
+            Toast.makeText(this, "Enter text first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Check if this is a paragraph (multi-line or long text)
+        val isParagraph = currentQuery.lines().size > 1 || currentQuery.length > 30
+        
+        if (!isParagraph) {
+            Toast.makeText(this, "Word navigation is for longer texts", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Launch the dictionary text reader activity
+        val intent = Intent(this, DictionaryTextReaderActivity::class.java)
+        intent.putExtra(DictionaryTextReaderActivity.EXTRA_PARAGRAPH_TEXT, currentQuery)
+        startActivity(intent)
+    }
 
     private fun handleAppendToSearchIntent() {
         val appendText = intent.getStringExtra("append_to_search")
         if (!appendText.isNullOrEmpty()) {
             // Get current search text
-            val currentQuery = binding.searchView.query.toString()
+            val currentQuery = binding.searchEditText.text.toString()
             
             // Append the new text
             val newQuery = currentQuery + appendText
             
             // Set the new query and trigger search
-            binding.searchView.setQuery(newQuery, true)
+            binding.searchEditText.setText(newQuery)
             
             // Clear the intent extra to prevent repeated appending
             intent.removeExtra("append_to_search")
