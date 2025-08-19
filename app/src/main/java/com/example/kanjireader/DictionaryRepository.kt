@@ -1174,28 +1174,49 @@ class DictionaryRepository(private val context: Context) {
     }
     
     /**
-     * Prioritize search results based on meaning position
-     * Results where the search term appears in meaning #1 get highest priority
+     * Prioritize search results based on meaning position and match quality
+     * Results with exact matches or starts-with matches get highest priority
      * Also deprioritizes proper nouns
      */
     private fun prioritizeByMeaningPosition(results: List<WordResult>, query: String): List<WordResult> {
-        val queryLower = query.lowercase()
+        val queryLower = query.lowercase().trim()
         
         return results.sortedWith(
             compareBy<WordResult> { isProperNoun(it) }  // Proper nouns go to bottom first
                 .thenBy { result ->
-                    // Find the earliest meaning position where the query appears
-                    val meaningPosition = result.meanings.indexOfFirst { meaning ->
-                        meaning.lowercase().contains(queryLower)
+                    // Enhanced scoring for meaning matches
+                    val meaningScores = result.meanings.map { meaning ->
+                        val meaningLower = meaning.lowercase()
+                        when {
+                            // Exact match in meaning = highest priority (score 0)
+                            meaningLower == queryLower -> 0
+                            // Meaning starts with query = high priority (score 1)
+                            meaningLower.startsWith(queryLower) -> 1
+                            // Meaning starts with "query " (word boundary) = high priority (score 1)
+                            meaningLower.startsWith("$queryLower ") -> 1
+                            // Query appears at word boundary = medium priority (score 2)
+                            meaningLower.contains(" $queryLower ") || 
+                            meaningLower.contains(" $queryLower,") ||
+                            meaningLower.contains(" $queryLower;") ||
+                            meaningLower.contains(" $queryLower.") ||
+                            meaningLower.contains("($queryLower)") ||
+                            meaningLower.endsWith(" $queryLower") -> 2
+                            // Query appears anywhere in meaning = lower priority (score 3)
+                            meaningLower.contains(queryLower) -> 3
+                            // No match = lowest priority (score 4)
+                            else -> 4
+                        }
                     }
-                    
-                    when {
-                        meaningPosition == 0 -> 0  // First meaning (highest priority)
-                        meaningPosition > 0 -> 1  // Later meanings (lower priority)
-                        else -> 2  // Query not found in meanings (lowest priority)
-                    }
+                    // Return the best (lowest) score from all meanings
+                    meaningScores.minOrNull() ?: 4
                 }
-                .thenByDescending { it.isCommon }  // Common words first within same meaning position
+                .thenBy { result ->
+                    // Secondary: position of best matching meaning (1st, 2nd, etc.)
+                    result.meanings.indexOfFirst { meaning ->
+                        meaning.lowercase().contains(queryLower)
+                    }.takeIf { it >= 0 } ?: 999
+                }
+                .thenByDescending { it.isCommon }  // Common words first
                 .thenByDescending { it.frequency }  // Higher frequency first
                 .thenBy { it.meanings.size }  // Fewer meanings first (more specific)
         )
@@ -1209,7 +1230,11 @@ class DictionaryRepository(private val context: Context) {
         val englishResults = database.searchEnglishFTS(query, limit / 2)
         
         val allResults = (japaneseResults + englishResults).map { convertFTS5ToWordResult(it) }
-        return@withContext allResults.take(limit)
+        
+        // Apply meaning-based prioritization for better English match ranking
+        val prioritizedResults = prioritizeByMeaningPosition(allResults, query)
+        
+        return@withContext prioritizedResults.take(limit)
     }
     
     /**
@@ -1307,25 +1332,42 @@ class DictionaryRepository(private val context: Context) {
     }
     
     /**
-     * FTS5 Space-separated search - Search each word individually
+     * FTS5 Space-separated search - First try as complete phrase, then individual words
      */
     private suspend fun searchFTS5SpaceSeparated(query: String, limit: Int, offset: Int = 0): List<WordResult> = withContext(Dispatchers.IO) {
         Log.d(TAG, "FTS5 Space-separated search for: '$query'")
         
         val results = mutableListOf<WordResult>()
         
-        // Split query by spaces and search each word individually
-        val words = query.split(Regex("\\s+")).filter { it.isNotBlank() }
-        Log.d(TAG, "FTS5 Space-separated: Split into ${words.size} words: ${words.joinToString(", ")}")
+        // FIRST: Try searching for the complete phrase in English meanings
+        if (isEnglishText(query)) {
+            Log.d(TAG, "FTS5 Space-separated: First trying complete phrase search for: '$query'")
+            val phraseResults = searchFTS5English(query, limit / 4, offset)
+            if (phraseResults.isNotEmpty()) {
+                Log.d(TAG, "FTS5 Space-separated: Complete phrase search returned ${phraseResults.size} results")
+                results.addAll(phraseResults)
+            }
+        }
         
-        for ((index, word) in words.withIndex()) {
-            Log.d(TAG, "FTS5 Space-separated: Searching word ${index + 1}/${words.size}: '$word'")
-            
-            val wordResults = when {
+        // THEN: Split query by spaces and search each word individually
+        val words = query.split(Regex("\\s+")).filter { it.isNotBlank() }
+        Log.d(TAG, "FTS5 Space-separated: Also searching ${words.size} individual words: ${words.joinToString(", ")}")
+        
+        // Calculate remaining limit after phrase results
+        val remainingLimit = limit - results.size
+        if (remainingLimit > 0) {
+            for ((index, word) in words.withIndex()) {
+                // Skip if we already have enough results
+                if (results.size >= limit) break
+                
+                Log.d(TAG, "FTS5 Space-separated: Searching word ${index + 1}/${words.size}: '$word'")
+                
+                val wordLimit = remainingLimit / words.size.coerceAtLeast(1)
+                val wordResults = when {
                 // Check for wildcard pattern - only for Japanese text
                 word.contains("?") && isWildcardPattern(word) && isJapaneseText(word) -> {
                     Log.d(TAG, "FTS5 Space-separated: Wildcard search for Japanese: '$word'")
-                    searchFTS5Wildcard(word, limit / words.size.coerceAtLeast(1))
+                    searchFTS5Wildcard(word, wordLimit)
                 }
                 // Handle wildcard on non-Japanese text gracefully
                 word.contains("?") && !isJapaneseText(word) -> {
@@ -1335,35 +1377,44 @@ class DictionaryRepository(private val context: Context) {
                 // Mixed script (Japanese + romaji)
                 isMixedScript(word) -> {
                     Log.d(TAG, "FTS5 Space-separated: Mixed script search for: '$word'")
-                    searchFTS5MixedScript(word, limit / words.size.coerceAtLeast(1))
+                    searchFTS5MixedScript(word, wordLimit)
                 }
                 // Pure romaji input
                 containsRomaji(word) && !isJapaneseText(word) && isLikelyJapaneseRomaji(word) -> {
                     Log.d(TAG, "FTS5 Space-separated: Parallel romaji+English search for: '$word'")
-                    searchFTS5Parallel(word, limit / words.size.coerceAtLeast(1))
+                    searchFTS5Parallel(word, wordLimit)
                 }
                 // Pure Japanese text
                 isJapaneseText(word) -> {
                     Log.d(TAG, "FTS5 Space-separated: Japanese search for: '$word'")
-                    searchFTS5Japanese(word, limit / words.size.coerceAtLeast(1))
+                    searchFTS5Japanese(word, wordLimit)
                 }
                 // English text
                 isEnglishText(word) -> {
                     Log.d(TAG, "FTS5 Space-separated: English search for: '$word'")
-                    searchFTS5English(word, limit / words.size.coerceAtLeast(1))
+                    searchFTS5English(word, wordLimit)
                 }
                 else -> {
                     Log.d(TAG, "FTS5 Space-separated: Unified search for: '$word'")
-                    searchFTS5Unified(word, limit / words.size.coerceAtLeast(1))
+                    searchFTS5Unified(word, wordLimit)
                 }
             }
             
-            // Add results without source type labels for clean UI
-            results.addAll(wordResults)
-            Log.d(TAG, "FTS5 Space-separated: Word '$word' returned ${wordResults.size} results")
+                // Filter out duplicates before adding
+                for (newResult in wordResults) {
+                    // Check if this result is already in our list
+                    val isDuplicate = results.any { existing ->
+                        existing.kanji == newResult.kanji && existing.reading == newResult.reading
+                    }
+                    if (!isDuplicate && results.size < limit) {
+                        results.add(newResult)
+                    }
+                }
+                Log.d(TAG, "FTS5 Space-separated: Word '$word' returned ${wordResults.size} results")
+            }
         }
         
-        Log.d(TAG, "FTS5 Space-separated: Total results ${results.size} from ${words.size} words")
+        Log.d(TAG, "FTS5 Space-separated: Total results ${results.size}")
         
         return@withContext results
     }
