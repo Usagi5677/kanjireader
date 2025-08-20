@@ -20,7 +20,7 @@
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="3"
+        android:layout_weight="3.3"
         android:background="@android:color/white"
         android:fillViewport="true">
 
@@ -49,24 +49,46 @@
                 android:text="みる"
                 android:textSize="20sp"
                 android:gravity="center"
-                android:textColor="@color/teal_700"
-                android:layout_marginTop="4dp" />
+                android:textColor="@color/teal_700" />
 
-            <!-- JLPT Tag Chips -->
-            <com.google.android.material.chip.ChipGroup
-                android:id="@+id/tagChipGroup"
+            <!-- Pitch Accent Section (horizontal scrollable) -->
+            <HorizontalScrollView
+                android:id="@+id/pitchAccentScrollView"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:layout_marginTop="12dp"
-                app:singleLine="false"
-                app:chipSpacing="8dp" />
+                android:scrollbars="none"
+                android:visibility="gone">
+                
+                <LinearLayout
+                    android:id="@+id/pitchAccentContainer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="start"
+                    android:orientation="horizontal"
+                    android:gravity="start" />
+                    
+            </HorizontalScrollView>
+
+            <!-- JLPT Tag Chips (horizontal scrollable) -->
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:scrollbars="none">
+                
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/tagChipGroup"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="start"
+                    app:singleLine="true"
+                    app:chipSpacing="8dp" />
+                    
+            </HorizontalScrollView>
 
             <!-- Grammar Tags (horizontal scrollable) -->
             <HorizontalScrollView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
                 android:scrollbars="none">
                 
                 <com.google.android.material.chip.ChipGroup
@@ -87,7 +109,7 @@
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="2.5"
+        android:layout_weight="2.3"
         android:background="@android:color/white"
         android:layout_marginTop="1dp">
 
@@ -123,7 +145,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="4.5"
+        android:layout_weight="4.4"
         android:orientation="vertical"
         android:background="@android:color/white"
         android:layout_marginTop="1dp">

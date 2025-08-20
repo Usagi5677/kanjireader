@@ -81,8 +81,8 @@ class DictionaryUpdateOrchestrator:
         print("Starting automated dictionary update process...")
         
         # Step 1: Download latest dictionaries 
-        print("\n[1/4] Downloading, extracting, and renaming dictionaries...")
-        jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path = self.downloader.download_latest_dictionaries()
+        print("\n[1/5] Downloading, extracting, and renaming dictionaries...")
+        jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path, accents_path = self.downloader.download_latest_dictionaries()
         
         if not jmdict_path:
             print("✗ Failed to download JMdict")
@@ -95,23 +95,33 @@ class DictionaryUpdateOrchestrator:
         print(f"✓ Files renamed and moved to {self.assets_dir}")
         
         # Step 2: Create merged kradfile from Kradical + kensaku sources
-        print("\n[2/4] Creating merged kradfile...")
+        print("\n[2/5] Creating merged kradfile...")
         if not self.preserver.create_merged_kradfile(self.downloader):
             print("✗ Failed to create merged kradfile")
             return False
         print("✓ Merged kradfile created successfully")
         
-        # Step 3: Apply custom modifications (if requested)
+        # Step 3: Process pitch accent data (if available)
+        print("\n[3/5] Processing pitch accent data...")
+        if accents_path:
+            if not self.preserver.process_accent_data():
+                print("✗ Failed to process accent data")
+                return False
+            print("✓ Pitch accent data processed successfully")
+        else:
+            print("⚠ Accent data not available, skipping")
+        
+        # Step 4: Apply custom modifications (if requested)
         if preserve_custom:
-            print("\n[3/4] Applying custom modifications...")
+            print("\n[4/5] Applying custom modifications...")
             if not self.preserver.preserve_and_apply(enhance_with_makemeahanzi=enhance_makemeahanzi):
                 print("✗ Failed to apply custom modifications")
                 return False
         else:
-            print("\n[3/4] Skipping custom modifications")
+            print("\n[4/5] Skipping custom modifications")
         
-        # Step 4: Cleanup
-        print("\n[4/4] Cleaning up temporary files...")
+        # Step 5: Cleanup
+        print("\n[5/5] Cleaning up temporary files...")
         try:
             # Remove downloaded ZIP files to save space (already done by downloader)
             print("  Temporary files cleaned up")
@@ -130,7 +140,7 @@ class DictionaryUpdateOrchestrator:
         print("\n=== Update Summary ===")
         
         # Check file sizes for single JSON files
-        assets_files = ["jmdict.json", "jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json"]
+        assets_files = ["jmdict.json", "jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json", "pitch_accents.json"]
         
         for filename in assets_files:
             filepath = self.assets_dir / filename
@@ -162,7 +172,7 @@ class DictionaryUpdateOrchestrator:
             return False
         
         # Check optional files
-        optional_files = ["jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json"]
+        optional_files = ["jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json", "pitch_accents.json"]
         for filename in optional_files:
             filepath = self.assets_dir / filename
             if filepath.exists():

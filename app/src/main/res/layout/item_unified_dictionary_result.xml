@@ -62,6 +62,13 @@
                 android:textColor="@android:color/darker_gray"
                 android:visibility="gone" />
 
+            <!-- Pitch accent view -->
+            <com.example.kanjireader.PitchAccentView
+                android:id="@+id/pitchAccentView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="gone" />
+
             <!-- Primary grammar chips -->
             <com.google.android.material.chip.ChipGroup
                 android:id="@+id/primaryChipGroup"

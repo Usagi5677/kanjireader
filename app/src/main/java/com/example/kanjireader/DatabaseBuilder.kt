@@ -670,6 +670,22 @@ private class DictionaryDatabaseHelper(context: Context) :
         db.execSQL("CREATE INDEX idx_frequency ON dictionary_entries(frequency)")
         db.execSQL("CREATE INDEX idx_common ON dictionary_entries(is_common)")
 
+        // Pitch accent table
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS pitch_accents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kanji_form TEXT NOT NULL,
+                reading TEXT NOT NULL,
+                accent_pattern TEXT NOT NULL,
+                accent_numbers TEXT NOT NULL,
+                UNIQUE(kanji_form, reading)
+            )
+        """)
+
+        // Indexes for pitch accent table
+        db.execSQL("CREATE INDEX idx_pitch_kanji_form ON pitch_accents(kanji_form)")
+        db.execSQL("CREATE INDEX idx_pitch_reading ON pitch_accents(reading)")
+
         // FTS4 table (more compatible with older Android versions)
         db.execSQL("""
             CREATE VIRTUAL TABLE english_fts USING fts4(

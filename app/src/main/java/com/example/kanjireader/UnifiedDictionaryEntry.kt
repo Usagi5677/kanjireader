@@ -14,7 +14,8 @@ data class UnifiedDictionaryEntry(
     val frequency: Int? = null,
     val sourceType: String? = null,  // For parallel search labeling
     val isJMNEDictEntry: Boolean = false,
-    val isDeinflectedResult: Boolean = false
+    val isDeinflectedResult: Boolean = false,
+    val pitchAccents: List<PitchAccent>? = null  // Pitch accent information
 )
 
 data class VariantInfo(

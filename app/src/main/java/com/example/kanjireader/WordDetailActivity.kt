@@ -8,6 +8,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.HorizontalScrollView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayout
@@ -42,6 +43,8 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
     private lateinit var toolbar: Toolbar
     private lateinit var wordText: TextView
     private lateinit var readingText: TextView
+    private lateinit var pitchAccentScrollView: HorizontalScrollView
+    private lateinit var pitchAccentContainer: LinearLayout
     private lateinit var tagChipGroup: ChipGroup
     private lateinit var primaryMeaningsText: TextView
     private lateinit var tabLayout: TabLayout
@@ -80,14 +83,16 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
     
 
     private fun initializeViews() {
-        toolbar = findViewById(R.id.toolbar)
-        wordText = findViewById(R.id.wordText)
-        readingText = findViewById(R.id.readingText)
-        tagChipGroup = findViewById(R.id.tagChipGroup)
-        grammarChipGroup = findViewById(R.id.grammarChipGroup)
-        primaryMeaningsText = findViewById(R.id.primaryMeaningsText)
-        tabLayout = findViewById(R.id.tabLayout)
-        viewPager = findViewById(R.id.viewPager)
+        toolbar = findViewById<Toolbar>(R.id.toolbar)
+        wordText = findViewById<TextView>(R.id.wordText)
+        readingText = findViewById<TextView>(R.id.readingText)
+        pitchAccentScrollView = findViewById<HorizontalScrollView>(R.id.pitchAccentScrollView)
+        pitchAccentContainer = findViewById<LinearLayout>(R.id.pitchAccentContainer)
+        tagChipGroup = findViewById<ChipGroup>(R.id.tagChipGroup)
+        grammarChipGroup = findViewById<ChipGroup>(R.id.grammarChipGroup)
+        primaryMeaningsText = findViewById<TextView>(R.id.primaryMeaningsText)
+        tabLayout = findViewById<TabLayout>(R.id.tabLayout)
+        viewPager = findViewById<ViewPager2>(R.id.viewPager)
     }
 
     private fun setupToolbar() {
@@ -205,6 +210,8 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         primaryMeaningsText.text = ""
         tagChipGroup.removeAllViews()
         grammarChipGroup.removeAllViews()
+        pitchAccentContainer.removeAllViews()
+        pitchAccentScrollView.visibility = View.GONE
         
         // Get data from intent
         val word = intent.getStringExtra("word") ?: ""
@@ -283,6 +290,8 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
                     wordResult = updatedEnhanced
                     // Pass the original search result for JMNEDict tag handling
                     displayEnhancedWordData(updatedEnhanced, exactMatch)
+                    // Fetch and display pitch accent data
+                    loadPitchAccentData(updatedEnhanced.kanji ?: updatedEnhanced.reading, updatedEnhanced.reading)
                     updateHeartIcon()
                 }
             } else {
@@ -297,6 +306,8 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
                 )
 
                 displayBasicWordData(word, reading, meanings)
+                // Also try to load pitch accent for basic data
+                loadPitchAccentData(word, reading)
                 updateHeartIcon()
             }
         }
@@ -765,6 +776,90 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         }
     }
     
+    /**
+     * Load and display pitch accent data for a word
+     */
+    private fun loadPitchAccentData(kanjiForm: String, reading: String) {
+        val repository = DictionaryRepository.getInstance(this)
+        
+        lifecycleScope.launch {
+            try {
+                // Get pitch accents from database
+                val pitchAccents: List<PitchAccent> = repository.getPitchAccents(kanjiForm, reading)
+                
+                runOnUiThread {
+                    displayPitchAccentData(pitchAccents, reading)
+                }
+                
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load pitch accent data for $kanjiForm/$reading: ${e.message}")
+            }
+        }
+    }
+    
+    /**
+     * Display pitch accent patterns in the UI
+     */
+    private fun displayPitchAccentData(pitchAccents: List<PitchAccent>, reading: String) {
+        pitchAccentContainer.removeAllViews()
+        
+        if (pitchAccents.isEmpty()) {
+            pitchAccentScrollView.visibility = View.GONE
+            return
+        }
+        
+        pitchAccentScrollView.visibility = View.VISIBLE
+        val searchQuery = intent.getStringExtra("word") // Use search context for highlighting
+        
+        // If there are multiple patterns, show each pattern separately
+        val primaryAccent = pitchAccents.first()
+        val accentNumbers = primaryAccent.accentPattern.split(",").mapNotNull { it.trim().toIntOrNull() }
+        
+        accentNumbers.forEachIndexed { index, accentNumber ->
+            val patternView = createPitchAccentPatternView(reading, accentNumber, searchQuery)
+            
+            // Add margin between patterns
+            val layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                if (index > 0) {
+                    setMargins(8.dpToPx(), 0, 0, 0)
+                }
+            }
+            patternView.layoutParams = layoutParams
+            
+            pitchAccentContainer.addView(patternView)
+        }
+    }
+    
+    /**
+     * Create a view for a single pitch accent pattern
+     */
+    private fun createPitchAccentPatternView(reading: String, accentNumber: Int, searchQuery: String?): View {
+        val inflater = LayoutInflater.from(this)
+        val patternView = inflater.inflate(R.layout.item_pitch_accent_pattern, pitchAccentContainer, false)
+        
+        val pitchAccentView = patternView.findViewById<PitchAccentView>(R.id.pitchAccentView)
+        val patternTypeText = patternView.findViewById<TextView>(R.id.patternTypeText)
+        
+        // Create single accent for this pattern
+        val singleAccent = PitchAccent(
+            kanjiForm = reading,
+            reading = reading, 
+            accentNumbers = listOf(accentNumber),
+            accentPattern = accentNumber.toString()
+        )
+        
+        // Set pitch accent with search highlighting
+        pitchAccentView.setPitchAccents(listOf(singleAccent), reading, searchQuery)
+        
+        // Hide pattern labels - the visual pitch accent is clear enough
+        patternTypeText.visibility = View.GONE
+        
+        return patternView
+    }
+
     /**
      * Custom ViewPager callback that can be controlled to disable automatic search
      */

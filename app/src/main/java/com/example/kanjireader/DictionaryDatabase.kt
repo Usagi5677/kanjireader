@@ -71,6 +71,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         const val TABLE_KANJI_RADICAL_MAPPING = "kanji_radical_mapping"
         const val TABLE_RADICAL_KANJI_MAPPING = "radical_kanji_mapping"
         const val TABLE_RADICAL_DECOMPOSITION_MAPPING = "radical_decomposition_mapping"
+        const val TABLE_PITCH_ACCENTS = "pitch_accents"
         const val COL_ID = "id"
         const val COL_KANJI = "kanji"
         const val COL_READING = "reading"
@@ -96,6 +97,11 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         const val COL_RDM_RADICAL = "radical"
         const val COL_RDM_COMPONENTS = "components"
         const val COL_RDM_COMPONENT_COUNT = "component_count"
+        
+        // Pitch accent table columns
+        const val COL_PA_KANJI_FORM = "kanji_form"
+        const val COL_PA_READING = "reading"
+        const val COL_PA_ACCENT_PATTERN = "accent_pattern"
 
         // FTS Table names and columns
         // Note: FTS columns are implicitly part of the FTS table definition,
@@ -279,6 +285,16 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 $COL_RDM_RADICAL TEXT PRIMARY KEY,
                 $COL_RDM_COMPONENTS TEXT NOT NULL,
                 $COL_RDM_COMPONENT_COUNT INTEGER NOT NULL
+            )
+        """
+        
+        private const val CREATE_PITCH_ACCENTS_TABLE = """
+            CREATE TABLE IF NOT EXISTS $TABLE_PITCH_ACCENTS (
+                $COL_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $COL_PA_KANJI_FORM TEXT NOT NULL,
+                $COL_PA_READING TEXT NOT NULL,
+                $COL_PA_ACCENT_PATTERN TEXT NOT NULL,
+                UNIQUE($COL_PA_KANJI_FORM, $COL_PA_READING)
             )
         """
         
@@ -493,10 +509,15 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             db.execSQL(CREATE_RADICAL_DECOMPOSITION_MAPPING_TABLE)
             Log.d(TAG, "✅ STEP 7 COMPLETE: Kanji radical mapping tables created")
 
-            // Step 8: Verify table creation (empty tables expected)
-            Log.d(TAG, "STEP 8: Verifying table creation...")
+            // Step 8: Create pitch accent table
+            Log.d(TAG, "STEP 8: Creating pitch accent table...")
+            db.execSQL(CREATE_PITCH_ACCENTS_TABLE)
+            Log.d(TAG, "✅ STEP 8 COMPLETE: Pitch accent table created")
+
+            // Step 9: Verify table creation (empty tables expected)
+            Log.d(TAG, "STEP 9: Verifying table creation...")
             verifyTableCreation(db)
-            Log.d(TAG, "✅ STEP 8 COMPLETE: Table verification done")
+            Log.d(TAG, "✅ STEP 9 COMPLETE: Table verification done")
 
             Log.d(TAG, "📝 NOTE: FTS tables are empty - call ensureFTSDataPopulated() after asset copy")
 
@@ -2034,6 +2055,84 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         return calculateKanjiCommonalityScoresBatch(listOf(kanji), kanjiMap)[kanji] ?: 0
     }
 
+    /**
+     * Get pitch accent data for a specific word and reading
+     */
+    fun getPitchAccents(kanjiForm: String, reading: String): List<PitchAccent> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_PITCH_ACCENTS,
+            null,
+            "$COL_PA_KANJI_FORM = ? AND $COL_PA_READING = ?",
+            arrayOf(kanjiForm, reading),
+            null, null, null
+        )
+        
+        val results = mutableListOf<PitchAccent>()
+        cursor.use {
+            while (it.moveToNext()) {
+                val accentPattern = it.getString(it.getColumnIndexOrThrow(COL_PA_ACCENT_PATTERN))
+                
+                // Parse accent numbers from comma-separated pattern string
+                val accentNumbers = try {
+                    accentPattern.split(",").mapNotNull { it.trim().toIntOrNull() }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing accent pattern: $accentPattern", e)
+                    emptyList<Int>()
+                }
+                
+                results.add(
+                    PitchAccent(
+                        kanjiForm = kanjiForm,
+                        reading = reading,
+                        accentNumbers = accentNumbers,
+                        accentPattern = accentPattern
+                    )
+                )
+            }
+        }
+        return results
+    }
+    
+    /**
+     * Get all pitch accent variations for a word (regardless of specific reading)
+     */
+    fun getAllPitchAccentsForWord(kanjiForm: String): List<PitchAccent> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_PITCH_ACCENTS,
+            null,
+            "$COL_PA_KANJI_FORM = ?",
+            arrayOf(kanjiForm),
+            null, null, null
+        )
+        
+        val results = mutableListOf<PitchAccent>()
+        cursor.use {
+            while (it.moveToNext()) {
+                val reading = it.getString(it.getColumnIndexOrThrow(COL_PA_READING))
+                val accentPattern = it.getString(it.getColumnIndexOrThrow(COL_PA_ACCENT_PATTERN))
+                
+                // Parse accent numbers from comma-separated pattern string
+                val accentNumbers = try {
+                    accentPattern.split(",").mapNotNull { it.trim().toIntOrNull() }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing accent pattern: $accentPattern", e)
+                    emptyList<Int>()
+                }
+                
+                results.add(
+                    PitchAccent(
+                        kanjiForm = kanjiForm,
+                        reading = reading,
+                        accentNumbers = accentNumbers,
+                        accentPattern = accentPattern
+                    )
+                )
+            }
+        }
+        return results
+    }
 }
 
 // ==================================================================

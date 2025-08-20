@@ -40,6 +40,9 @@ class DictionaryDownloader:
         
         # Backup URL for additional kanji coverage from kensaku repository
         self.kensaku_kradfile_url = "https://raw.githubusercontent.com/jmettraux/kensaku/master/data/kradfile-u"
+        
+        # Direct URL for pitch accent data from Kanjium repository
+        self.kanjium_accents_url = "https://raw.githubusercontent.com/mifunetoshiro/kanjium/master/data/source_files/raw/accents.txt"
     
     def get_latest_release_info(self) -> Optional[Dict]:
         """Get information about the latest release from GitHub API"""
@@ -282,6 +285,33 @@ class DictionaryDownloader:
         
         return new_format
     
+    def download_kanjium_accents(self) -> Optional[Path]:
+        """Download pitch accent data from Kanjium repository"""
+        try:
+            print("Downloading pitch accent data from Kanjium repository...")
+            response = requests.get(self.kanjium_accents_url, timeout=60)  # Larger file needs more time
+            response.raise_for_status()
+            
+            # Save raw text file to assets directory as accents.txt
+            accents_path = self.assets_dir / "accents.txt"
+            with open(accents_path, 'w', encoding='utf-8') as f:
+                f.write(response.text)
+            
+            # Count lines for verification
+            line_count = len(response.text.strip().split('\n'))
+            
+            print(f"✅ Downloaded pitch accent data to {accents_path}")
+            print(f"   Found {line_count} entries")
+            
+            return accents_path
+            
+        except requests.RequestException as e:
+            print(f"❌ Error downloading accent data from Kanjium: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ Error saving accent data: {e}")
+            return None
+    
     def find_target_assets(self, release_data: Dict) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
         """Find the jmdict-eng, kanjidic2-en, jmnedict ZIP file URLs (kradfile from kensaku, radkfile from Kradical)"""
         jmdict_url = None
@@ -462,10 +492,10 @@ class DictionaryDownloader:
         except OSError as e:
             print(f"Warning: Could not clean up downloads: {e}")
     
-    def download_latest_dictionaries(self, cleanup: bool = True) -> Tuple[Optional[Path], Optional[Path], Optional[Path], Optional[Path], Optional[Path]]:
+    def download_latest_dictionaries(self, cleanup: bool = True) -> Tuple[Optional[Path], Optional[Path], Optional[Path], Optional[Path], Optional[Path], Optional[Path]]:
         """
         Main method to download and extract the latest dictionaries
-        Returns: (jmdict_json_path, kanjidic_json_path, jmnedict_json_path, kradfile_json_path, radkfile_json_path)
+        Returns: (jmdict_json_path, kanjidic_json_path, jmnedict_json_path, kradfile_json_path, radkfile_json_path, accents_txt_path)
         """
         print("=== Dictionary Update System ===")
         print("Downloading latest dictionaries from jmdict-simplified...")
@@ -509,6 +539,9 @@ class DictionaryDownloader:
         # Download complete radkfile from Kradical repository
         radkfile_path = self.download_kradical_radkfile()
         
+        # Download pitch accent data from Kanjium repository
+        accents_path = self.download_kanjium_accents()
+        
         # Cleanup if requested
         if cleanup:
             self.cleanup_downloads()
@@ -541,7 +574,12 @@ class DictionaryDownloader:
         else:
             print("Radkfile (from Kradical): Failed to download")
         
-        return jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path
+        if accents_path:
+            print(f"Pitch Accents (from Kanjium): {accents_path}")
+        else:
+            print("Pitch Accents (from Kanjium): Failed to download")
+        
+        return jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path, accents_path
 
 
 def main():
@@ -559,20 +597,20 @@ def main():
     args = parser.parse_args()
     
     downloader = DictionaryDownloader(args.dir, args.assets_dir)
-    jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path = downloader.download_latest_dictionaries(
+    jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path, accents_path = downloader.download_latest_dictionaries(
         cleanup=not args.no_cleanup
     )
     
     # Exit with appropriate code
-    downloaded_count = sum(1 for path in [jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path] if path)
+    downloaded_count = sum(1 for path in [jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path, accents_path] if path)
     
-    if downloaded_count == 5:
-        print("\n✓ All dictionaries downloaded successfully!")
+    if downloaded_count == 6:
+        print("\n✓ All dictionaries and accent data downloaded successfully!")
         sys.exit(0)
-    elif downloaded_count >= 3:
+    elif downloaded_count >= 4:
         print("\n⚠ Partial success - most dictionaries downloaded")
         sys.exit(1)
-    elif downloaded_count >= 1:
+    elif downloaded_count >= 2:
         print("\n⚠ Limited success - some dictionaries downloaded")
         sys.exit(1)
     else:

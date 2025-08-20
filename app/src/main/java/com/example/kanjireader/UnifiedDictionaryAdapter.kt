@@ -55,6 +55,7 @@ class UnifiedDictionaryAdapter(
     inner class UnifiedViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val primaryKanjiText: TextView = itemView.findViewById(R.id.primaryKanjiText)
         private val primaryReadingText: TextView = itemView.findViewById(R.id.primaryReadingText)
+        private val pitchAccentView: PitchAccentView = itemView.findViewById(R.id.pitchAccentView)
         private val primaryChipGroup: ChipGroup = itemView.findViewById(R.id.primaryChipGroup)
         private val variantsContainer: LinearLayout = itemView.findViewById(R.id.variantsContainer)
         private val meaningsText: TextView = itemView.findViewById(R.id.meaningsText)
@@ -64,15 +65,25 @@ class UnifiedDictionaryAdapter(
             // Clear any previous dynamic views
             variantsContainer.removeAllViews()
 
-            // Set primary form with highlighting
-            primaryKanjiText.text = highlightSearchText(entry.primaryForm, searchQuery)
-
-            // Show reading if different from primary form
-            if (entry.primaryReading != null && entry.primaryReading != entry.primaryForm) {
-                primaryReadingText.text = highlightSearchText(entry.primaryReading, searchQuery)
-                primaryReadingText.visibility = View.VISIBLE
+            // Show pitch accent if available, otherwise show regular reading
+            if (!entry.pitchAccents.isNullOrEmpty() && entry.primaryReading != null) {
+                // Set primary form with highlighting
+                primaryKanjiText.text = highlightSearchText(entry.primaryForm, searchQuery)
+                // Pass search query to pitch accent view for hiragana highlighting
+                pitchAccentView.setPitchAccents(entry.pitchAccents, entry.primaryReading, searchQuery)
+                pitchAccentView.visibility = View.VISIBLE
+                primaryReadingText.visibility = View.GONE // Hide regular reading since pitch accent view shows it
             } else {
-                primaryReadingText.visibility = View.GONE
+                // Set primary form with highlighting when no pitch accent
+                primaryKanjiText.text = highlightSearchText(entry.primaryForm, searchQuery)
+                pitchAccentView.visibility = View.GONE
+                // Show reading if different from primary form
+                if (entry.primaryReading != null && entry.primaryReading != entry.primaryForm) {
+                    primaryReadingText.text = highlightSearchText(entry.primaryReading, searchQuery)
+                    primaryReadingText.visibility = View.VISIBLE
+                } else {
+                    primaryReadingText.visibility = View.GONE
+                }
             }
 
             // Add primary tags

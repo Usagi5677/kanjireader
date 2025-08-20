@@ -1708,6 +1708,20 @@ class DictionaryRepository(private val context: Context) {
     }
     
     /**
+     * Get pitch accent data for a word
+     */
+    suspend fun getPitchAccents(kanjiForm: String, reading: String): List<PitchAccent> = withContext(Dispatchers.IO) {
+        return@withContext database.getPitchAccents(kanjiForm, reading)
+    }
+    
+    /**
+     * Get all pitch accent variations for a word (any reading)
+     */
+    suspend fun getAllPitchAccentsForWord(kanjiForm: String): List<PitchAccent> = withContext(Dispatchers.IO) {
+        return@withContext database.getAllPitchAccentsForWord(kanjiForm)
+    }
+    
+    /**
      * Legacy combined search - tries both Japanese and English using HashMap
      * Kept for fallback purposes when FTS5 is not available
      */

@@ -11,6 +11,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 
 class DictionaryViewModel(application: Application) : AndroidViewModel(application), DictionaryStateObserver {
 
@@ -205,18 +207,30 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                     // Use the database flag to determine if we should show deinflection info
                     val shouldShowDeinflection = wordResult.isDeinflectedValidConjugation
                     
+                    // Get pitch accent data from database
+                    val pitchAccents: List<PitchAccent> = try {
+                        withContext(Dispatchers.IO) {
+                            val kanjiForm = wordResult.kanji ?: wordResult.reading
+                            repository.getPitchAccents(kanjiForm, wordResult.reading)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to fetch pitch accents for ${wordResult.kanji ?: wordResult.reading}: ${e.message}")
+                        emptyList<PitchAccent>()
+                    }
+                    
                     UnifiedDictionaryEntry(
                         primaryForm = wordResult.kanji ?: wordResult.reading,
                         primaryReading = wordResult.reading,
                         meanings = wordResult.meanings,
-                        primaryTags = emptyList(), // WordResult doesn't have partOfSpeech
-                        variants = emptyList(),
+                        primaryTags = emptyList<String>(), // WordResult doesn't have partOfSpeech
+                        variants = emptyList<VariantInfo>(),
                         isCommon = wordResult.isCommon,
                         verbType = if (shouldShowDeinflection) deinflectionInfo?.verbType?.toString() else null,
                         conjugationInfo = if (shouldShowDeinflection) deinflectionInfo?.originalForm else null,
                         frequency = if (wordResult.frequency > 0) wordResult.frequency else null,
                         isJMNEDictEntry = wordResult.isJMNEDictEntry,
-                        isDeinflectedResult = wordResult.isDeinflectedValidConjugation
+                        isDeinflectedResult = wordResult.isDeinflectedValidConjugation,
+                        pitchAccents = pitchAccents.takeIf { it.isNotEmpty() }
                     )
                 }
                 
@@ -420,16 +434,30 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                 if (moreResults.isNotEmpty()) {
                     // Convert more results directly (no grouper)
                     val groupedMoreResults: List<UnifiedDictionaryEntry> = moreResults.map { wordResult ->
+                        // Fetch pitch accent data asynchronously to avoid UI blocking
+                        val pitchAccents: List<PitchAccent> = try {
+                            withContext(Dispatchers.IO) {
+                                val kanjiForm = wordResult.kanji ?: wordResult.reading
+                                repository.getPitchAccents(kanjiForm, wordResult.reading)
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to fetch pitch accents for ${wordResult.kanji ?: wordResult.reading}: ${e.message}")
+                            emptyList<PitchAccent>()
+                        }
+                        
                         UnifiedDictionaryEntry(
                             primaryForm = wordResult.kanji ?: wordResult.reading,
                             primaryReading = wordResult.reading,
                             meanings = wordResult.meanings,
-                            primaryTags = emptyList(),
-                            variants = emptyList(),
+                            primaryTags = emptyList<String>(),
+                            variants = emptyList<VariantInfo>(),
                             isCommon = wordResult.isCommon,
                             verbType = null, // Could get from cache if needed
                             conjugationInfo = null,
-                            frequency = if (wordResult.frequency > 0) wordResult.frequency else null
+                            frequency = if (wordResult.frequency > 0) wordResult.frequency else null,
+                            isJMNEDictEntry = wordResult.isJMNEDictEntry,
+                            isDeinflectedResult = wordResult.isDeinflectedValidConjugation,
+                            pitchAccents = pitchAccents.takeIf { it.isNotEmpty() }
                         )
                     }
                     

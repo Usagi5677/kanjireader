@@ -245,6 +245,21 @@ class DatabaseBuilder:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_word_tags_entry ON word_tags(entry_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_word_tags_tag ON word_tags(tag)")
 
+        # Pitch accent table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pitch_accents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kanji_form TEXT NOT NULL,
+                reading TEXT NOT NULL,
+                accent_pattern TEXT NOT NULL,
+                UNIQUE(kanji_form, reading)
+            )
+        """)
+
+        # Create indexes for pitch accent table
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pitch_kanji ON pitch_accents(kanji_form)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pitch_reading ON pitch_accents(reading)")
+
         print("✅ Dictionary database schema created")
 
         # Create KanjiDic tables in the same database
@@ -553,6 +568,59 @@ class DatabaseBuilder:
 
         conn.commit()
         print(f"✅ Added {len(tag_definitions)} tag definitions")
+
+    def populate_pitch_accents(self, conn: sqlite3.Connection) -> None:
+        """Populate pitch accent table from accents.json"""
+        cursor = conn.cursor()
+        
+        accents_file = os.path.join(os.path.dirname(__file__), 'app', 'src', 'main', 'assets', 'accents.json')
+        
+        if not os.path.exists(accents_file):
+            print("⚠️  accents.json not found, skipping pitch accent data")
+            return
+            
+        print("🎵 Populating pitch accent data...")
+        
+        try:
+            with open(accents_file, 'r', encoding='utf-8') as f:
+                accent_data = json.load(f)
+            
+            if 'accents' not in accent_data:
+                print("❌ Invalid accent data format")
+                return
+                
+            count = 0
+            skipped = 0
+            
+            for kanji_form, readings_dict in accent_data['accents'].items():
+                for reading, accent_numbers in readings_dict.items():
+                    try:
+                        # Create accent pattern string (e.g., "1,2" for multiple patterns)
+                        accent_pattern = ','.join(map(str, accent_numbers))
+                        
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO pitch_accents 
+                            (kanji_form, reading, accent_pattern)
+                            VALUES (?, ?, ?)
+                        """, (kanji_form, reading, accent_pattern))
+                        
+                        count += 1
+                        
+                        if count % 10000 == 0:
+                            print(f"   📊 Processed {count:,} accent entries...")
+                            
+                    except Exception as e:
+                        print(f"   ⚠️  Skipping accent entry {kanji_form}:{reading} - {e}")
+                        skipped += 1
+                        continue
+            
+            conn.commit()
+            print(f"✅ Added {count:,} pitch accent entries")
+            if skipped > 0:
+                print(f"   ⚠️  Skipped {skipped} invalid entries")
+                
+        except Exception as e:
+            print(f"❌ Error loading pitch accent data: {e}")
 
     def normalize_romaji(self, text: str) -> str:
         """
@@ -1825,6 +1893,10 @@ class DatabaseBuilder:
             # Populate tag definitions (JMdict POS tags and JMnedict types)
             print("🏷️  Populating tag definitions...")
             self.populate_tag_definitions(conn)
+
+            # Populate pitch accent data
+            print("🎵 Populating pitch accent data...")
+            self.populate_pitch_accents(conn)
 
             # Process KANJI and RADICAL data FIRST (faster to test)
             print("\n" + "="*50)

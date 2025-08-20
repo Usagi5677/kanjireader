@@ -662,6 +662,150 @@ class ModificationPreserver:
         
         return success
     
+    def parse_accent_file(self, accents_path: Path) -> Dict[str, Dict[str, List[int]]]:
+        """
+        Parse accents.txt file from Kanjium into structured data
+        
+        Args:
+            accents_path: Path to the accents.txt file
+            
+        Returns:
+            Dictionary mapping kanji forms to readings and their accent patterns
+            Format: {"見る": {"みる": [1]}, "見よう見まね": {"みようみまね": [2, 4]}}
+        """
+        accent_data = {}
+        parsed_count = 0
+        error_count = 0
+        
+        print(f"Parsing accent data from {accents_path}...")
+        
+        try:
+            with open(accents_path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    try:
+                        # Split by whitespace and filter empty strings
+                        parts = [part for part in line.split() if part]
+                        
+                        if len(parts) >= 3:
+                            kanji_form = parts[0]
+                            reading = parts[1]
+                            accent_str = parts[2]
+                            
+                            # Parse accent numbers, handling part-of-speech annotations
+                            # Format examples: "0", "1,2", "(副)0,(名)3", "0,2"
+                            accent_numbers = []
+                            
+                            # Remove part-of-speech annotations in parentheses
+                            # Pattern to match (part-of-speech) prefixes like (副), (名), etc.
+                            clean_accent_str = re.sub(r'\([^)]*\)', '', accent_str)
+                            
+                            # Split by comma and extract valid numbers
+                            for part in clean_accent_str.split(','):
+                                part = part.strip()
+                                if part.isdigit():
+                                    accent_numbers.append(int(part))
+                            
+                            if accent_numbers:
+                                # Add to structured data as list of numbers
+                                if kanji_form not in accent_data:
+                                    accent_data[kanji_form] = {}
+                                accent_data[kanji_form][reading] = accent_numbers
+                                parsed_count += 1
+                        else:
+                            error_count += 1
+                            if error_count <= 5:  # Only show first few errors
+                                print(f"  Warning: Invalid line {line_num}: {line}")
+                    
+                    except Exception as e:
+                        error_count += 1
+                        if error_count <= 5:
+                            print(f"  Warning: Parse error line {line_num}: {e}")
+        
+        except Exception as e:
+            print(f"❌ Error reading accent file: {e}")
+            return {}
+        
+        print(f"✅ Parsed accent data:")
+        print(f"   - Total entries: {parsed_count}")
+        print(f"   - Unique kanji forms: {len(accent_data)}")
+        print(f"   - Parse errors: {error_count}")
+        
+        return accent_data
+    
+    def create_accent_json(self, accent_data: Dict[str, Dict[str, List[int]]]) -> bool:
+        """
+        Create accents.json file from parsed accent data
+        
+        Args:
+            accent_data: Structured accent data
+            
+        Returns:
+            bool: Success status
+        """
+        if not accent_data:
+            print("❌ No accent data to process")
+            return False
+        
+        # Create structured JSON format
+        accent_json = {
+            "version": f"kanjium-{datetime.now().strftime('%Y%m%d')}",
+            "accents": accent_data
+        }
+        
+        # Save to assets directory
+        accents_json_path = self.assets_dir / "accents.json"
+        
+        try:
+            with open(accents_json_path, 'w', encoding='utf-8') as f:
+                json.dump(accent_json, f, ensure_ascii=False, separators=(',', ':'))
+            
+            print(f"✅ Created accents.json: {accents_json_path}")
+            print(f"   - Version: {accent_json['version']}")
+            print(f"   - Entries: {len(accent_data)}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error creating accents.json: {e}")
+            return False
+    
+    def process_accent_data(self) -> bool:
+        """
+        Process accent data: parse accents.txt and create accents.json
+        
+        Returns:
+            bool: Success status
+        """
+        print("=== Processing Pitch Accent Data ===")
+        
+        # Check if accents.txt exists
+        accents_txt_path = self.assets_dir / "accents.txt"
+        if not accents_txt_path.exists():
+            print(f"❌ accents.txt not found at {accents_txt_path}")
+            return False
+        
+        # Parse the accent file
+        accent_data = self.parse_accent_file(accents_txt_path)
+        if not accent_data:
+            return False
+        
+        # Create structured JSON file
+        success = self.create_accent_json(accent_data)
+        
+        # Clean up the raw text file to save space
+        if success:
+            try:
+                accents_txt_path.unlink()
+                print(f"🧹 Cleaned up raw accent file: {accents_txt_path}")
+            except Exception as e:
+                print(f"Warning: Could not clean up accent file: {e}")
+        
+        return success
+    
     def create_merged_kradfile(self, downloader_instance) -> bool:
         """
         Create merged kradfile using downloader instance to get both data sources
@@ -835,8 +979,8 @@ class ModificationPreserver:
         if new_files_dir:
             print("Copying new dictionary files...")
             
-            # Single JSON files
-            dictionary_files = ["jmdict.json", "jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json"]
+            # Single JSON files and text files
+            dictionary_files = ["jmdict.json", "jmnedict.json", "kanjidic.json", "kradfile.json", "radkfile.json", "accents.txt"]
             
             for filename in dictionary_files:
                 source = new_files_dir / filename
@@ -847,6 +991,8 @@ class ModificationPreserver:
                     print(f"  Copied {filename}")
                 else:
                     print(f"  Warning: {filename} not found in new files")
+        
+        # Note: Accent data processing is now handled separately in update workflow
         
         # Apply custom modifications
         print("Applying custom modifications...")
@@ -894,6 +1040,9 @@ def main():
     # Enhance makemeahanzi command
     enhance_parser = subparsers.add_parser('enhance-makemeahanzi', help='Enhance radkfile with makemeahanzi decomposition data')
     
+    # Process accents command
+    accents_parser = subparsers.add_parser('process-accents', help='Process pitch accent data from accents.txt to accents.json')
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -928,6 +1077,10 @@ def main():
     
     elif args.command == 'enhance-makemeahanzi':
         success = preserver.integrate_makemeahanzi_data()
+        sys.exit(0 if success else 1)
+    
+    elif args.command == 'process-accents':
+        success = preserver.process_accent_data()
         sys.exit(0 if success else 1)
 
 
