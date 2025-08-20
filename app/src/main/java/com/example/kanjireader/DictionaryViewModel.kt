@@ -207,7 +207,9 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                     // Use the database flag to determine if we should show deinflection info
                     val shouldShowDeinflection = wordResult.isDeinflectedValidConjugation
                     
+                    // TEMPORARILY DISABLED: Pitch accent fetching for performance testing
                     // Get pitch accent data from database
+                    /*
                     val pitchAccents: List<PitchAccent> = try {
                         withContext(Dispatchers.IO) {
                             val kanjiForm = wordResult.kanji ?: wordResult.reading
@@ -217,6 +219,8 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                         Log.w(TAG, "Failed to fetch pitch accents for ${wordResult.kanji ?: wordResult.reading}: ${e.message}")
                         emptyList<PitchAccent>()
                     }
+                    */
+                    val pitchAccents: List<PitchAccent> = emptyList() // Temporarily disabled
                     
                     UnifiedDictionaryEntry(
                         primaryForm = wordResult.kanji ?: wordResult.reading,
@@ -434,7 +438,9 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                 if (moreResults.isNotEmpty()) {
                     // Convert more results directly (no grouper)
                     val groupedMoreResults: List<UnifiedDictionaryEntry> = moreResults.map { wordResult ->
+                        // TEMPORARILY DISABLED: Pitch accent fetching for performance testing
                         // Fetch pitch accent data asynchronously to avoid UI blocking
+                        /*
                         val pitchAccents: List<PitchAccent> = try {
                             withContext(Dispatchers.IO) {
                                 val kanjiForm = wordResult.kanji ?: wordResult.reading
@@ -444,6 +450,8 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                             Log.w(TAG, "Failed to fetch pitch accents for ${wordResult.kanji ?: wordResult.reading}: ${e.message}")
                             emptyList<PitchAccent>()
                         }
+                        */
+                        val pitchAccents: List<PitchAccent> = emptyList() // Temporarily disabled
                         
                         UnifiedDictionaryEntry(
                             primaryForm = wordResult.kanji ?: wordResult.reading,

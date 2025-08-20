@@ -105,47 +105,37 @@
 
     </androidx.core.widget.NestedScrollView>
 
-    <!-- Middle: Scrollable Meanings Section (25%) -->
-    <androidx.core.widget.NestedScrollView
+    <!-- Middle: Meanings/Variants Tabbed Section (25%) -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="2.3"
+        android:layout_weight="2.5"
+        android:orientation="vertical"
         android:background="@android:color/white"
         android:layout_marginTop="1dp">
 
-        <LinearLayout
+        <!-- Middle Section Tab Layout -->
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/middleTabLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
+            app:tabMode="fixed"
+            app:tabGravity="fill" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Meanings"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="@android:color/black"
-                android:layout_marginBottom="8dp" />
+        <!-- Middle Section ViewPager -->
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/middleViewPager"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
 
-            <TextView
-                android:id="@+id/primaryMeaningsText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="1. to see; to look at\n2. to examine\n3. to look over"
-                android:textSize="16sp"
-                android:lineSpacingExtra="6dp"
-                android:textColor="@android:color/black" />
-
-        </LinearLayout>
-
-    </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
 
     <!-- Bottom: Fixed Tabs Section (45%) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="4.4"
+        android:layout_weight="4.2"
         android:orientation="vertical"
         android:background="@android:color/white"
         android:layout_marginTop="1dp">
@@ -156,7 +146,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:tabMode="fixed"
-            app:tabGravity="fill" />
+            app:tabGravity="fill"
+ />
 
         <!-- ViewPager for Tab Content -->
         <androidx.viewpager2.widget.ViewPager2

@@ -111,6 +111,73 @@ class TagDictSQLiteLoader(private val context: Context) {
     }
     
     /**
+     * Get ALL tags (including form-level tags like rK, iK) for kanji+reading combination without filtering
+     */
+    fun getAllTagsForKanjiReadingWithJMnedict(kanji: String?, reading: String, isJMNEDictEntry: Boolean): List<String> {
+        return try {
+            // Find entry IDs for exact kanji+reading+JMnedict match
+            val entryIds = findEntryIdsForKanjiReadingWithJMnedict(kanji, reading, isJMNEDictEntry)
+            if (entryIds.isNotEmpty()) {
+                // Get all tags from matching entries
+                val allTags = mutableSetOf<String>()
+                for (entryId in entryIds) {
+                    // Get tags from word_tags table
+                    val tags = getTagsForEntry(entryId)
+                    allTags.addAll(tags)
+                    
+                    // Also get tags from parts_of_speech column in dictionary_entries
+                    val posTagsFromEntry = getPartsOfSpeechFromEntry(entryId)
+                    allTags.addAll(posTagsFromEntry)
+                }
+                allTags.toList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get all tags for kanji='$kanji', reading='$reading', isJMNEDict=$isJMNEDictEntry", e)
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get parts of speech tags from the dictionary_entries table
+     */
+    private fun getPartsOfSpeechFromEntry(entryId: Long): List<String> {
+        return try {
+            val db = database.readableDatabase
+            val cursor = db.query(
+                DictionaryDatabase.TABLE_ENTRIES,
+                arrayOf(DictionaryDatabase.COL_PARTS_OF_SPEECH),
+                "${DictionaryDatabase.COL_ID} = ?",
+                arrayOf(entryId.toString()),
+                null, null, null
+            )
+            
+            val tags = mutableListOf<String>()
+            cursor.use {
+                if (it.moveToFirst()) {
+                    val partsOfSpeechJson = it.getString(0)
+                    if (!partsOfSpeechJson.isNullOrEmpty() && partsOfSpeechJson != "null") {
+                        try {
+                            // Parse JSON array of parts of speech
+                            val jsonArray = org.json.JSONArray(partsOfSpeechJson)
+                            for (i in 0 until jsonArray.length()) {
+                                tags.add(jsonArray.getString(i))
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to parse parts_of_speech JSON for entry $entryId: $partsOfSpeechJson", e)
+                        }
+                    }
+                }
+            }
+            tags
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get parts of speech for entry ID: $entryId", e)
+            emptyList()
+        }
+    }
+    
+    /**
      * Get all tags for a specific entry ID
      */
     private fun getTagsForEntry(entryId: Long): List<String> {

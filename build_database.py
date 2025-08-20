@@ -255,10 +255,28 @@ class DatabaseBuilder:
                 UNIQUE(kanji_form, reading)
             )
         """)
+        
+        # Word variants table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS word_variants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                jmdict_id TEXT NOT NULL,
+                primary_kanji TEXT NOT NULL,
+                variant_kanji TEXT NOT NULL,
+                reading TEXT NOT NULL,
+                meaning TEXT,
+                UNIQUE(primary_kanji, variant_kanji, reading)
+            )
+        """)
 
         # Create indexes for pitch accent table
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pitch_kanji ON pitch_accents(kanji_form)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pitch_reading ON pitch_accents(reading)")
+        
+        # Create indexes for word variants table
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_wv_primary ON word_variants(primary_kanji)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_wv_variant ON word_variants(variant_kanji)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_wv_jmdict ON word_variants(jmdict_id)")
 
         print("✅ Dictionary database schema created")
 
@@ -621,6 +639,81 @@ class DatabaseBuilder:
                 
         except Exception as e:
             print(f"❌ Error loading pitch accent data: {e}")
+    
+    def populate_word_variants(self, conn: sqlite3.Connection) -> None:
+        """Populate word variants table from jmdict.json"""
+        cursor = conn.cursor()
+        
+        jmdict_file = os.path.join(os.path.dirname(__file__), 'app', 'src', 'main', 'assets', 'jmdict.json')
+        
+        if not os.path.exists(jmdict_file):
+            print("⚠️  jmdict.json not found, skipping word variants")
+            return
+        
+        print("🔗 Populating word variants...")
+        
+        try:
+            with open(jmdict_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            count = 0
+            bidirectional_count = 0
+            skipped = 0
+            
+            for entry in data['words']:
+                # Only process entries with multiple kanji forms (variants)
+                if 'kanji' in entry and len(entry['kanji']) > 1:
+                    jmdict_id = entry.get('id', 'unknown')
+                    
+                    # Get the first reading and meaning for the variants
+                    reading = entry['kana'][0]['text'] if 'kana' in entry and entry['kana'] else ''
+                    
+                    # Get first meaning
+                    meaning = ''
+                    if 'sense' in entry and entry['sense']:
+                        for sense in entry['sense']:
+                            if 'gloss' in sense:
+                                for gloss in sense['gloss']:
+                                    if 'text' in gloss:
+                                        meaning = gloss['text']
+                                        break
+                                if meaning:
+                                    break
+                    
+                    # Extract all kanji forms
+                    kanji_forms = [k['text'] for k in entry['kanji']]
+                    
+                    # Create bidirectional variant relationships
+                    # Each kanji form is linked to all other forms as variants
+                    for i, primary_kanji in enumerate(kanji_forms):
+                        for j, variant_kanji in enumerate(kanji_forms):
+                            if i != j:  # Don't link a word to itself
+                                try:
+                                    cursor.execute("""
+                                        INSERT OR IGNORE INTO word_variants 
+                                        (jmdict_id, primary_kanji, variant_kanji, reading, meaning)
+                                        VALUES (?, ?, ?, ?, ?)
+                                    """, (jmdict_id, primary_kanji, variant_kanji, reading, meaning))
+                                    
+                                    bidirectional_count += 1
+                                    
+                                except Exception as e:
+                                    # Skip duplicates or errors
+                                    skipped += 1
+                                    continue
+                    
+                    count += 1
+                    
+                    if count % 1000 == 0:
+                        print(f"   📊 Processed {count:,} variant groups ({bidirectional_count:,} relationships)...")
+            
+            conn.commit()
+            print(f"✅ Added {count:,} variant groups with {bidirectional_count:,} bidirectional relationships")
+            if skipped > 0:
+                print(f"   ⚠️  Skipped {skipped} duplicate entries")
+            
+        except Exception as e:
+            print(f"❌ Error loading word variants: {e}")
 
     def normalize_romaji(self, text: str) -> str:
         """
@@ -873,25 +966,31 @@ class DatabaseBuilder:
                     # Find the kanji entry object for this text
                     kanji_entry = next((k for k in kanji_entries if k['text'] == kanji_text), {})
                     kanji_common = kanji_entry.get('common', False)
+                    kanji_tags = kanji_entry.get('tags', [])  # Extract kanji-level tags (rK, iK, etc.)
                     
                     for kana_text in kana_forms:
                         # Find the kana entry object for this text
                         kana_entry = next((k for k in kana_entries if k['text'] == kana_text), {})
                         kana_common = kana_entry.get('common', False)
+                        kana_tags = kana_entry.get('tags', [])  # Extract kana-level tags (rk, ik, etc.)
                         
                         # Form is common if both kanji and kana are common
                         form_common = kanji_common and kana_common
                         
-                        forms_to_insert.append((kanji_text, kana_text, form_common))
+                        # Combine kanji and kana tags for this form
+                        form_tags = kanji_tags + kana_tags
+                        
+                        forms_to_insert.append((kanji_text, kana_text, form_common, form_tags))
             elif kana_forms:
                 for kana_text in kana_forms:
                     # Find the kana entry object for this text
                     kana_entry = next((k for k in kana_entries if k['text'] == kana_text), {})
                     kana_common = kana_entry.get('common', False)
+                    kana_tags = kana_entry.get('tags', [])  # Extract kana-level tags
                     
-                    forms_to_insert.append((None, kana_text, kana_common))
+                    forms_to_insert.append((None, kana_text, kana_common, kana_tags))
 
-            for kanji_form, kana_form, form_is_common in forms_to_insert:
+            for kanji_form, kana_form, form_is_common, form_tags in forms_to_insert:
                 # OPTIONAL: Apply Romaji normalization here if desired
                 # normalized_kana_form = self.normalize_romaji(kana_form)
                 # normalized_kanji_form = self.normalize_romaji(kanji_form) if kanji_form else None
@@ -965,6 +1064,7 @@ class DatabaseBuilder:
                         print(f"      tags to insert: {len(parts_of_speech_list)}")
 
                     if entry_id:
+                        # Insert parts of speech tags
                         for tag in parts_of_speech_list:
                             try:
                                 cursor.execute("""
@@ -975,10 +1075,27 @@ class DatabaseBuilder:
                                 
                                 # Debug logging for JMnedict entries
                                 if is_entry_from_jmnedict and kanji_form == '上':
-                                    print(f"         ✅ Inserted tag: {tag}")
+                                    print(f"         ✅ Inserted POS tag: {tag}")
                             except sqlite3.Error as e:
                                 if is_entry_from_jmnedict and kanji_form == '上':
-                                    print(f"         ❌ Failed to insert tag: {tag}, error: {e}")
+                                    print(f"         ❌ Failed to insert POS tag: {tag}, error: {e}")
+                                pass
+                        
+                        # Insert kanji/kana form-specific tags (rK, iK, rk, ik, etc.)
+                        for tag in form_tags:
+                            try:
+                                cursor.execute("""
+                                    INSERT OR REPLACE INTO word_tags (entry_id, tag)
+                                    VALUES (?, ?)
+                                """, (entry_id, tag))
+                                tags_added += 1
+                                
+                                # Debug logging for もてあそぶ entries
+                                if kana_form == 'もてあそぶ':
+                                    print(f"         ✅ Inserted form tag: {tag} for {kanji_form}/{kana_form}")
+                            except sqlite3.Error as e:
+                                if kana_form == 'もてあそぶ':
+                                    print(f"         ❌ Failed to insert form tag: {tag} for {kanji_form}/{kana_form}, error: {e}")
                                 pass
                     else:
                         if is_entry_from_jmnedict and kanji_form == '上':
@@ -1897,6 +2014,10 @@ class DatabaseBuilder:
             # Populate pitch accent data
             print("🎵 Populating pitch accent data...")
             self.populate_pitch_accents(conn)
+            
+            # Populate word variants
+            print("🔗 Populating word variants...")
+            self.populate_word_variants(conn)
 
             # Process KANJI and RADICAL data FIRST (faster to test)
             print("\n" + "="*50)

@@ -29,4 +29,9 @@
         <item name="itemTextColor">@color/nav_item_tint</item>
         <item name="itemShapeFillColor">@color/nav_item_background</item>
     </style>
+    
+    <!-- Custom Tab Text Appearance -->
+    <style name="TabTextAppearance" parent="TextAppearance.Material3.TitleSmall">
+        <item name="android:textSize">12sp</item>
+    </style>
 </resources>

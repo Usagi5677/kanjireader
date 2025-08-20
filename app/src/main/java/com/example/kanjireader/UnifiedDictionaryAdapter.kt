@@ -65,7 +65,9 @@ class UnifiedDictionaryAdapter(
             // Clear any previous dynamic views
             variantsContainer.removeAllViews()
 
+            // TEMPORARILY DISABLED: Pitch accent display for performance testing
             // Show pitch accent if available, otherwise show regular reading
+            /*
             if (!entry.pitchAccents.isNullOrEmpty() && entry.primaryReading != null) {
                 // Set primary form with highlighting
                 primaryKanjiText.text = highlightSearchText(entry.primaryForm, searchQuery)
@@ -74,6 +76,7 @@ class UnifiedDictionaryAdapter(
                 pitchAccentView.visibility = View.VISIBLE
                 primaryReadingText.visibility = View.GONE // Hide regular reading since pitch accent view shows it
             } else {
+            */
                 // Set primary form with highlighting when no pitch accent
                 primaryKanjiText.text = highlightSearchText(entry.primaryForm, searchQuery)
                 pitchAccentView.visibility = View.GONE
@@ -84,7 +87,9 @@ class UnifiedDictionaryAdapter(
                 } else {
                     primaryReadingText.visibility = View.GONE
                 }
+            /*
             }
+            */
 
             // Add primary tags
             primaryChipGroup.removeAllViews()

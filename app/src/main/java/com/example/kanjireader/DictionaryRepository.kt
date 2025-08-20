@@ -1722,6 +1722,13 @@ class DictionaryRepository(private val context: Context) {
     }
     
     /**
+     * Get all variants for a given kanji form
+     */
+    suspend fun getVariants(kanjiForm: String): List<Variant> = withContext(Dispatchers.IO) {
+        return@withContext database.getWordVariants(kanjiForm)
+    }
+    
+    /**
      * Legacy combined search - tries both Japanese and English using HashMap
      * Kept for fallback purposes when FTS5 is not available
      */

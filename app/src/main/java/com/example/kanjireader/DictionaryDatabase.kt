@@ -72,6 +72,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         const val TABLE_RADICAL_KANJI_MAPPING = "radical_kanji_mapping"
         const val TABLE_RADICAL_DECOMPOSITION_MAPPING = "radical_decomposition_mapping"
         const val TABLE_PITCH_ACCENTS = "pitch_accents"
+        const val TABLE_WORD_VARIANTS = "word_variants"
         const val COL_ID = "id"
         const val COL_KANJI = "kanji"
         const val COL_READING = "reading"
@@ -102,6 +103,13 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         const val COL_PA_KANJI_FORM = "kanji_form"
         const val COL_PA_READING = "reading"
         const val COL_PA_ACCENT_PATTERN = "accent_pattern"
+        
+        // Word variants table columns
+        const val COL_WV_JMDICT_ID = "jmdict_id"
+        const val COL_WV_PRIMARY_KANJI = "primary_kanji"
+        const val COL_WV_VARIANT_KANJI = "variant_kanji"
+        const val COL_WV_READING = "reading"
+        const val COL_WV_MEANING = "meaning"
 
         // FTS Table names and columns
         // Note: FTS columns are implicitly part of the FTS table definition,
@@ -136,6 +144,14 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             "CREATE INDEX IF NOT EXISTS idx_kanji_prefix ON $TABLE_ENTRIES(substr($COL_KANJI, 1, 1), $COL_KANJI)"
         private const val CREATE_FREQUENCY_INDEX =
             "CREATE INDEX IF NOT EXISTS idx_frequency_ranking ON $TABLE_ENTRIES($COL_IS_COMMON DESC, $COL_FREQUENCY DESC)"
+        
+        // Word variants table indexes
+        private const val CREATE_WV_PRIMARY_INDEX =
+            "CREATE INDEX IF NOT EXISTS idx_wv_primary ON $TABLE_WORD_VARIANTS($COL_WV_PRIMARY_KANJI)"
+        private const val CREATE_WV_VARIANT_INDEX =
+            "CREATE INDEX IF NOT EXISTS idx_wv_variant ON $TABLE_WORD_VARIANTS($COL_WV_VARIANT_KANJI)"
+        private const val CREATE_WV_JMDICT_INDEX =
+            "CREATE INDEX IF NOT EXISTS idx_wv_jmdict ON $TABLE_WORD_VARIANTS($COL_WV_JMDICT_ID)"
 
         // --- FTS Table Definitions ---
 
@@ -295,6 +311,18 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 $COL_PA_READING TEXT NOT NULL,
                 $COL_PA_ACCENT_PATTERN TEXT NOT NULL,
                 UNIQUE($COL_PA_KANJI_FORM, $COL_PA_READING)
+            )
+        """
+        
+        private const val CREATE_WORD_VARIANTS_TABLE = """
+            CREATE TABLE IF NOT EXISTS $TABLE_WORD_VARIANTS (
+                $COL_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $COL_WV_JMDICT_ID TEXT NOT NULL,
+                $COL_WV_PRIMARY_KANJI TEXT NOT NULL,
+                $COL_WV_VARIANT_KANJI TEXT NOT NULL,
+                $COL_WV_READING TEXT NOT NULL,
+                $COL_WV_MEANING TEXT,
+                UNIQUE($COL_WV_PRIMARY_KANJI, $COL_WV_VARIANT_KANJI, $COL_WV_READING)
             )
         """
         
@@ -478,6 +506,10 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             db.execSQL(CREATE_READING_PREFIX_INDEX)
             db.execSQL(CREATE_KANJI_PREFIX_INDEX)
             db.execSQL(CREATE_FREQUENCY_INDEX)
+            // Word variants indexes
+            db.execSQL(CREATE_WV_PRIMARY_INDEX)
+            db.execSQL(CREATE_WV_VARIANT_INDEX)
+            db.execSQL(CREATE_WV_JMDICT_INDEX)
             Log.d(TAG, "✅ STEP 2 COMPLETE: All indexes created")
 
             // Step 3: Create FTS tables (EMPTY - no population in onCreate)
@@ -513,11 +545,16 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             Log.d(TAG, "STEP 8: Creating pitch accent table...")
             db.execSQL(CREATE_PITCH_ACCENTS_TABLE)
             Log.d(TAG, "✅ STEP 8 COMPLETE: Pitch accent table created")
+            
+            // Step 9: Create word variants table
+            Log.d(TAG, "STEP 9: Creating word variants table...")
+            db.execSQL(CREATE_WORD_VARIANTS_TABLE)
+            Log.d(TAG, "✅ STEP 9 COMPLETE: Word variants table created")
 
-            // Step 9: Verify table creation (empty tables expected)
-            Log.d(TAG, "STEP 9: Verifying table creation...")
+            // Step 10: Verify table creation (empty tables expected)
+            Log.d(TAG, "STEP 10: Verifying table creation...")
             verifyTableCreation(db)
-            Log.d(TAG, "✅ STEP 9 COMPLETE: Table verification done")
+            Log.d(TAG, "✅ STEP 10 COMPLETE: Table verification done")
 
             Log.d(TAG, "📝 NOTE: FTS tables are empty - call ensureFTSDataPopulated() after asset copy")
 
@@ -2127,6 +2164,44 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                         reading = reading,
                         accentNumbers = accentNumbers,
                         accentPattern = accentPattern
+                    )
+                )
+            }
+        }
+        return results
+    }
+    
+    /**
+     * Get all variants for a given kanji form
+     */
+    fun getWordVariants(kanjiForm: String): List<Variant> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_WORD_VARIANTS,
+            null,
+            "$COL_WV_PRIMARY_KANJI = ?",
+            arrayOf(kanjiForm),
+            null, null, 
+            "$COL_WV_VARIANT_KANJI ASC" // Sort variants alphabetically
+        )
+        
+        val results = mutableListOf<Variant>()
+        cursor.use {
+            while (it.moveToNext()) {
+                val jmdictId = it.getString(it.getColumnIndexOrThrow(COL_WV_JMDICT_ID))
+                val primaryKanji = it.getString(it.getColumnIndexOrThrow(COL_WV_PRIMARY_KANJI))
+                val variantKanji = it.getString(it.getColumnIndexOrThrow(COL_WV_VARIANT_KANJI))
+                val reading = it.getString(it.getColumnIndexOrThrow(COL_WV_READING))
+                val meaningIndex = it.getColumnIndex(COL_WV_MEANING)
+                val meaning = if (meaningIndex >= 0) it.getString(meaningIndex) else null
+                
+                results.add(
+                    Variant(
+                        jmdictId = jmdictId,
+                        primaryKanji = primaryKanji,
+                        variantKanji = variantKanji,
+                        reading = reading,
+                        meaning = meaning
                     )
                 )
             }

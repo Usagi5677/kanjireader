@@ -29,10 +29,14 @@ enum class DetailChipType {
     VERB_GODAN, VERB_ICHIDAN, VERB_TRANSITIVE, VERB_INTRANSITIVE, VERB_AUXILIARY,
     ADJECTIVE, NOUN, PARTICLE, ADVERB, COMMON, FREQUENCY, OTHER,
     // JMNEDict types
-    JMNE_PERSON, JMNE_PLACE, JMNE_COMPANY, JMNE_ORGANIZATION, JMNE_GIVEN, JMNE_SURNAME, JMNE_STATION, JMNE_OTHER
+    JMNE_PERSON, JMNE_PLACE, JMNE_COMPANY, JMNE_ORGANIZATION, JMNE_GIVEN, JMNE_SURNAME, JMNE_STATION, JMNE_OTHER,
+    // Form-level tags (kanji/kana usage)
+    FORM_RARELY_USED_KANJI, FORM_IRREGULAR_KANJI, FORM_OUTDATED_KANJI, FORM_SEARCH_ONLY_KANJI,
+    FORM_RARELY_USED_KANA, FORM_IRREGULAR_KANA, FORM_OUTDATED_KANA, FORM_SEARCH_ONLY_KANA,
+    FORM_ATEJI, FORM_GIKUN, FORM_IRREGULAR_OKURIGANA, FORM_KANA_ONLY
 }
 
-class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountListener {
+class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountListener, MeaningsTabFragment.OnMeaningsCountListener, VariantsMiddleTabFragment.OnVariantsCountListener {
 
     companion object {
         const val EXTRA_WORD_RESULT = "word_result"
@@ -46,10 +50,16 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
     private lateinit var pitchAccentScrollView: HorizontalScrollView
     private lateinit var pitchAccentContainer: LinearLayout
     private lateinit var tagChipGroup: ChipGroup
-    private lateinit var primaryMeaningsText: TextView
+    private lateinit var middleTabLayout: TabLayout
+    private lateinit var middleViewPager: ViewPager2
     private lateinit var tabLayout: TabLayout
     private lateinit var viewPager: ViewPager2
     private var kanjiBadge: TextView? = null
+    private var kanjiTabTitle: TextView? = null
+    private var meaningsBadge: TextView? = null
+    private var meaningsTabTitle: TextView? = null
+    private var variantsBadge: TextView? = null
+    private var variantsTabTitle: TextView? = null
 
     private lateinit var grammarChipGroup: ChipGroup
 
@@ -78,6 +88,7 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         setupToolbar()
         loadWordData()
         setupTabs()
+        setupMiddleTabs()
         setupObservers()
     }
     
@@ -90,7 +101,8 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         pitchAccentContainer = findViewById<LinearLayout>(R.id.pitchAccentContainer)
         tagChipGroup = findViewById<ChipGroup>(R.id.tagChipGroup)
         grammarChipGroup = findViewById<ChipGroup>(R.id.grammarChipGroup)
-        primaryMeaningsText = findViewById<TextView>(R.id.primaryMeaningsText)
+        middleTabLayout = findViewById<TabLayout>(R.id.middleTabLayout)
+        middleViewPager = findViewById<ViewPager2>(R.id.middleViewPager)
         tabLayout = findViewById<TabLayout>(R.id.tabLayout)
         viewPager = findViewById<ViewPager2>(R.id.viewPager)
     }
@@ -207,7 +219,6 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         // Clear any existing data first to prevent flashing old content
         wordText.text = ""
         readingText.text = ""
-        primaryMeaningsText.text = ""
         tagChipGroup.removeAllViews()
         grammarChipGroup.removeAllViews()
         pitchAccentContainer.removeAllViews()
@@ -339,11 +350,8 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         // Add grammar tags (Common, Part of Speech, etc.)
         addGrammarTags(enhanced, originalResult)
 
-        // Show ALL meanings
-        val meaningsFormatted = enhanced.meanings.mapIndexed { index, meaning ->
-            "${index + 1}. $meaning"
-        }.joinToString("\n")
-        primaryMeaningsText.text = meaningsFormatted
+        // Setup middle tabs with meanings data
+        setupMiddleTabsWithData(enhanced.meanings)
     }
 
     private fun displayBasicWordData(word: String, reading: String, meanings: List<String>) {
@@ -354,11 +362,8 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         // Add JLPT tags
         addJlptTags(word)
 
-        // Show ALL meanings
-        val meaningsFormatted = meanings.mapIndexed { index, meaning ->
-            "${index + 1}. $meaning"
-        }.joinToString("\n")
-        primaryMeaningsText.text = meaningsFormatted
+        // Setup middle tabs with meanings data
+        setupMiddleTabsWithData(meanings)
     }
 
     private fun addJlptTags(word: String) {
@@ -388,21 +393,24 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         // Check if this is a JMNEDict entry
         val isJMNEEntry = originalResult?.isJMNEDictEntry == true
         
-        // Add frequency chip if available
+        // Get all tags for this word to separate form-level tags from grammatical tags
+        val allTags = getAllTagsForWord(enhanced, originalResult)
+        val (formTags, grammarTags) = separateFormAndGrammarTags(allTags)
+        
+        // Add frequency chip to grammar section first
         if (enhanced.numericFrequency > 0) {
             val freqChip = createFrequencyChip(formatFrequency(enhanced.numericFrequency), enhanced.numericFrequency)
             grammarChipGroup.addView(freqChip)
         }
-
-        // Add common tag
+        
+        // Add common tag to grammar section second
         if (enhanced.isCommon) {
             val commonChip = createStyledChip("common", DetailChipType.COMMON)
             grammarChipGroup.addView(commonChip)
         }
-
-        // Use enhanced.partOfSpeech for both JMdict and JMNEDict entries
-        // TagDictSQLiteLoader now handles tag loading for both types
-        enhanced.partOfSpeech.forEach { pos ->
+        
+        // Add grammar tags to the grammar section (proper ordering: frequency, common, grammar tags, then form tags, then other tags)
+        grammarTags.forEach { pos ->
             // Auto-detect if this is a JMNEDict tag regardless of entry type
             val chipType = if (isJMNEDictTag(pos)) {
                 getJMNEChipTypeForTag(pos)
@@ -413,7 +421,15 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
             grammarChipGroup.addView(chip)
         }
 
-        // Add frequency tags if available (not for JMNEDict entries)
+        // Add form-level tags to the grammar section (after grammar tags)
+        formTags.forEach { tag ->
+            val chipType = getChipTypeForTag(tag)
+            val displayText = getFormTagDisplayText(tag)
+            val chip = createStyledChip(displayText, chipType)
+            grammarChipGroup.addView(chip)
+        }
+
+        // Add other tags if available (not for JMNEDict entries)
         if (!isJMNEEntry) {
             enhanced.frequencyTags.forEach { freq ->
                 val chip = createStyledChip(freq, DetailChipType.OTHER)
@@ -431,6 +447,116 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
                 val chip = createStyledChip(style, DetailChipType.OTHER)
                 grammarChipGroup.addView(chip)
             }
+        }
+    }
+
+    /**
+     * Get all tags for a word from the database
+     */
+    private fun getAllTagsForWord(enhanced: EnhancedWordResult, originalResult: WordResult?): List<String> {
+        return try {
+            val tagLoader = TagDictSQLiteLoader(this)
+            
+            // Use the new method that gets ALL tags without filtering
+            val allTags = tagLoader.getAllTagsForKanjiReadingWithJMnedict(
+                enhanced.kanji, 
+                enhanced.reading, 
+                originalResult?.isJMNEDictEntry == true
+            )
+            
+            if (allTags.isNotEmpty()) {
+                allTags
+            } else {
+                // Fallback to current data if no tags found
+                enhanced.partOfSpeech
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to get all tags for word: ${e.message}")
+            enhanced.partOfSpeech // Fallback to current data
+        }
+    }
+
+    /**
+     * Separate form-level tags from grammatical tags
+     */
+    private fun separateFormAndGrammarTags(allTags: List<String>): Pair<List<String>, List<String>> {
+        val formTags = mutableListOf<String>()
+        val grammarTags = mutableListOf<String>()
+        
+        // Form-level and display tag patterns (tags to show in top section)
+        val displayInTopSectionTags = setOf(
+            // Form-level tags (kanji/kana usage)
+            "rK", "iK", "oK", "sK",        // Kanji usage tags
+            "rk", "ik", "ok", "sk",        // Kana usage tags  
+            "ateji", "gikun", "io", "uk",   // Special usage tags
+            // JMNEDict entity types (should be displayed prominently)
+            "person", "place", "company", "organization", "given", "fem", "masc",
+            "surname", "station", "group", "char", "fict", "work", "ev", "obj",
+            "product", "serv", "relig", "dei", "ship", "leg", "myth", "creat",
+            "oth", "unclass", "doc"
+        )
+        
+        // Grammar tag patterns (part-of-speech tags)
+        val grammarTagPrefixes = setOf("v", "adj", "n", "adv", "prt", "aux", "int", "exp", "pref", "suf")
+        
+        allTags.forEach { tag ->
+            when {
+                displayInTopSectionTags.contains(tag) -> formTags.add(tag)
+                grammarTagPrefixes.any { tag.startsWith(it) } -> grammarTags.add(tag)
+                else -> grammarTags.add(tag) // Default to grammar section
+            }
+        }
+        
+        return Pair(formTags, grammarTags)
+    }
+
+
+    /**
+     * Get display text for form-level tags
+     */
+    private fun getFormTagDisplayText(tag: String): String {
+        return when (tag) {
+            // Form-level tags (kanji/kana usage)
+            "rK" -> "rarely used kanji"
+            "iK" -> "irregular kanji"
+            "oK" -> "outdated kanji"
+            "sK" -> "search-only kanji"
+            "rk" -> "rarely used kana"
+            "ik" -> "irregular kana"
+            "ok" -> "outdated kana"
+            "sk" -> "search-only kana"
+            "ateji" -> "ateji"
+            "gikun" -> "gikun"
+            "io" -> "irregular okurigana"
+            "uk" -> "kana only"
+            // JMNEDict entity types
+            "person" -> "person"
+            "place" -> "place"
+            "company" -> "company"
+            "organization" -> "organization" 
+            "given" -> "given name"
+            "fem" -> "female given name"
+            "masc" -> "male given name"
+            "surname" -> "surname"
+            "station" -> "station"
+            "group" -> "group"
+            "char" -> "character"
+            "fict" -> "fiction"
+            "work" -> "work"
+            "ev" -> "event"
+            "obj" -> "object"
+            "product" -> "product"
+            "serv" -> "service"
+            "relig" -> "religion"
+            "dei" -> "deity"
+            "ship" -> "ship"
+            "leg" -> "legend"
+            "myth" -> "mythology"
+            "creat" -> "creature"
+            "oth" -> "other"
+            "unclass" -> "unclassified"
+            "doc" -> "document"
+            else -> tag
         }
     }
 
@@ -556,12 +682,37 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
                     val titleView = customView.findViewById<TextView>(R.id.tabTitle)
                     titleView.text = "Kanji"
                     kanjiBadge = customView.findViewById(R.id.tabBadge)
+                    kanjiTabTitle = titleView
                     tab.customView = customView
                 }
                 1 -> tab.text = "Forms"
                 2 -> tab.text = "Phrases"
             }
         }.attach()
+        
+        // Add tab selection listener to handle custom tab styling
+        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                if (tab?.position == 0) {
+                    // Kanji tab selected - use the same color as other tabs
+                    kanjiTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, R.color.teal_500))
+                }
+            }
+            
+            override fun onTabUnselected(tab: TabLayout.Tab?) {
+                if (tab?.position == 0) {
+                    // Kanji tab unselected - make it grey
+                    kanjiTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, android.R.color.darker_gray))
+                }
+            }
+            
+            override fun onTabReselected(tab: TabLayout.Tab?) {
+                // Do nothing
+            }
+        })
+        
+        // Set initial color for Kanji tab (selected by default)
+        kanjiTabTitle?.setTextColor(ContextCompat.getColor(this, R.color.teal_500))
         
         // Add page change listener to trigger initial search when phrases tab is first accessed
         pageChangeCallback = ViewPagerCallback(wordForPhrases)
@@ -580,6 +731,129 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
             }
         }
     }
+
+    override fun onMeaningsCountUpdated(count: Int) {
+        // Update the badge in the Meanings tab
+        meaningsBadge?.apply {
+            if (count > 0) {
+                text = count.toString()
+                visibility = View.VISIBLE
+            } else {
+                visibility = View.GONE
+            }
+        }
+    }
+
+    override fun onVariantsCountUpdated(count: Int) {
+        // Update the badge in the Variants tab
+        variantsBadge?.apply {
+            if (count > 0) {
+                text = count.toString()
+                visibility = View.VISIBLE
+            } else {
+                visibility = View.GONE
+            }
+        }
+    }
+    
+    /**
+     * Preload variant count and update badge immediately without waiting for tab selection
+     */
+    private fun preloadVariantCount(word: String) {
+        if (word.isEmpty()) {
+            onVariantsCountUpdated(0)
+            return
+        }
+        
+        lifecycleScope.launch {
+            try {
+                val repository = DictionaryRepository.getInstance(this@WordDetailActivity)
+                val variants = repository.getVariants(word)
+                
+                runOnUiThread {
+                    onVariantsCountUpdated(variants.size)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error preloading variant count for $word", e)
+                onVariantsCountUpdated(0)
+            }
+        }
+    }
+
+    private fun setupMiddleTabs() {
+        // Setup will be done when data is available
+        // This method can be called initially but setupMiddleTabsWithData will actually populate it
+    }
+
+    private fun setupMiddleTabsWithData(meanings: List<String>) {
+        // Create adapter with current word and meanings
+        val middleAdapter = MidSectionPagerAdapter(this, currentWord, ArrayList(meanings))
+        middleViewPager.adapter = middleAdapter
+
+        TabLayoutMediator(middleTabLayout, middleViewPager) { tab, position ->
+            when (position) {
+                0 -> {
+                    // Create custom view for Meanings tab with badge
+                    val customView = LayoutInflater.from(this).inflate(R.layout.custom_middle_tab_with_badge, null)
+                    val titleView = customView.findViewById<TextView>(R.id.tabTitle)
+                    titleView.text = "Meanings"
+                    meaningsBadge = customView.findViewById(R.id.tabBadge)
+                    meaningsTabTitle = titleView
+                    tab.customView = customView
+                }
+                1 -> {
+                    // Create custom view for Variants tab with badge
+                    val customView = LayoutInflater.from(this).inflate(R.layout.custom_middle_tab_with_badge, null)
+                    val titleView = customView.findViewById<TextView>(R.id.tabTitle)
+                    titleView.text = "Variants"
+                    variantsBadge = customView.findViewById(R.id.tabBadge)
+                    variantsTabTitle = titleView
+                    tab.customView = customView
+                }
+            }
+        }.attach()
+        
+        // Preload variant count to show badge immediately
+        preloadVariantCount(currentWord)
+
+        // Add middle tab selection listener to handle custom tab styling
+        middleTabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                when (tab?.position) {
+                    0 -> {
+                        // Meanings tab selected - make it green
+                        meaningsTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, R.color.teal_500))
+                    }
+                    1 -> {
+                        // Variants tab selected - make it green
+                        variantsTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, R.color.teal_500))
+                    }
+                }
+            }
+            
+            override fun onTabUnselected(tab: TabLayout.Tab?) {
+                when (tab?.position) {
+                    0 -> {
+                        // Meanings tab unselected - make it grey
+                        meaningsTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, android.R.color.darker_gray))
+                    }
+                    1 -> {
+                        // Variants tab unselected - make it grey
+                        variantsTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, android.R.color.darker_gray))
+                    }
+                }
+            }
+            
+            override fun onTabReselected(tab: TabLayout.Tab?) {
+                // Do nothing
+            }
+        })
+        
+        // Set initial colors for middle tabs (meanings selected by default)
+        meaningsTabTitle?.setTextColor(ContextCompat.getColor(this, R.color.teal_500))
+        variantsTabTitle?.setTextColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+    }
+
 
     private fun getSimplifiedPos(pos: String): String {
         return when (pos) {
@@ -638,6 +912,19 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
             "n" -> DetailChipType.NOUN
             "prt" -> DetailChipType.PARTICLE
             "adv" -> DetailChipType.ADVERB
+            // Form-level tags (kanji/kana usage)
+            "rK" -> DetailChipType.FORM_RARELY_USED_KANJI
+            "iK" -> DetailChipType.FORM_IRREGULAR_KANJI
+            "oK" -> DetailChipType.FORM_OUTDATED_KANJI
+            "sK" -> DetailChipType.FORM_SEARCH_ONLY_KANJI
+            "rk" -> DetailChipType.FORM_RARELY_USED_KANA
+            "ik" -> DetailChipType.FORM_IRREGULAR_KANA
+            "ok" -> DetailChipType.FORM_OUTDATED_KANA
+            "sk" -> DetailChipType.FORM_SEARCH_ONLY_KANA
+            "ateji" -> DetailChipType.FORM_ATEJI
+            "gikun" -> DetailChipType.FORM_GIKUN
+            "io" -> DetailChipType.FORM_IRREGULAR_OKURIGANA
+            "uk" -> DetailChipType.FORM_KANA_ONLY
             else -> DetailChipType.OTHER
         }
     }
@@ -696,6 +983,19 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
             DetailChipType.JMNE_SURNAME -> Pair(R.color.jmne_surname_bg, R.color.jmne_surname_text)
             DetailChipType.JMNE_STATION -> Pair(R.color.jmne_station_bg, R.color.jmne_station_text)
             DetailChipType.JMNE_OTHER -> Pair(R.color.jmne_other_bg, R.color.jmne_other_text)
+            // Form-level tags (using existing colors)
+            DetailChipType.FORM_RARELY_USED_KANJI -> Pair(R.color.purple_100, R.color.purple_700)
+            DetailChipType.FORM_IRREGULAR_KANJI -> Pair(R.color.orange_100, R.color.orange_700) 
+            DetailChipType.FORM_OUTDATED_KANJI -> Pair(R.color.tag_adverb_bg, R.color.tag_adverb_text) // Brown-ish
+            DetailChipType.FORM_SEARCH_ONLY_KANJI -> Pair(R.color.tag_other_bg, R.color.tag_other_text) // Grey
+            DetailChipType.FORM_RARELY_USED_KANA -> Pair(R.color.jmne_station_bg, R.color.jmne_station_text) // Purple-blue
+            DetailChipType.FORM_IRREGULAR_KANA -> Pair(R.color.pink_100, R.color.jmne_given_text) // Pink
+            DetailChipType.FORM_OUTDATED_KANA -> Pair(R.color.tag_verb_intransitive_bg, R.color.tag_verb_intransitive_text) // Orange
+            DetailChipType.FORM_SEARCH_ONLY_KANA -> Pair(R.color.teal_100, R.color.teal_700) // Blue-grey-ish
+            DetailChipType.FORM_ATEJI -> Pair(R.color.green_100, R.color.green_700) // Light green
+            DetailChipType.FORM_GIKUN -> Pair(R.color.tag_verb_transitive_bg, R.color.tag_verb_transitive_text) // Amber
+            DetailChipType.FORM_IRREGULAR_OKURIGANA -> Pair(R.color.tag_common_bg, R.color.tag_common_text) // Cyan
+            DetailChipType.FORM_KANA_ONLY -> Pair(R.color.blue_100, R.color.blue_700) // Light blue
         }
 
         return Chip(this).apply {
