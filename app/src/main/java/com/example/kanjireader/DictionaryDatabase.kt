@@ -25,7 +25,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
     companion object {
         private const val TAG = "DictionaryDatabaseFTS" // More descriptive tag
         private const val DATABASE_NAME = "jmdict_fts5.db"
-        private const val DATABASE_VERSION = 15 // IMPORTANT: Increment to trigger upgrade!
+        private const val DATABASE_VERSION = 16 // IMPORTANT: Increment to trigger upgrade!
 
         @Volatile
         private var INSTANCE: DictionaryDatabase? = null
@@ -68,6 +68,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         // Table names
         const val TABLE_ENTRIES = "dictionary_entries"
         const val TABLE_ENGLISH_FTS = "english_fts"
+        const val TABLE_JAPANESE_SUBSTRING = "japanese_substring_fts"
         const val TABLE_KANJI_RADICAL_MAPPING = "kanji_radical_mapping"
         const val TABLE_RADICAL_KANJI_MAPPING = "radical_kanji_mapping"
         const val TABLE_RADICAL_DECOMPOSITION_MAPPING = "radical_decomposition_mapping"
@@ -172,6 +173,22 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 parts_of_speech,
                 tokenize=unicode61,
                 prefix='1,2,3'
+            )
+        """
+
+        // Japanese substring search FTS5 table (for fast substring matching via n-grams)
+        private const val CREATE_JAPANESE_SUBSTRING_FTS5_TABLE = """
+            CREATE VIRTUAL TABLE IF NOT EXISTS $TABLE_JAPANESE_SUBSTRING USING fts5(
+                entry_id UNINDEXED,
+                ngram
+            )
+        """
+
+        // Japanese substring search FTS4 fallback
+        private const val CREATE_JAPANESE_SUBSTRING_FTS4_TABLE = """
+            CREATE VIRTUAL TABLE IF NOT EXISTS $TABLE_JAPANESE_SUBSTRING USING fts4(
+                entry_id,
+                ngram
             )
         """
 
@@ -513,8 +530,9 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             // Step 3: Create FTS tables (EMPTY - no population in onCreate)
             Log.d(TAG, "STEP 3: Creating empty FTS tables...")
             createFTSTableWithFallback(db, TABLE_ENGLISH_FTS, CREATE_ENGLISH_FTS5_TABLE, CREATE_ENGLISH_FTS4_TABLE)
+            createFTSTableWithFallback(db, TABLE_JAPANESE_SUBSTRING, CREATE_JAPANESE_SUBSTRING_FTS5_TABLE, CREATE_JAPANESE_SUBSTRING_FTS4_TABLE)
             // createFTSTableWithFallback(db, TABLE_JAPANESE_FTS, CREATE_JAPANESE_FTS5_TABLE, CREATE_JAPANESE_FTS4_TABLE) // REMOVED: Using entries_fts5 instead
-            Log.d(TAG, "✅ STEP 3 COMPLETE: Empty FTS tables created")
+            Log.d(TAG, "✅ STEP 3 COMPLETE: Empty FTS tables created (including japanese substring search)")
 
             // Step 4: Create triggers
             Log.d(TAG, "STEP 4: Creating triggers...")
@@ -695,8 +713,9 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         // Recreate all FTS tables with latest schema
         Log.d(TAG, "UPGRADE STEP 4: Creating new FTS tables...")
         createFTSTableWithFallback(db, TABLE_ENGLISH_FTS, CREATE_ENGLISH_FTS5_TABLE, CREATE_ENGLISH_FTS4_TABLE)
+        createFTSTableWithFallback(db, TABLE_JAPANESE_SUBSTRING, CREATE_JAPANESE_SUBSTRING_FTS5_TABLE, CREATE_JAPANESE_SUBSTRING_FTS4_TABLE)
         // createFTSTableWithFallback(db, TABLE_JAPANESE_FTS, CREATE_JAPANESE_FTS5_TABLE, CREATE_JAPANESE_FTS4_TABLE) // REMOVED: Using entries_fts5 instead
-        Log.d(TAG, "✅ UPGRADE STEP 4 COMPLETE: New FTS tables created")
+        Log.d(TAG, "✅ UPGRADE STEP 4 COMPLETE: New FTS tables created (including japanese substring search)")
 
         // Recreate all triggers
         Log.d(TAG, "UPGRADE STEP 5: Creating triggers...")
@@ -1109,6 +1128,23 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 }
             }
             
+            
+            // Add substring search using the new n-gram FTS5 table
+            if (results.size < limit && normalizedQuery.length >= 2) {
+                val substringLimit = limit - results.size
+                Log.d(TAG, "🔍 Adding substring search for '$normalizedQuery' (remaining limit: $substringLimit)")
+                
+                val substringResults = searchSubstringFTS(normalizedQuery, substringLimit)
+                // Merge results, avoiding duplicates
+                for (substringResult in substringResults) {
+                    if (!results.any { it.id == substringResult.id }) {
+                        results.add(substringResult)
+                    }
+                }
+                
+                Log.d(TAG, "🔍 Substring search added ${substringResults.size} new results")
+            }
+            
         } catch (e: Exception) {
             Log.e(TAG, "❌ DIAGNOSTIC ERROR: Query failed", e)
             Log.e(TAG, "❌ Error message: ${e.message}")
@@ -1118,9 +1154,70 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         }
 
         val elapsed = System.currentTimeMillis() - startTime
-        Log.d(TAG, "✨ Japanese FTS search completed in ${elapsed}ms: ${results.size} results")
+        Log.d(TAG, "✨ Japanese FTS search completed in ${elapsed}ms: ${results.size} results (including substring matches)")
         
 
+        return results
+    }
+
+    /**
+     * Fast substring search using the dedicated japanese_substring_fts table
+     * This enables finding words like もてあそぶ when searching for あそぶ
+     */
+    private fun searchSubstringFTS(query: String, limit: Int): List<SearchResult> {
+        val results = mutableListOf<SearchResult>()
+        if (query.isBlank()) return results
+        
+        val db = readableDatabase
+        val startTime = System.currentTimeMillis()
+        
+        // Query the japanese_substring_fts table for substring matches
+        val sql = """
+            SELECT 
+                T1.$COL_ID,
+                T1.$COL_KANJI,
+                T1.$COL_READING,
+                T1.$COL_MEANINGS AS meanings,
+                T1.$COL_PARTS_OF_SPEECH AS parts_of_speech,
+                T1.$COL_IS_COMMON,
+                T1.$COL_FREQUENCY,
+                0.7 AS fts_relevance_rank
+            FROM $TABLE_ENTRIES AS T1
+            WHERE T1.$COL_ID IN (
+                SELECT entry_id FROM $TABLE_JAPANESE_SUBSTRING 
+                WHERE ngram MATCH ?
+            )
+            ORDER BY
+                T1.$COL_IS_COMMON DESC,
+                T1.$COL_FREQUENCY DESC,
+                LENGTH(T1.$COL_READING) ASC
+            LIMIT ?
+        """
+        
+        try {
+            db.rawQuery(sql, arrayOf(query, limit.toString())).use { cursor ->
+                while (cursor.moveToNext()) {
+                    results.add(SearchResult(
+                        id = cursor.getLong(0),
+                        kanji = cursor.getString(1),
+                        reading = cursor.getString(2),
+                        meanings = cursor.getString(3),
+                        partsOfSpeech = cursor.getString(4),
+                        isCommon = cursor.getInt(5) == 1,
+                        frequency = cursor.getInt(6),
+                        rank = cursor.getDouble(7)
+                    ))
+                }
+            }
+            
+            val elapsed = System.currentTimeMillis() - startTime
+            Log.d(TAG, "✨ Substring FTS search completed in ${elapsed}ms: ${results.size} results")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Substring search failed for query '$query'", e)
+            // Don't throw - just return empty results to avoid breaking main search
+        }
+        
         return results
     }
 

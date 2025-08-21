@@ -218,6 +218,15 @@ class DatabaseBuilder:
             )
         """)
 
+        # Japanese substring search table with individual n-gram tokens
+        # This enables fast substring matching (e.g., find もてあそぶ when searching あそぶ)
+        cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS japanese_substring_fts USING fts5(
+                entry_id UNINDEXED,
+                ngram
+            )
+        """)
+
         # Tag definitions and word tags
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tag_definitions (
@@ -709,6 +718,18 @@ class DatabaseBuilder:
         except Exception as e:
             print(f"❌ Error loading word variants: {e}")
 
+    def generate_ngrams(self, text: str) -> list[str]:
+        """Generate 2-, 3-, and 4-character n-grams from text for substring search"""
+        if not text or len(text) < 2:
+            return []
+        
+        ngrams = []
+        for n in [2, 3, 4]:  # Generate 2-gram, 3-gram, 4-gram
+            for i in range(len(text) - n + 1):
+                ngram = text[i:i+n]
+                ngrams.append(ngram)
+        return ngrams
+
     def normalize_romaji(self, text: str) -> str:
         """
         Optional: Normalize Romaji characters like 'ō' (U+014D) to simpler ASCII 'o'.
@@ -721,7 +742,7 @@ class DatabaseBuilder:
         text = text.replace('Ā', 'A').replace('Ī', 'I').replace('Ū', 'U').replace('Ē', 'E').replace('Ō', 'O')
         # Add any other specific character replacements here if needed (e.g., apostrophes if they are mis-parsed)
         # text = text.replace("'", "") # Example: To remove straight apostrophes if undesired
-        # text = text.replace("’", "") # Example: To remove curly apostrophes if undesired
+        # text = text.replace("'", "") # Example: To remove curly apostrophes if undesired
         return text
 
     def tokenize_japanese(self, text: str) -> str:
@@ -1116,8 +1137,43 @@ class DatabaseBuilder:
             SELECT id, meanings, parts_of_speech FROM dictionary_entries
         """)
 
+        # Populate japanese_substring_fts table with individual n-gram tokens
+        print("   📝 Generating n-grams for substring search...")
+        cursor.execute("SELECT id, reading, kanji FROM dictionary_entries WHERE reading IS NOT NULL OR kanji IS NOT NULL")
+        entries = cursor.fetchall()
+        
+        ngram_count = 0
+        total_ngrams = 0
+        
+        for entry_id, reading, kanji in entries:
+            entry_ngrams = set()  # Use set to avoid duplicate n-grams for same entry
+            
+            # Generate n-grams for reading
+            if reading:
+                reading_ngrams = self.generate_ngrams(reading)
+                entry_ngrams.update(reading_ngrams)
+            
+            # Generate n-grams for kanji
+            if kanji:
+                kanji_ngrams = self.generate_ngrams(kanji)
+                entry_ngrams.update(kanji_ngrams)
+            
+            # Insert each n-gram as a separate row
+            for ngram in entry_ngrams:
+                cursor.execute("""
+                    INSERT INTO japanese_substring_fts (entry_id, ngram)
+                    VALUES (?, ?)
+                """, (entry_id, ngram))
+                total_ngrams += 1
+            
+            ngram_count += 1
+            if ngram_count % 5000 == 0:
+                print(f"      Generated n-grams for {ngram_count:,} entries ({total_ngrams:,} total n-grams)...")
+        
+        print(f"   ✅ Generated n-grams for {ngram_count:,} entries ({total_ngrams:,} total n-grams)")
+
         conn.commit()
-        print("✅ FTS5 tables populated")
+        print("✅ FTS5 tables populated (including japanese substring search)")
 
     def create_triggers(self, conn: sqlite3.Connection) -> None:
         """Create triggers to keep FTS5 tables in sync"""
