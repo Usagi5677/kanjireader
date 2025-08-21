@@ -509,14 +509,20 @@ class DictionaryRepository(private val context: Context) {
         // First check cache, but validate it for direct matches
         val cached = deinflectionCache[query]
         if (cached != null) {
-            // Double-check if this is a direct database match before returning cached result
+            // Double-check if this is a VERY COMMON direct database match before returning cached result
+            // Allow both conjugated forms AND direct matches to coexist (e.g., みた can be both 見る conjugation AND 共)
             try {
                 val directCheck = runBlocking { database.searchJapaneseFTS(query, 5) }
-                if (directCheck.any { it.kanji == query || it.reading == query }) {
-                    Log.d(TAG, "Found '$query' is actually a direct database match - clearing bad cache")
+                val commonDirectMatch = directCheck.find { 
+                    (it.kanji == query || it.reading == query) && it.isCommon && (it.frequency > 50000)
+                }
+                if (commonDirectMatch != null) {
+                    Log.d(TAG, "Found '$query' is a very common direct database match (${commonDirectMatch.kanji ?: commonDirectMatch.reading}, freq=${commonDirectMatch.frequency}) - clearing cache")
                     deinflectionCache.remove(query)
                     directMatchQueries.add(query)
                     return null
+                } else {
+                    Log.d(TAG, "Found direct matches for '$query' but they're not common enough to override deinflection")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to validate cached deinflection for '$query'", e)
@@ -533,7 +539,8 @@ class DictionaryRepository(private val context: Context) {
         }
         
         // If this query had direct database matches, don't compute deinflection
-        if (directMatchQueries.contains(query)) {
+        // UNLESS it's a potential conjugated form that should be deinflected
+        if (directMatchQueries.contains(query) && !isPotentialConjugatedForm(query)) {
             Log.d(TAG, "Query '$query' had direct database matches - not computing deinflection")
             return null
         }
@@ -593,7 +600,6 @@ class DictionaryRepository(private val context: Context) {
                     wordOrder = 999,
                     tags = emptyList(),
                     partsOfSpeech = emptyList(),
-                    isJMNEDictEntry = false,
                     isDeinflectedValidConjugation = false
                 )
             }
@@ -766,6 +772,7 @@ class DictionaryRepository(private val context: Context) {
                     if (kuromojiDeinflection != null && kuromojiDeinflection.baseForm != searchQuery) {
                         Log.d(TAG, "🔧 Kuromoji deinflection: '$searchQuery' -> '${kuromojiDeinflection.baseForm}'")
                         
+                        // Try searching for the base form
                         val kuromojiResults = database.searchJapaneseFTS(
                             kuromojiDeinflection.baseForm,
                             30,
@@ -779,6 +786,30 @@ class DictionaryRepository(private val context: Context) {
                             deinflectedResults.addAll(kuromojiResults)
                         } else {
                             Log.d(TAG, "❌ No results found for base form '${kuromojiDeinflection.baseForm}'")
+                            
+                            // If hiragana base form failed, try to find entries that have this reading
+                            // This handles the case where database has "見る" but not "みる" as separate entries
+                            Log.d(TAG, "🔧 Trying alternative search: looking for entries with reading '${kuromojiDeinflection.baseForm}'")
+                            try {
+                                val alternativeResults = database.searchJapaneseFTS("${kuromojiDeinflection.baseForm}*", 30)
+                                    .filter { result -> result.reading == kuromojiDeinflection.baseForm }
+                                
+                                if (alternativeResults.isNotEmpty()) {
+                                    Log.d(TAG, "✅ Found ${alternativeResults.size} alternative results with reading '${kuromojiDeinflection.baseForm}'")
+                                    deinflectedResults.addAll(alternativeResults)
+                                } else {
+                                    Log.d(TAG, "❌ No alternative results found either")
+                                    // DEBUGGING: Let's try a broader search to see what exists
+                                    Log.d(TAG, "🔧 DEBUG: Attempting broader search for '${kuromojiDeinflection.baseForm}*'")
+                                    val debugResults = database.searchJapaneseFTS("${kuromojiDeinflection.baseForm}*", 5)
+                                    Log.d(TAG, "🔧 DEBUG: Broader search found ${debugResults.size} results")
+                                    debugResults.take(3).forEach { result ->
+                                        Log.d(TAG, "🔧 DEBUG: Result: kanji='${result.kanji}', reading='${result.reading}'")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "🔧 Alternative search failed", e)
+                            }
                         }
                     } else {
                         Log.d(TAG, "🔧 No deinflection found for '$query'")
@@ -851,7 +882,7 @@ class DictionaryRepository(private val context: Context) {
                 val wordResult = convertFTS5ToWordResult(searchResult)
                 
                 // Check if this result is a valid deinflected form
-                val isDeinflectedValid = if (deinflectedBaseForm != null && deinflectedBaseForm != query && !searchResult.isJMNEDictEntry) {
+                val isDeinflectedValid = if (deinflectedBaseForm != null && deinflectedBaseForm != query) {
                     // This result is a valid deinflection if:
                     // 1. It exactly matches the base form (reading or kanji)
                     // 2. AND it's actually conjugatable (verb/adjective)
@@ -890,7 +921,7 @@ class DictionaryRepository(private val context: Context) {
             // Apply improved sorting with special priority for deinflected results
             
             // Separate results by type for better control
-            val validDeinflectedResults = convertedResults.filter { it.isDeinflectedValidConjugation && !it.isJMNEDictEntry }
+            val validDeinflectedResults = convertedResults.filter { it.isDeinflectedValidConjugation }
             val exactMatches = convertedResults.filter { (it.kanji == query || it.reading == query) && !it.isDeinflectedValidConjugation }
             val otherMatches = convertedResults.filter { 
                 !(it.kanji == query || it.reading == query) && !it.isDeinflectedValidConjugation 
@@ -903,57 +934,32 @@ class DictionaryRepository(private val context: Context) {
                     .thenBy { it.reading.length }                   // Shorter readings for tie-breaking
             )
             
-            // Sort exact matches: non-proper nouns first, then by common status and frequency
-            val exactNonProperNouns = exactMatches.filter { !it.isJMNEDictEntry }
-            val exactProperNouns = exactMatches.filter { it.isJMNEDictEntry }
-            
-            val sortedExactNonProperNouns = exactNonProperNouns.sortedWith(
+            // Sort exact and other matches by common status and frequency
+            val sortedExactResults = exactMatches.sortedWith(
                 compareByDescending<WordResult> { it.isCommon }     // Common words first
                     .thenByDescending { it.frequency ?: 0 }         // High frequency first
                     .thenBy { it.reading.length }                   // Shorter readings for tie-breaking
             )
             
-            val sortedExactProperNouns = exactProperNouns.sortedWith(
+            val sortedOtherResults = otherMatches.sortedWith(
                 compareByDescending<WordResult> { it.isCommon }     // Common words first
                     .thenByDescending { it.frequency ?: 0 }         // High frequency first
                     .thenBy { it.reading.length }                   // Shorter readings for tie-breaking
             )
             
-            // Sort other matches: non-proper nouns first, then proper nouns
-            val otherNonProperNouns = otherMatches.filter { !it.isJMNEDictEntry }
-            val otherProperNouns = otherMatches.filter { it.isJMNEDictEntry }
-            
-            val sortedOtherNonProperNouns = otherNonProperNouns.sortedWith(
-                compareByDescending<WordResult> { it.isCommon }     // Common words first
-                    .thenByDescending { it.frequency ?: 0 }         // High frequency first
-                    .thenBy { it.reading.length }                   // Shorter readings for tie-breaking
-            )
-            
-            val sortedOtherProperNouns = otherProperNouns.sortedWith(
-                compareByDescending<WordResult> { it.isCommon }     // Common words first
-                    .thenByDescending { it.frequency ?: 0 }         // High frequency first
-                    .thenBy { it.reading.length }                   // Shorter readings for tie-breaking
-            )
-            
-            // Combine all non-proper noun matches and sort by relevance
+            // Combine all matches and sort by relevance
             // Priority: common + high frequency words should come before low-frequency exact matches
-            val allNonProperNouns = (sortedExactNonProperNouns + sortedOtherNonProperNouns).sortedWith(
+            val allResults = (sortedExactResults + sortedOtherResults).sortedWith(
                 // Remove exact match priority - let frequency and common status decide
                 compareByDescending<WordResult> { if (it.isCommon) 1000000 + (it.frequency ?: 0) else (it.frequency ?: 0) }  // Boost common words significantly
                     .thenBy { !(it.kanji == query || it.reading == query) }  // Exact matches as tie-breaker only
                     .thenBy { it.reading.length }  // Shorter readings for final tie-breaking
             )
             
-            val allProperNouns = (sortedExactProperNouns + sortedOtherProperNouns).sortedWith(
-                compareByDescending<WordResult> { it.frequency ?: 0 }  // High frequency proper nouns first
-                    .thenBy { it.reading.length }
-            )
-            
             // Final priority order:
             // 1. Deinflected results (like みる from みた) - HIGHEST PRIORITY  
-            // 2. All non-proper nouns (exact matches + others, but common high-frequency prioritized)
-            // 3. All proper noun matches - LOWEST PRIORITY
-            val finalResults = sortedDeinflectedResults + allNonProperNouns + allProperNouns
+            // 2. All other results (exact matches + others, but common high-frequency prioritized)
+            val finalResults = sortedDeinflectedResults + allResults
             
             // Debug: Let's see what the sorting is actually doing for first few results
             if (query == "みた") {
@@ -962,38 +968,12 @@ class DictionaryRepository(private val context: Context) {
                 Log.d(TAG, "🔍 NEW DEBUG: Deinflected: ${validDeinflectedResults.size}")
                 Log.d(TAG, "🔍 NEW DEBUG: Exact matches: ${exactMatches.size}")
                 Log.d(TAG, "🔍 NEW DEBUG: Other matches: ${otherMatches.size}")
-                Log.d(TAG, "🔍 NEW DEBUG: Exact proper nouns: ${exactProperNouns.size}")
-                Log.d(TAG, "🔍 NEW DEBUG: Exact non-proper nouns: ${exactNonProperNouns.size}")
+                Log.d(TAG, "🔍 NEW DEBUG: Exact matches: ${exactMatches.size}")
+                Log.d(TAG, "🔍 NEW DEBUG: Other matches: ${otherMatches.size}")
                 
                 Log.d(TAG, "🔍 NEW DEBUG: Top 3 deinflected results (PRIORITY #1):")
                 sortedDeinflectedResults.take(3).forEachIndexed { i, result ->
-                    Log.d(TAG, "🔍 NEW DEBUG: #${i+1}: ${result.kanji ?: result.reading} (common=${result.isCommon}, freq=${result.frequency}, deinflected=${result.isDeinflectedValidConjugation})")
-                }
-                
-                Log.d(TAG, "🔍 NEW DEBUG: Top 3 exact non-proper results (PRIORITY #2):")
-                sortedExactNonProperNouns.take(3).forEachIndexed { i, result ->
                     Log.d(TAG, "🔍 NEW DEBUG: #${i+1}: ${result.kanji ?: result.reading} (common=${result.isCommon}, freq=${result.frequency})")
-                }
-                
-                Log.d(TAG, "🔍 NEW DEBUG: Top 10 other non-proper results (where みたい should be):")
-                sortedOtherNonProperNouns.take(10).forEachIndexed { i, result ->
-                    val displayForm = result.kanji ?: result.reading
-                    Log.d(TAG, "🔍 NEW DEBUG: #${i+1}: $displayForm (common=${result.isCommon}, freq=${result.frequency})")
-                }
-                
-                // Check if みたい is anywhere in the results
-                val mitaiResult = convertedResults.find { (it.kanji == "みたい" || it.reading == "みたい") }
-                if (mitaiResult != null) {
-                    Log.d(TAG, "🔍 NEW DEBUG: Found みたい: kanji=${mitaiResult.kanji}, reading=${mitaiResult.reading}, common=${mitaiResult.isCommon}, freq=${mitaiResult.frequency}")
-                } else {
-                    Log.d(TAG, "🔍 NEW DEBUG: みたい NOT found in search results!")
-                }
-                
-                val mitasuResult = convertedResults.find { (it.kanji == "満たす" || it.reading == "みたす") }
-                if (mitasuResult != null) {
-                    Log.d(TAG, "🔍 NEW DEBUG: Found 満たす: kanji=${mitasuResult.kanji}, reading=${mitasuResult.reading}, common=${mitasuResult.isCommon}, freq=${mitasuResult.frequency}")
-                } else {
-                    Log.d(TAG, "🔍 NEW DEBUG: 満たす NOT found in search results!")
                 }
             }
             
@@ -1001,7 +981,6 @@ class DictionaryRepository(private val context: Context) {
             Log.d(TAG, "🏁 searchFTS5Japanese completed in ${totalTime}ms with ${finalResults.size} total results")
             Log.d(TAG, "🔍 Sorting: Exact matches: ${finalResults.count { it.kanji == query || it.reading == query }}")
             Log.d(TAG, "🔍 Sorting: Valid deinflections: ${finalResults.count { it.isDeinflectedValidConjugation }}")
-            Log.d(TAG, "🔍 Sorting: Proper nouns: ${finalResults.count { it.isJMNEDictEntry }}")
             
             // Log first 10 results for debugging
             if (query == "みた") {
@@ -1012,13 +991,13 @@ class DictionaryRepository(private val context: Context) {
                         "exact=${result.reading == query || result.kanji == query}, " +
                         "deinflected=${result.isDeinflectedValidConjugation}, " +
                         "common=${result.isCommon}, freq=${result.frequency}, " +
-                        "proper=${result.isJMNEDictEntry}, meanings=${result.meanings.take(2)})")
+                        "meanings=${result.meanings.take(2)})")
                 }
             }
             
             // Add individual kanji character search for single character queries
             // This handles cases like 瓴 that exist in Kanjidic but not in word entries
-            val allResults = if (query.length == 1 && isKanji(query)) {
+            val finalResultsWithKanji = if (query.length == 1 && isKanji(query)) {
                 Log.d(TAG, "🔍 Single kanji character detected: '$query' - adding kanji character search")
                 
                 try {
@@ -1050,7 +1029,7 @@ class DictionaryRepository(private val context: Context) {
 
             // Filter out katakana duplicates BEFORE returning results
             // This ensures duplicates are removed before any grouping happens
-            val filteredResults = filterKatakanaDuplicatesSimple(allResults)
+            val filteredResults = filterKatakanaDuplicatesSimple(finalResultsWithKanji)
             
             return@withContext filteredResults
         } catch (e: Exception) {
@@ -1691,7 +1670,7 @@ class DictionaryRepository(private val context: Context) {
             kanji = searchResult.kanji,
             reading = searchResult.reading,
             meanings = parseMeaningsJson(searchResult.meanings),
-            isCommon = searchResult.formIsCommon, // Use form-specific common flag instead of general isCommon
+            isCommon = searchResult.isCommon, // Use form-specific common flag
             frequency = searchResult.frequency,
             wordOrder = 999,
             tags = emptyList(), // Tags will be loaded by TagDictSQLiteLoader for both JMdict and JMNEDict entries
@@ -1702,7 +1681,6 @@ class DictionaryRepository(private val context: Context) {
             } catch (e: Exception) {
                 emptyList()
             },
-            isJMNEDictEntry = searchResult.isJMNEDictEntry, // Now properly retrieved from database
             isDeinflectedValidConjugation = false // Not computed in simplified SQL anymore
         )
     }
@@ -2283,10 +2261,6 @@ class DictionaryRepository(private val context: Context) {
      * Proper nouns should be deprioritized in search results
      */
     private fun isProperNoun(result: WordResult): Boolean {
-        // Use database flag first (most reliable)
-        if (result.isJMNEDictEntry) {
-            return true
-        }
         
         // Fallback to tag-based check for entries without database flag
         val properNounTags = setOf(
@@ -2391,7 +2365,6 @@ class DictionaryRepository(private val context: Context) {
             wordOrder = 999,
             tags = emptyList(),
             partsOfSpeech = emptyList(),
-            isJMNEDictEntry = false,
             isDeinflectedValidConjugation = false
         )
     }
@@ -2444,7 +2417,6 @@ class DictionaryRepository(private val context: Context) {
             wordOrder = 1, // High priority for exact kanji match
             tags = emptyList(),
             partsOfSpeech = listOf("kanji"), // Mark as kanji type
-            isJMNEDictEntry = false,
             isDeinflectedValidConjugation = false
         )
     }

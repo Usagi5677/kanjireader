@@ -45,7 +45,6 @@ data class WordResult(
     val wordOrder: Int,
     val tags: List<String>,
     val partsOfSpeech: List<String>,
-    val isJMNEDictEntry: Boolean,
     val isDeinflectedValidConjugation: Boolean
 )
 

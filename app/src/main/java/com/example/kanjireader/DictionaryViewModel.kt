@@ -232,20 +232,18 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                         verbType = if (shouldShowDeinflection) deinflectionInfo?.verbType?.toString() else null,
                         conjugationInfo = if (shouldShowDeinflection) deinflectionInfo?.originalForm else null,
                         frequency = if (wordResult.frequency > 0) wordResult.frequency else null,
-                        isJMNEDictEntry = wordResult.isJMNEDictEntry,
                         isDeinflectedResult = wordResult.isDeinflectedValidConjugation,
                         pitchAccents = pitchAccents.takeIf { it.isNotEmpty() }
                     )
                 }
                 
-                // Sort results: regular dictionary entries first, JMNEDict entries (proper nouns) last
-                val groupedResults = unsortedResults.sortedBy { entry ->
-                    if (entry.isJMNEDictEntry) 1 else 0 // JMNEDict entries get priority 1 (last)
-                }
+                // Sort results by common status and frequency
+                val groupedResults = unsortedResults.sortedWith(
+                    compareByDescending<UnifiedDictionaryEntry> { it.isCommon }
+                        .thenByDescending { it.frequency ?: 0 }
+                )
                 
-                val regularCount = groupedResults.count { !it.isJMNEDictEntry }
-                val jmneCount = groupedResults.count { it.isJMNEDictEntry }
-                Log.d(TAG, "Final results sorted: ${groupedResults.size} total (${regularCount} regular, ${jmneCount} proper nouns at bottom)")
+                Log.d(TAG, "Final results sorted: ${groupedResults.size} total")
 
                 // Store all results (no pagination)
                 allSearchResults = groupedResults.toMutableList()
@@ -463,8 +461,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                             verbType = null, // Could get from cache if needed
                             conjugationInfo = null,
                             frequency = if (wordResult.frequency > 0) wordResult.frequency else null,
-                            isJMNEDictEntry = wordResult.isJMNEDictEntry,
-                            isDeinflectedResult = wordResult.isDeinflectedValidConjugation,
+                                isDeinflectedResult = wordResult.isDeinflectedValidConjugation,
                             pitchAccents = pitchAccents.takeIf { it.isNotEmpty() }
                         )
                     }

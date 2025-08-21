@@ -73,7 +73,6 @@ class WordListDetailActivity : AppCompatActivity() {
                 putExtra("reading", entry.primaryReading ?: entry.primaryForm)
                 putExtra("meanings", ArrayList(entry.meanings))
                 putExtra("frequency", entry.frequency ?: 0)
-                putExtra("isJMNEDict", entry.isJMNEDictEntry)
             }
             startActivity(intent)
         }
@@ -137,7 +136,6 @@ class WordListDetailActivity : AppCompatActivity() {
                 meanings = savedWord.meanings,
                 frequency = savedWord.frequency,
                 isCommon = savedWord.isCommon,
-                isJMNEDictEntry = false // SavedWords are not JMNEDict entries
             )
         }
         

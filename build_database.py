@@ -165,7 +165,7 @@ class DatabaseBuilder:
         print("📋 Creating database schema...")
 
         # Main dictionary entries table
-        # CHANGES: Removed 'jmnedict_type', added 'is_jmnedict_entry'
+        # Schema without jmnedict and form_is_common columns
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS dictionary_entries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,9 +177,7 @@ class DatabaseBuilder:
                 frequency INTEGER DEFAULT 0,
                 tokenized_kanji TEXT,
                 tokenized_reading TEXT,
-                is_jmnedict_entry INTEGER DEFAULT 0,  -- Only this flag for JMnedict source
-                form_is_common INTEGER DEFAULT 0,  -- Common flag specific to this kanji-kana combination
-                UNIQUE(kanji, reading, is_jmnedict_entry)
+                UNIQUE(kanji, reading)
             )
         """)
 
@@ -188,14 +186,12 @@ class DatabaseBuilder:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_kanji ON dictionary_entries(kanji)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_common ON dictionary_entries(is_common)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_frequency ON dictionary_entries(frequency)")
-        # NEW INDEX for new column
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_is_jmnedict_entry ON dictionary_entries(is_jmnedict_entry)")
 
         # Create FTS5 virtual tables
         print("📊 Creating FTS5 virtual tables...")
 
         # Japanese text search table (entries_fts5)
-        # CHANGES: Removed jmnedict_type
+        # FTS table without jmnedict and form_is_common columns
         cursor.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts5 USING fts5(
                 kanji,
@@ -206,8 +202,6 @@ class DatabaseBuilder:
                 parts_of_speech,
                 is_common UNINDEXED,
                 frequency UNINDEXED,
-                is_jmnedict_entry UNINDEXED, -- Only this flag for FTS
-                form_is_common UNINDEXED,
                 content='dictionary_entries',
                 content_rowid='id'
             )
@@ -843,18 +837,16 @@ class DatabaseBuilder:
             print(f"❌ Failed to load tags file: {e}")
             return {}
 
-    # MODIFIED: populate_dictionary_entries now takes 'is_jmnedict_source'
-    def populate_dictionary_entries(self, conn: sqlite3.Connection, entries_data: List[Dict], tags_data: Dict[str, List[str]], is_jmnedict_source: bool = False) -> None:
+    def populate_dictionary_entries(self, conn: sqlite3.Connection, entries_data: List[Dict], tags_data: Dict[str, List[str]]) -> None:
         """Populate the main dictionary_entries table and word_tags table"""
         cursor = conn.cursor()
 
-        print(f"📝 Populating dictionary entries (Source: {'JMnedict' if is_jmnedict_source else 'JMdict'})...")
+        print("📝 Populating dictionary entries...")
         entries_added = 0
         tags_added = 0
         error_count = 0  # Track SQL errors
         max_errors = 100  # Maximum allowed errors before stopping
 
-        # NOTE: jmnedict_type_priority_order and related logic for jmnedict_specific_type are REMOVED.
 
         batch_size = 1000  # Smaller batch size to prevent corruption
         
@@ -889,7 +881,7 @@ class DatabaseBuilder:
                     except:
                         raise
 
-            # Handle new format with 'sense' array (JMdict) or 'translation' array (JMnedict)
+            # Handle new format with 'sense' array (JMdict)
             meanings = []
             parts_of_speech_list = []
             
@@ -950,11 +942,7 @@ class DatabaseBuilder:
             parts_of_speech_list = list(dict.fromkeys(parts_of_speech_list))
             parts_of_speech_json = json.dumps(parts_of_speech_list)
 
-            is_common = any(form.get('common', False) for form in entry.get('kanji', []) + entry.get('kana', []))
-
-            # --- UPDATED LOGIC FOR FLAGS ---
-            is_entry_from_jmnedict = 1 if is_jmnedict_source else 0
-            # jmnedict_specific_type is REMOVED from here.
+            # is_common will be calculated per form now (not at entry level)
 
             # Build forms with their metadata
             forms_to_insert = []
@@ -975,12 +963,12 @@ class DatabaseBuilder:
                         kana_tags = kana_entry.get('tags', [])  # Extract kana-level tags (rk, ik, etc.)
                         
                         # Form is common if both kanji and kana are common
-                        form_common = kanji_common and kana_common
+                        is_common = kanji_common and kana_common
                         
                         # Combine kanji and kana tags for this form
                         form_tags = kanji_tags + kana_tags
                         
-                        forms_to_insert.append((kanji_text, kana_text, form_common, form_tags))
+                        forms_to_insert.append((kanji_text, kana_text, is_common, form_tags))
             elif kana_forms:
                 for kana_text in kana_forms:
                     # Find the kana entry object for this text
@@ -990,7 +978,7 @@ class DatabaseBuilder:
                     
                     forms_to_insert.append((None, kana_text, kana_common, kana_tags))
 
-            for kanji_form, kana_form, form_is_common, form_tags in forms_to_insert:
+            for kanji_form, kana_form, is_common, form_tags in forms_to_insert:
                 # OPTIONAL: Apply Romaji normalization here if desired
                 # normalized_kana_form = self.normalize_romaji(kana_form)
                 # normalized_kanji_form = self.normalize_romaji(kanji_form) if kanji_form else None
@@ -1012,18 +1000,15 @@ class DatabaseBuilder:
                         print(f"      kana_form: {repr(kana_form)}")
                         print(f"      frequency: {frequency}")
                         print(f"      is_common: {is_common}")
-                        print(f"      is_entry_from_jmnedict: {is_entry_from_jmnedict}")
                         print(f"      parts_of_speech: {parts_of_speech_list}")
                     
                     cursor.execute("""
                         INSERT OR IGNORE INTO dictionary_entries
                         (kanji, reading, meanings, parts_of_speech, is_common,
-                         frequency, tokenized_kanji, tokenized_reading,
-                         is_jmnedict_entry, form_is_common)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         frequency, tokenized_kanji, tokenized_reading)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """, (kanji_form, kana_form, meanings_json, parts_of_speech_json,
-                          1 if is_common else 0, frequency, tokenized_kanji, tokenized_reading,
-                          is_entry_from_jmnedict, 1 if form_is_common else 0))
+                          1 if is_common else 0, frequency, tokenized_kanji, tokenized_reading))
 
                     # Get the entry ID - check if entry was actually inserted
                     if cursor.rowcount > 0:
@@ -1033,8 +1018,8 @@ class DatabaseBuilder:
                         # INSERT was ignored (duplicate), fetch the existing entry's ID
                         cursor.execute("""
                             SELECT id FROM dictionary_entries 
-                            WHERE reading = ? AND (kanji IS ? OR (kanji IS NULL AND ? IS NULL)) AND is_jmnedict_entry = ?
-                        """, (kana_form, kanji_form, kanji_form, is_entry_from_jmnedict))
+                            WHERE reading = ? AND (kanji IS ? OR (kanji IS NULL AND ? IS NULL))
+                        """, (kana_form, kanji_form, kanji_form))
                         result = cursor.fetchone()
                         entry_id = result[0] if result else None
                     
@@ -1046,22 +1031,16 @@ class DatabaseBuilder:
                             print(f"   ❌ DEBUG: みる entry insertion was ignored (likely duplicate)")
                             # Check what existing entry conflicts
                             cursor.execute("""
-                                SELECT id, kanji, reading, frequency, is_common, is_jmnedict_entry 
+                                SELECT id, kanji, reading, frequency, is_common 
                                 FROM dictionary_entries 
-                                WHERE reading = ? AND (kanji IS ? OR (kanji IS NULL AND ? IS NULL)) AND is_jmnedict_entry = ?
-                            """, (kana_form, kanji_form, kanji_form, is_entry_from_jmnedict))
+                                WHERE reading = ? AND (kanji IS ? OR (kanji IS NULL AND ? IS NULL))
+                            """, (kana_form, kanji_form, kanji_form))
                             existing = cursor.fetchone()
                             if existing:
-                                print(f"      Existing entry: ID={existing[0]}, kanji={repr(existing[1])}, freq={existing[3]}, is_jmnedict={existing[5]}")
+                                print(f"      Existing entry: ID={existing[0]}, kanji={repr(existing[1])}, freq={existing[3]}, is_common={existing[4]}")
                             else:
                                 print(f"      No conflicting entry found - insertion failed for other reason")
 
-                    # Debug logging for JMnedict entries
-                    if is_entry_from_jmnedict and kanji_form == '上':
-                        print(f"   🔍 DEBUG JMnedict: {kanji_form}/{kana_form}")
-                        print(f"      entry_id: {entry_id}")
-                        print(f"      parts_of_speech_list: {parts_of_speech_list}")
-                        print(f"      tags to insert: {len(parts_of_speech_list)}")
 
                     if entry_id:
                         # Insert parts of speech tags
@@ -1073,12 +1052,7 @@ class DatabaseBuilder:
                                 """, (entry_id, tag))
                                 tags_added += 1
                                 
-                                # Debug logging for JMnedict entries
-                                if is_entry_from_jmnedict and kanji_form == '上':
-                                    print(f"         ✅ Inserted POS tag: {tag}")
                             except sqlite3.Error as e:
-                                if is_entry_from_jmnedict and kanji_form == '上':
-                                    print(f"         ❌ Failed to insert POS tag: {tag}, error: {e}")
                                 pass
                         
                         # Insert kanji/kana form-specific tags (rK, iK, rk, ik, etc.)
@@ -1098,8 +1072,7 @@ class DatabaseBuilder:
                                     print(f"         ❌ Failed to insert form tag: {tag} for {kanji_form}/{kana_form}, error: {e}")
                                 pass
                     else:
-                        if is_entry_from_jmnedict and kanji_form == '上':
-                            print(f"   ❌ No valid entry_id for {kanji_form}/{kana_form}")
+                        pass
                     entries_added += 1
                 except sqlite3.Error as e:
                     error_count += 1
@@ -1153,50 +1126,47 @@ class DatabaseBuilder:
         print("🔧 Creating triggers...")
 
         # Trigger for entries_fts5 (AFTER INSERT)
-        # CHANGES: Removed jmnedict_type from VALUES list
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS entries_fts5_ai AFTER INSERT ON dictionary_entries
             BEGIN
                 INSERT INTO entries_fts5(rowid, kanji, reading, meanings, tokenized_kanji,
                                         tokenized_reading, parts_of_speech,
-                                        is_common, frequency, is_jmnedict_entry, form_is_common)
+                                        is_common, frequency)
                 VALUES (new.id, new.kanji, new.reading, new.meanings, new.tokenized_kanji,
                         new.tokenized_reading, new.parts_of_speech,
-                        new.is_common, new.frequency, new.is_jmnedict_entry, new.form_is_common);
+                        new.is_common, new.frequency);
             END
         """)
 
         # Trigger for entries_fts5 (AFTER DELETE)
-        # CHANGES: Removed jmnedict_type from VALUES list
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS entries_fts5_ad AFTER DELETE ON dictionary_entries
             BEGIN
                 INSERT INTO entries_fts5(entries_fts5, rowid, kanji, reading, meanings, tokenized_kanji,
                                         tokenized_reading, parts_of_speech,
-                                        is_common, frequency, is_jmnedict_entry, form_is_common)
+                                        is_common, frequency)
                 VALUES ('delete', old.id, old.kanji, old.reading, old.meanings, old.tokenized_kanji,
                         old.tokenized_reading, old.parts_of_speech,
-                        old.is_common, old.frequency, old.is_jmnedict_entry, old.form_is_common);
+                        old.is_common, old.frequency);
             END
         """)
 
         # Trigger for entries_fts5 (AFTER UPDATE)
-        # CHANGES: Removed jmnedict_type from VALUES list in both delete and insert parts
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS entries_fts5_au AFTER UPDATE ON dictionary_entries
             BEGIN
                 INSERT INTO entries_fts5(entries_fts5, rowid, kanji, reading, meanings, tokenized_kanji,
                                         tokenized_reading, parts_of_speech,
-                                        is_common, frequency, is_jmnedict_entry, form_is_common)
+                                        is_common, frequency)
                 VALUES ('delete', old.id, old.kanji, old.reading, old.meanings, old.tokenized_kanji,
                         old.tokenized_reading, old.parts_of_speech,
-                        old.is_common, old.frequency, old.is_jmnedict_entry, old.form_is_common);
+                        old.is_common, old.frequency);
                 INSERT INTO entries_fts5(rowid, kanji, reading, meanings, tokenized_kanji,
                                         tokenized_reading, parts_of_speech,
-                                        is_common, frequency, is_jmnedict_entry, form_is_common)
+                                        is_common, frequency)
                 VALUES (new.id, new.kanji, new.reading, new.meanings, new.tokenized_kanji,
                         new.tokenized_reading, new.parts_of_speech,
-                        new.is_common, new.frequency, new.is_jmnedict_entry, new.form_is_common);
+                        new.is_common, new.frequency);
             END
         """)
 
@@ -1987,7 +1957,7 @@ class DatabaseBuilder:
             print(f"❌ Kanji rebuild failed: {e}")
             return False
 
-    def build_database(self, jmdict_path: str = "app/src/main/assets/jmdict.json", kanjidic_path: str = "app/src/main/assets/kanjidic.json", jmnedict_path: str = "app/src/main/assets/jmnedict.json", kradfile_path: str = "app/src/main/assets/kradfile.json", radkfile_path: str = "app/src/main/assets/radkfile.json") -> bool:
+    def build_database(self, jmdict_path: str = "app/src/main/assets/jmdict.json", kanjidic_path: str = "app/src/main/assets/kanjidic.json", kradfile_path: str = "app/src/main/assets/kradfile.json", radkfile_path: str = "app/src/main/assets/radkfile.json") -> bool:
         """Main method to build the complete database"""
         print(f"🚀 Building database: {self.output_path}")
         print(f"📅 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -2206,19 +2176,7 @@ class DatabaseBuilder:
 
             # Populate dictionary data with JMdict entries
             print("🔄 Populating JMdict entries...")
-            self.populate_dictionary_entries(conn, jmdict_data, tags_data_jmdict, is_jmnedict_source=False)
-
-            # Load and populate JMnedict data (names dictionary) from single file
-            print("\n📛 Processing JMnedict data...")
-            jmnedict_data = self.load_jmnedict_data(jmnedict_path)
-            if jmnedict_data:
-                print(f"📊 Loaded {len(jmnedict_data)} entries from JMnedict")
-                # JMnedict tags are embedded in the main file, pass empty dict for tags_data
-                print(f"📛 Adding {len(jmnedict_data)} JMnedict entries to dictionary tables...")
-                # Pass True for is_jmnedict_source for all JMnedict entries
-                self.populate_dictionary_entries(conn, jmnedict_data, {}, is_jmnedict_source=True)
-            else:
-                print("⚠️  No JMnedict data found, skipping name entries.")
+            self.populate_dictionary_entries(conn, jmdict_data, tags_data_jmdict)
 
             # Load and populate KanjiDic data from single file
             print("\n🈵 Processing KanjiDic data...")
@@ -2294,8 +2252,6 @@ def main():
                        help="Output database path")
     parser.add_argument("--kanjidic", default="app/src/main/assets/kanjidic.json",
                        help="Path to KanjiDic JSON file")
-    parser.add_argument("--jmnedict", default="app/src/main/assets/jmnedict.json",
-                       help="Path to JMnedict JSON file")
     parser.add_argument("--kradfile", default="app/src/main/assets/kradfile.json",
                        help="Path to kradfile JSON file")
     parser.add_argument("--radkfile", default="app/src/main/assets/radkfile.json",
@@ -2304,12 +2260,12 @@ def main():
     args = parser.parse_args()
 
     builder = DatabaseBuilder(args.output)
-    success = builder.build_database(args.jmdict, args.kanjidic, args.jmnedict, args.kradfile, args.radkfile)
+    success = builder.build_database(args.jmdict, args.kanjidic, args.kradfile, args.radkfile)
 
     if success:
         print("\n🎉 Database ready for Android deployment!")
         print(f"   Location: {args.output}")
-        print("   Contains: JMdict entries + JMnedict names + KanjiDic kanji data")
+        print("   Contains: JMdict entries + KanjiDic kanji data")
         print("   The app will automatically detect and use the pre-built database.")
     else:
         print("\n❌ Database build failed!")

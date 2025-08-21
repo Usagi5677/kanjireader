@@ -80,10 +80,8 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         const val COL_PARTS_OF_SPEECH = "parts_of_speech"
         const val COL_FREQUENCY = "frequency"
         const val COL_IS_COMMON = "is_common"
-        const val COL_IS_JMNEDICT_ENTRY = "is_jmnedict_entry"
         const val COL_TOKENIZED_KANJI = "tokenized_kanji"
         const val COL_TOKENIZED_READING = "tokenized_reading"
-        const val COL_FORM_IS_COMMON = "form_is_common"
 
         // Kanji radical mapping table columns
         const val COL_KRM_KANJI = "kanji"
@@ -681,7 +679,6 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         
         // Add new per-form columns for form-specific common flag
         Log.d(TAG, "UPGRADE STEP 2b: Adding per-form common flag column if needed...")
-        addColumnIfNotExists(db, TABLE_ENTRIES, COL_FORM_IS_COMMON, "INTEGER DEFAULT 0")
         Log.d(TAG, "✅ UPGRADE STEP 2 COMPLETE: Tokenized and per-form columns checked/added")
 
         // Drop existing FTS tables and triggers to ensure clean recreation
@@ -1064,6 +1061,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         // Build FTS5 query for optimal search
         val ftsQuery = buildJapaneseFtsQuery(normalizedQuery)
         Log.d(TAG, "🔍 Japanese FTS search: '$query' → FTS query: '$ftsQuery' (limit=$limit)")
+        
 
         val sql = """
             SELECT
@@ -1074,16 +1072,13 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 T1.$COL_PARTS_OF_SPEECH AS parts_of_speech,
                 T1.$COL_IS_COMMON,
                 T1.$COL_FREQUENCY,
-                T1.$COL_IS_JMNEDICT_ENTRY,
-                1.0 AS fts_relevance_rank,
-                T1.$COL_FORM_IS_COMMON
+                1.0 AS fts_relevance_rank
             FROM $TABLE_ENTRIES AS T1
             WHERE T1.$COL_ID IN (
                 SELECT rowid FROM entries_fts5
                 WHERE (kanji MATCH ?) OR (reading MATCH ?) OR (tokenized_kanji MATCH ?) OR (tokenized_reading MATCH ?)
             )
             ORDER BY
-                T1.$COL_FORM_IS_COMMON DESC,
                 T1.$COL_IS_COMMON DESC,
                 T1.$COL_FREQUENCY DESC,
                 LENGTH(T1.$COL_READING) ASC,
@@ -1091,7 +1086,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             LIMIT ?
         """
 
-        // Execute the search
+        // Execute the FTS5 search (fast - exact and prefix matches)
         try {
             db.rawQuery(sql, arrayOf(
                 ftsQuery,                            // P1: FTS kanji MATCH
@@ -1109,13 +1104,11 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                         partsOfSpeech = cursor.getString(4),
                         isCommon = cursor.getInt(5) == 1,
                         frequency = cursor.getInt(6),
-                        isJMNEDictEntry = cursor.getInt(7) == 1,
-                        rank = cursor.getDouble(8), // fts_relevance_rank from SQL
-                        formIsCommon = cursor.getInt(9) == 1
-                        // Note: highlightedKanji and highlightedReading are not selected in this test
+                        rank = cursor.getDouble(7) // fts_relevance_rank from SQL
                     ))
                 }
             }
+            
         } catch (e: Exception) {
             Log.e(TAG, "❌ DIAGNOSTIC ERROR: Query failed", e)
             Log.e(TAG, "❌ Error message: ${e.message}")
@@ -1126,6 +1119,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
 
         val elapsed = System.currentTimeMillis() - startTime
         Log.d(TAG, "✨ Japanese FTS search completed in ${elapsed}ms: ${results.size} results")
+        
 
         return results
     }
@@ -1178,15 +1172,13 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 $COL_FREQUENCY,
                 1.0 AS relevance_score,
                 '' AS highlighted_meanings,
-                '' AS highlighted_parts_of_speech,
-                $COL_FORM_IS_COMMON
+                '' AS highlighted_parts_of_speech
             FROM $TABLE_ENTRIES
             WHERE $COL_ID IN (
                 SELECT entry_id FROM $TABLE_ENGLISH_FTS 
                 WHERE meanings MATCH ? OR parts_of_speech MATCH ?
             )
             ORDER BY
-                $COL_FORM_IS_COMMON DESC,
                 $COL_IS_COMMON DESC,
                 $COL_FREQUENCY DESC,
                 LENGTH($COL_MEANINGS) ASC
@@ -1207,7 +1199,6 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                         rank = cursor.getDouble(7),
                         highlightedKanji = null, // English search, kanji won't be highlighted here
                         highlightedReading = null, // English search, reading won't be highlighted here
-                        formIsCommon = cursor.getInt(10) == 1
                     ))
                 }
             }
@@ -1357,8 +1348,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                     partsOfSpeech = it.getString(it.getColumnIndexOrThrow(COL_PARTS_OF_SPEECH)),
                     frequency = it.getInt(it.getColumnIndexOrThrow(COL_FREQUENCY)),
                     tokenizedKanji = it.getString(it.getColumnIndexOrThrow(COL_TOKENIZED_KANJI)),
-                    tokenizedReading = it.getString(it.getColumnIndexOrThrow(COL_TOKENIZED_READING)),
-                    formIsCommon = it.getInt(it.getColumnIndexOrThrow(COL_FORM_IS_COMMON)) == 1
+                    tokenizedReading = it.getString(it.getColumnIndexOrThrow(COL_TOKENIZED_READING))
                 )
             } else null
         }
@@ -2223,10 +2213,8 @@ data class SearchResult(
     val isCommon: Boolean = false,
     val frequency: Int = 0,
     val rank: Double = 0.0,
-    val isJMNEDictEntry: Boolean = false,
     val highlightedKanji: String? = null,
-    val highlightedReading: String? = null,
-    val formIsCommon: Boolean = false
+    val highlightedReading: String? = null
 )
 
 data class DatabaseDictionaryEntry(
@@ -2237,8 +2225,7 @@ data class DatabaseDictionaryEntry(
     val partsOfSpeech: String?,
     val frequency: Int,
     val tokenizedKanji: String?,
-    val tokenizedReading: String,
-    val formIsCommon: Boolean
+    val tokenizedReading: String
 )
 
 data class KanjiDatabaseEntry(

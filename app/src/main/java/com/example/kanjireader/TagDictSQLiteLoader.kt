@@ -83,10 +83,10 @@ class TagDictSQLiteLoader(private val context: Context) {
     /**
      * Lookup tags for specific kanji+reading combination with JMnedict flag (most precise)
      */
-    fun lookupTagsForKanjiReadingWithJMnedict(kanji: String?, reading: String, isJMNEDictEntry: Boolean): TagEntry? {
+    private fun lookupTagsForKanjiReadingInternal(kanji: String?, reading: String): TagEntry? {
         return try {
             // Find entry IDs for exact kanji+reading+JMnedict match
-            val entryIds = findEntryIdsForKanjiReadingWithJMnedict(kanji, reading, isJMNEDictEntry)
+            val entryIds = findEntryIdsForKanjiReading(kanji, reading)
             if (entryIds.isNotEmpty()) {
                 // Get all tags from matching entries
                 val allTags = mutableSetOf<String>()
@@ -105,7 +105,7 @@ class TagDictSQLiteLoader(private val context: Context) {
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to lookup tags for kanji='$kanji', reading='$reading', isJMNEDict=$isJMNEDictEntry", e)
+            Log.e(TAG, "Failed to lookup tags for kanji='$kanji', reading='$reading'", e)
             null
         }
     }
@@ -113,10 +113,10 @@ class TagDictSQLiteLoader(private val context: Context) {
     /**
      * Get ALL tags (including form-level tags like rK, iK) for kanji+reading combination without filtering
      */
-    fun getAllTagsForKanjiReadingWithJMnedict(kanji: String?, reading: String, isJMNEDictEntry: Boolean): List<String> {
+    fun getAllTagsForKanjiReading(kanji: String?, reading: String): List<String> {
         return try {
             // Find entry IDs for exact kanji+reading+JMnedict match
-            val entryIds = findEntryIdsForKanjiReadingWithJMnedict(kanji, reading, isJMNEDictEntry)
+            val entryIds = findEntryIdsForKanjiReading(kanji, reading)
             if (entryIds.isNotEmpty()) {
                 // Get all tags from matching entries
                 val allTags = mutableSetOf<String>()
@@ -134,7 +134,7 @@ class TagDictSQLiteLoader(private val context: Context) {
                 emptyList()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get all tags for kanji='$kanji', reading='$reading', isJMNEDict=$isJMNEDictEntry", e)
+            Log.e(TAG, "Failed to get all tags for kanji='$kanji', reading='$reading'", e)
             emptyList()
         }
     }
@@ -298,49 +298,6 @@ class TagDictSQLiteLoader(private val context: Context) {
         }
     }
     
-    /**
-     * Find entry IDs for exact kanji+reading+JMnedict combination
-     */
-    private fun findEntryIdsForKanjiReadingWithJMnedict(kanji: String?, reading: String, isJMNEDictEntry: Boolean): List<Long> {
-        return try {
-            val db = database.readableDatabase
-            val jmnedictValue = if (isJMNEDictEntry) "1" else "0"
-            
-            val cursor = if (kanji != null) {
-                // Look for exact kanji+reading+JMnedict match
-                db.query(
-                    DictionaryDatabase.TABLE_ENTRIES,
-                    arrayOf(DictionaryDatabase.COL_ID),
-                    "${DictionaryDatabase.COL_KANJI} = ? AND ${DictionaryDatabase.COL_READING} = ? AND ${DictionaryDatabase.COL_IS_JMNEDICT_ENTRY} = ?",
-                    arrayOf(kanji, reading, jmnedictValue),
-                    null, null, null
-                )
-            } else {
-                // No kanji, just look for reading+JMnedict
-                db.query(
-                    DictionaryDatabase.TABLE_ENTRIES,
-                    arrayOf(DictionaryDatabase.COL_ID),
-                    "${DictionaryDatabase.COL_READING} = ? AND ${DictionaryDatabase.COL_IS_JMNEDICT_ENTRY} = ?",
-                    arrayOf(reading, jmnedictValue),
-                    null, null, null
-                )
-            }
-            
-            val entryIds = mutableListOf<Long>()
-            cursor.use {
-                while (it.moveToNext()) {
-                    entryIds.add(it.getLong(0))
-                }
-            }
-            if (kanji == "上") {
-                Log.d(TAG, "Found ${entryIds.size} entry IDs for kanji='$kanji', reading='$reading', isJMNEDict=$isJMNEDictEntry: $entryIds")
-            }
-            entryIds
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to find entry IDs for kanji='$kanji', reading='$reading', isJMNEDict=$isJMNEDictEntry", e)
-            emptyList()
-        }
-    }
 
     /**
      * Check if tags are loaded in database
@@ -372,13 +329,8 @@ class TagDictSQLiteLoader(private val context: Context) {
      * Enhance word results with tag data
      */
     fun enhanceWordResult(wordResult: WordResult): EnhancedWordResult {
-        // Debug logging for JMnedict entries
-        if (wordResult.kanji == "上" && wordResult.isJMNEDictEntry) {
-            Log.d(TAG, "🔍 Enhancing JMnedict entry: kanji=${wordResult.kanji}, reading=${wordResult.reading}, isJMNEDict=${wordResult.isJMNEDictEntry}")
-        }
-
-        // Use precise kanji+reading+JMnedict flag lookup to get correct tags
-        var tagEntry = lookupTagsForKanjiReadingWithJMnedict(wordResult.kanji, wordResult.reading, wordResult.isJMNEDictEntry)
+        // Use precise kanji+reading lookup to get correct tags
+        var tagEntry = lookupTagsForKanjiReading(wordResult.kanji, wordResult.reading)
 
         // If not found with precise lookup, fall back to less precise methods
         if (tagEntry == null) {
@@ -391,10 +343,6 @@ class TagDictSQLiteLoader(private val context: Context) {
             tagEntry = lookupTags(primaryKey)
         }
         
-        // Debug logging for JMnedict entries
-        if (wordResult.kanji == "上" && wordResult.isJMNEDictEntry) {
-            Log.d(TAG, "🔍 Tag lookup result: tagEntry=$tagEntry")
-        }
 
         // If still not found, try common patterns (e.g., 観る → 見る)
 
@@ -402,10 +350,6 @@ class TagDictSQLiteLoader(private val context: Context) {
             val partOfSpeech = extractPartOfSpeech(tagEntry)
             val verbType = classifyVerbType(partOfSpeech)
             
-            // Debug logging for JMnedict entries
-            if (wordResult.kanji == "上" && wordResult.isJMNEDictEntry) {
-                Log.d(TAG, "🔍 Final partOfSpeech: $partOfSpeech")
-            }
 
             EnhancedWordResult(
                 kanji = wordResult.kanji,
@@ -417,10 +361,6 @@ class TagDictSQLiteLoader(private val context: Context) {
                 numericFrequency = wordResult.frequency
             )
         } else {
-            // Debug logging for JMnedict entries
-            if (wordResult.kanji == "上" && wordResult.isJMNEDictEntry) {
-                Log.d(TAG, "🔍 No tagEntry found, returning empty partOfSpeech")
-            }
             
             EnhancedWordResult(
                 kanji = wordResult.kanji,

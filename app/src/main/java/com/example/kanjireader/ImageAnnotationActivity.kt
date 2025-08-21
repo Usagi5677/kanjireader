@@ -323,7 +323,6 @@ class ImageAnnotationActivity : AppCompatActivity() {
                         putExtra("reading", bestResult.reading)
                         putExtra("meanings", ArrayList(bestResult.meanings))
                         putExtra("frequency", bestResult.frequency)
-                        putExtra("isJMNEDict", bestResult.isJMNEDictEntry)
                         putExtra("selectedText", wordCard.word) // For phrase searching
                     }
                     
@@ -1410,7 +1409,6 @@ class ImageAnnotationActivity : AppCompatActivity() {
             wordOrder = 999,
             tags = emptyList(),
             partsOfSpeech = emptyList(),
-            isJMNEDictEntry = false,
             isDeinflectedValidConjugation = false
         )
 
@@ -1708,8 +1706,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
                     wordOrder = 999,
                     tags = emptyList(),
                     partsOfSpeech = emptyList(),
-                    isJMNEDictEntry = false,
-                    isDeinflectedValidConjugation = false
+                            isDeinflectedValidConjugation = false
                 )
             } else {
                 null
@@ -1745,8 +1742,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
                 wordOrder = 999,
                 tags = emptyList(),
                 partsOfSpeech = emptyList(),
-                isJMNEDictEntry = false,
-                isDeinflectedValidConjugation = false
+                    isDeinflectedValidConjugation = false
             )
         } else {
             null
@@ -1812,8 +1808,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
                 wordOrder = 999,
                 tags = emptyList(),
                 partsOfSpeech = emptyList(),
-                isJMNEDictEntry = false,
-                isDeinflectedValidConjugation = false
+                    isDeinflectedValidConjugation = false
             )
         } else {
             null

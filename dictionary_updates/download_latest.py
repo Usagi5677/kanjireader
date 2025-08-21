@@ -312,11 +312,10 @@ class DictionaryDownloader:
             print(f"❌ Error saving accent data: {e}")
             return None
     
-    def find_target_assets(self, release_data: Dict) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
-        """Find the jmdict-eng, kanjidic2-en, jmnedict ZIP file URLs (kradfile from kensaku, radkfile from Kradical)"""
+    def find_target_assets(self, release_data: Dict) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """Find the jmdict-eng and kanjidic2-en ZIP file URLs (kradfile from kensaku, radkfile from Kradical)"""
         jmdict_url = None
         kanjidic_url = None
-        jmnedict_url = None
         kradfile_url = None  # Will be handled separately from kensaku repo
         radkfile_url = None  # Will be handled separately from Kradical repo
         
@@ -342,11 +341,6 @@ class DictionaryDownloader:
                 kanjidic_url = download_url
                 print(f"Found Kanjidic file: {name}")
             
-            # Look for jmnedict ZIP files
-            elif 'jmnedict' in name and name.endswith('.zip'):
-                jmnedict_url = download_url
-                print(f"Found JMnedict file: {name}")
-            
             # Skip kradfile - will be downloaded separately from kensaku repository
             elif 'kradfile' in name and name.endswith('.zip'):
                 print(f"Skipping Kradfile from jmdict-simplified (using kensaku instead): {name}")
@@ -357,11 +351,9 @@ class DictionaryDownloader:
             print("Warning: No jmdict-eng ZIP file found")
         if not kanjidic_url:
             print("Warning: No kanjidic2-en ZIP file found")
-        if not jmnedict_url:
-            print("Warning: No jmnedict ZIP file found")
         # Note: kradfile is downloaded from kensaku, radkfile from Kradical
             
-        return jmdict_url, kanjidic_url, jmnedict_url, kradfile_url, radkfile_url
+        return jmdict_url, kanjidic_url, kradfile_url, radkfile_url
     
     def download_file(self, url: str, filename: str) -> bool:
         """Download a file from URL to downloads directory"""
@@ -456,8 +448,6 @@ class DictionaryDownloader:
             return 'jmdict.json'
         elif 'kanjidic2-en' in filename_lower and filename_lower.endswith('.json'):
             return 'kanjidic.json'
-        elif 'jmnedict' in filename_lower and filename_lower.endswith('.json'):
-            return 'jmnedict.json'
         elif 'kradfile' in filename_lower and filename_lower.endswith('.json'):
             return 'kradfile.json'
         elif 'radkfile' in filename_lower and filename_lower.endswith('.json'):
@@ -492,10 +482,10 @@ class DictionaryDownloader:
         except OSError as e:
             print(f"Warning: Could not clean up downloads: {e}")
     
-    def download_latest_dictionaries(self, cleanup: bool = True) -> Tuple[Optional[Path], Optional[Path], Optional[Path], Optional[Path], Optional[Path], Optional[Path]]:
+    def download_latest_dictionaries(self, cleanup: bool = True) -> Tuple[Optional[Path], Optional[Path], Optional[Path], Optional[Path], Optional[Path]]:
         """
         Main method to download and extract the latest dictionaries
-        Returns: (jmdict_json_path, kanjidic_json_path, jmnedict_json_path, kradfile_json_path, radkfile_json_path, accents_txt_path)
+        Returns: (jmdict_json_path, kanjidic_json_path, kradfile_json_path, radkfile_json_path, accents_txt_path)
         """
         print("=== Dictionary Update System ===")
         print("Downloading latest dictionaries from jmdict-simplified...")
@@ -506,12 +496,11 @@ class DictionaryDownloader:
             return None, None, None, None, None
         
         # Find target files
-        jmdict_url, kanjidic_url, jmnedict_url, kradfile_url, radkfile_url = self.find_target_assets(release_data)
+        jmdict_url, kanjidic_url, kradfile_url, radkfile_url = self.find_target_assets(release_data)
         
         # Download files
         jmdict_path = None
         kanjidic_path = None
-        jmnedict_path = None
         kradfile_path = None
         radkfile_path = None
         
@@ -526,12 +515,6 @@ class DictionaryDownloader:
             if self.download_file(kanjidic_url, kanjidic_filename):
                 kanjidic_zip_path = self.downloads_dir / kanjidic_filename
                 kanjidic_path = self.extract_zip(kanjidic_zip_path)
-        
-        if jmnedict_url:
-            jmnedict_filename = jmnedict_url.split('/')[-1]
-            if self.download_file(jmnedict_url, jmnedict_filename):
-                jmnedict_zip_path = self.downloads_dir / jmnedict_filename
-                jmnedict_path = self.extract_zip(jmnedict_zip_path)
         
         # Download kradfile with proper Unicode radicals from Kradical repository
         kradfile_path = self.download_kradical_kradfile()
@@ -559,11 +542,6 @@ class DictionaryDownloader:
         else:
             print("Kanjidic: Failed to download/extract")
         
-        if jmnedict_path:
-            print(f"JMnedict: {jmnedict_path}")
-        else:
-            print("JMnedict: Failed to download/extract")
-        
         if kradfile_path:
             print(f"Kradfile (from Kradical): {kradfile_path}")
         else:
@@ -579,7 +557,7 @@ class DictionaryDownloader:
         else:
             print("Pitch Accents (from Kanjium): Failed to download")
         
-        return jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path, accents_path
+        return jmdict_path, kanjidic_path, kradfile_path, radkfile_path, accents_path
 
 
 def main():
@@ -597,14 +575,14 @@ def main():
     args = parser.parse_args()
     
     downloader = DictionaryDownloader(args.dir, args.assets_dir)
-    jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path, accents_path = downloader.download_latest_dictionaries(
+    jmdict_path, kanjidic_path, kradfile_path, radkfile_path, accents_path = downloader.download_latest_dictionaries(
         cleanup=not args.no_cleanup
     )
     
     # Exit with appropriate code
-    downloaded_count = sum(1 for path in [jmdict_path, kanjidic_path, jmnedict_path, kradfile_path, radkfile_path, accents_path] if path)
+    downloaded_count = sum(1 for path in [jmdict_path, kanjidic_path, kradfile_path, radkfile_path, accents_path] if path)
     
-    if downloaded_count == 6:
+    if downloaded_count == 5:
         print("\n✓ All dictionaries and accent data downloaded successfully!")
         sys.exit(0)
     elif downloaded_count >= 4:

@@ -16,9 +16,7 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 
 enum class ChipType {
-    VERB, ADJECTIVE, NOUN, PARTICLE, ADVERB, COMMON, FREQUENCY, CONJUGATED, OTHER,
-    // JMNEDict types
-    JMNE_PERSON, JMNE_PLACE, JMNE_COMPANY, JMNE_ORGANIZATION, JMNE_GIVEN, JMNE_SURNAME, JMNE_STATION, JMNE_OTHER
+    VERB, ADJECTIVE, NOUN, PARTICLE, ADVERB, COMMON, FREQUENCY, CONJUGATED, OTHER
 }
 
 class UnifiedDictionaryAdapter(
@@ -94,11 +92,7 @@ class UnifiedDictionaryAdapter(
             // Add primary tags
             primaryChipGroup.removeAllViews()
             entry.primaryTags.forEach { tag ->
-                val chipType = if (entry.isJMNEDictEntry) {
-                    getJMNEChipTypeForTag(tag)
-                } else {
-                    getChipTypeForTag(tag)
-                }
+                val chipType = getChipTypeForTag(tag)
                 val chip = createStyledChip(getSimplifiedTag(tag), chipType)
                 primaryChipGroup.addView(chip)
             }
@@ -254,33 +248,6 @@ class UnifiedDictionaryAdapter(
                 "n" -> "noun"
                 "adv" -> "adverb"
                 "prt" -> "particle"
-                // JMNEDict tags - keep human-readable names
-                "person" -> "person"
-                "place" -> "place"
-                "company" -> "company"
-                "organization" -> "org"
-                "given" -> "given name"
-                "fem" -> "female name"
-                "masc" -> "male name"
-                "surname" -> "surname"
-                "station" -> "station"
-                "group" -> "group"
-                "char" -> "character"
-                "fict" -> "fiction"
-                "work" -> "work"
-                "ev" -> "event"
-                "obj" -> "object"
-                "product" -> "product"
-                "serv" -> "service"
-                "relig" -> "religion"
-                "dei" -> "deity"
-                "ship" -> "ship"
-                "leg" -> "legend"
-                "myth" -> "myth"
-                "creat" -> "creature"
-                "oth" -> "other"
-                "unclass" -> "unclassified"
-                "doc" -> "document"
                 else -> tag
             }
         }
@@ -322,21 +289,6 @@ class UnifiedDictionaryAdapter(
                 else -> ChipType.OTHER
             }
         }
-        
-        private fun getJMNEChipTypeForTag(tag: String): ChipType {
-            return when (tag) {
-                "person" -> ChipType.JMNE_PERSON
-                "place" -> ChipType.JMNE_PLACE
-                "company" -> ChipType.JMNE_COMPANY
-                "organization" -> ChipType.JMNE_ORGANIZATION
-                "given", "fem", "masc" -> ChipType.JMNE_GIVEN
-                "surname" -> ChipType.JMNE_SURNAME
-                "station" -> ChipType.JMNE_STATION
-                "group", "char", "fict", "work", "ev", "obj", "product", "serv", 
-                "relig", "dei", "ship", "leg", "myth", "creat", "oth", "unclass", "doc" -> ChipType.JMNE_OTHER
-                else -> ChipType.JMNE_OTHER
-            }
-        }
 
         private fun createStyledChip(text: String, chipType: ChipType): Chip {
             val (bgColorRes, textColorRes) = when (chipType) {
@@ -349,15 +301,6 @@ class UnifiedDictionaryAdapter(
                 ChipType.FREQUENCY -> Pair(R.color.tag_frequency_bg, R.color.tag_frequency_text)
                 ChipType.CONJUGATED -> Pair(R.color.orange_100, R.color.orange_700)
                 ChipType.OTHER -> Pair(R.color.tag_other_bg, R.color.tag_other_text)
-                // JMNEDict types
-                ChipType.JMNE_PERSON -> Pair(R.color.jmne_person_bg, R.color.jmne_person_text)
-                ChipType.JMNE_PLACE -> Pair(R.color.jmne_place_bg, R.color.jmne_place_text)
-                ChipType.JMNE_COMPANY -> Pair(R.color.jmne_company_bg, R.color.jmne_company_text)
-                ChipType.JMNE_ORGANIZATION -> Pair(R.color.jmne_organization_bg, R.color.jmne_organization_text)
-                ChipType.JMNE_GIVEN -> Pair(R.color.jmne_given_bg, R.color.jmne_given_text)
-                ChipType.JMNE_SURNAME -> Pair(R.color.jmne_surname_bg, R.color.jmne_surname_text)
-                ChipType.JMNE_STATION -> Pair(R.color.jmne_station_bg, R.color.jmne_station_text)
-                ChipType.JMNE_OTHER -> Pair(R.color.jmne_other_bg, R.color.jmne_other_text)
             }
 
             return Chip(itemView.context).apply {

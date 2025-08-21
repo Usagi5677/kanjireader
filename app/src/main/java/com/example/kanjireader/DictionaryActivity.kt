@@ -201,7 +201,6 @@ class DictionaryActivity : AppCompatActivity() {
             intent.putExtra("reading", unifiedEntry.primaryReading ?: unifiedEntry.primaryForm)
             intent.putExtra("meanings", ArrayList(unifiedEntry.meanings))
             intent.putExtra("frequency", unifiedEntry.frequency ?: 0)
-            intent.putExtra("isJMNEDict", unifiedEntry.isJMNEDictEntry)
             startActivity(intent)
         }
 
@@ -273,7 +272,7 @@ class DictionaryActivity : AppCompatActivity() {
                         
                         // Add minimal debouncing to avoid searching for every IME intermediate state
                         searchJob = lifecycleScope.launch {
-                            delay(150) // Reduced delay for faster response
+                            delay(50) // Minimal delay for fastest response
                             
                             // Skip if it looks like an IME intermediate state or is too short
                             if (!isIMEIntermediateState(newText) && !isSuspiciousQuery(newText)) {

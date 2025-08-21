@@ -28,8 +28,6 @@ import com.example.kanjireader.database.WordListEntity
 enum class DetailChipType {
     VERB_GODAN, VERB_ICHIDAN, VERB_TRANSITIVE, VERB_INTRANSITIVE, VERB_AUXILIARY,
     ADJECTIVE, NOUN, PARTICLE, ADVERB, COMMON, FREQUENCY, OTHER,
-    // JMNEDict types
-    JMNE_PERSON, JMNE_PLACE, JMNE_COMPANY, JMNE_ORGANIZATION, JMNE_GIVEN, JMNE_SURNAME, JMNE_STATION, JMNE_OTHER,
     // Form-level tags (kanji/kana usage)
     FORM_RARELY_USED_KANJI, FORM_IRREGULAR_KANJI, FORM_OUTDATED_KANJI, FORM_SEARCH_ONLY_KANJI,
     FORM_RARELY_USED_KANA, FORM_IRREGULAR_KANA, FORM_OUTDATED_KANA, FORM_SEARCH_ONLY_KANA,
@@ -229,12 +227,6 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         val reading = intent.getStringExtra("reading") ?: ""
         val meanings = intent.getStringArrayListExtra("meanings") ?: arrayListOf()
         val frequency = intent.getIntExtra("frequency", 0)
-        val isJMNEDict = intent.getBooleanExtra("isJMNEDict", false)
-        
-        // Debug logging for JMnedict entries
-        if (word == "上") {
-            Log.d("WordDetailActivity", "🔍 Intent data: word='$word', reading='$reading', isJMNEDict=$isJMNEDict")
-        }
 
         // Immediately display basic data to prevent blank screen
         displayBasicWordData(word, reading, meanings)
@@ -245,47 +237,28 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
 
         lifecycleScope.launch {
             // Search for the word to get full details using the new FTS5 search
-            // For JMNEDict entries, we need to search more broadly to include proper nouns
-            val searchResults = if (isJMNEDict) {
-                repository.search(word, limit = 500) // Get many more results to find JMNEDict entries which are deprioritized
-            } else {
-                repository.search(word, limit = 100) // Increased from 20 to catch more variants
-            }
+            val searchResults = repository.search(word, limit = 100) // Increased from 20 to catch more variants
 
             // Debug logging for JMnedict entries
-            if (word == "上") {
-                Log.d("WordDetailActivity", "🔍 Search found ${searchResults.size} results")
-                val jmnedictResults = searchResults.filter { it.isJMNEDictEntry }
-                Log.d("WordDetailActivity", "🔍 JMnedict results: ${jmnedictResults.size}")
-                jmnedictResults.take(5).forEach {
-                    Log.d("WordDetailActivity", "🔍   ${it.kanji}/${it.reading} isJMNEDict=${it.isJMNEDictEntry}")
-                }
-            }
 
             // Find the exact match - respect whether user clicked kanji or hiragana entry
             val exactMatch = searchResults.firstOrNull {
                 if (isKanjiString(word)) {
                     // User clicked kanji entry - match kanji exactly with reading
-                    // For JMNEDict entries, also check if it's actually a JMNEDict entry
-                    it.kanji == word && it.reading == reading && 
-                    (!isJMNEDict || it.isJMNEDictEntry == isJMNEDict)
+                    it.kanji == word && it.reading == reading
                 } else {
                     // User clicked hiragana entry - match reading exactly and ensure no kanji
                     it.reading == word && it.kanji.isNullOrEmpty()
                 }
             } ?: searchResults.firstOrNull {
-                // Fallback: broader match but still respect entry type and JMNEDict status
+                // Fallback: broader match
                 if (isKanjiString(word)) {
-                    it.kanji == word && (!isJMNEDict || it.isJMNEDictEntry == isJMNEDict)
+                    it.kanji == word
                 } else {
                     it.reading == word
                 }
             }
             
-            // Debug logging for JMnedict entries
-            if (word == "上") {
-                Log.d("WordDetailActivity", "🔍 Exact match found: ${exactMatch?.kanji}/${exactMatch?.reading} isJMNEDict=${exactMatch?.isJMNEDictEntry}")
-            }
             
 
             if (exactMatch != null && tagDictLoader != null) {
@@ -389,9 +362,6 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
 
     private fun addGrammarTags(enhanced: EnhancedWordResult, originalResult: WordResult? = null) {
         grammarChipGroup.removeAllViews()
-
-        // Check if this is a JMNEDict entry
-        val isJMNEEntry = originalResult?.isJMNEDictEntry == true
         
         // Get all tags for this word to separate form-level tags from grammatical tags
         val allTags = getAllTagsForWord(enhanced, originalResult)
@@ -411,12 +381,7 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         
         // Add grammar tags to the grammar section (proper ordering: frequency, common, grammar tags, then form tags, then other tags)
         grammarTags.forEach { pos ->
-            // Auto-detect if this is a JMNEDict tag regardless of entry type
-            val chipType = if (isJMNEDictTag(pos)) {
-                getJMNEChipTypeForTag(pos)
-            } else {
-                getChipTypeForTag(pos)
-            }
+            val chipType = getChipTypeForTag(pos)
             val chip = createStyledChip(getSimplifiedPos(pos), chipType)
             grammarChipGroup.addView(chip)
         }
@@ -429,24 +394,22 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
             grammarChipGroup.addView(chip)
         }
 
-        // Add other tags if available (not for JMNEDict entries)
-        if (!isJMNEEntry) {
-            enhanced.frequencyTags.forEach { freq ->
-                val chip = createStyledChip(freq, DetailChipType.OTHER)
-                grammarChipGroup.addView(chip)
-            }
+        // Add other tags if available
+        enhanced.frequencyTags.forEach { freq ->
+            val chip = createStyledChip(freq, DetailChipType.OTHER)
+            grammarChipGroup.addView(chip)
+        }
 
-            // Add field tags (medicine, computing, etc.)
-            enhanced.fields.forEach { field ->
-                val chip = createStyledChip(field, DetailChipType.OTHER)
-                grammarChipGroup.addView(chip)
-            }
+        // Add field tags (medicine, computing, etc.)
+        enhanced.fields.forEach { field ->
+            val chip = createStyledChip(field, DetailChipType.OTHER)
+            grammarChipGroup.addView(chip)
+        }
 
-            // Add style tags (formal, colloquial, etc.)
-            enhanced.styles.take(3).forEach { style ->
-                val chip = createStyledChip(style, DetailChipType.OTHER)
-                grammarChipGroup.addView(chip)
-            }
+        // Add style tags (formal, colloquial, etc.)
+        enhanced.styles.take(3).forEach { style ->
+            val chip = createStyledChip(style, DetailChipType.OTHER)
+            grammarChipGroup.addView(chip)
         }
     }
 
@@ -458,10 +421,9 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
             val tagLoader = TagDictSQLiteLoader(this)
             
             // Use the new method that gets ALL tags without filtering
-            val allTags = tagLoader.getAllTagsForKanjiReadingWithJMnedict(
+            val allTags = tagLoader.getAllTagsForKanjiReading(
                 enhanced.kanji, 
-                enhanced.reading, 
-                originalResult?.isJMNEDictEntry == true
+                enhanced.reading
             )
             
             if (allTags.isNotEmpty()) {
@@ -929,33 +891,6 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         }
     }
     
-    /**
-     * Check if a tag is a JMNEDict tag (proper noun type)
-     */
-    private fun isJMNEDictTag(tag: String): Boolean {
-        return when (tag) {
-            "person", "place", "company", "organization", "given", "fem", "masc", 
-            "surname", "station", "group", "char", "fict", "work", "ev", "obj", 
-            "product", "serv", "relig", "dei", "ship", "leg", "myth", "creat", 
-            "oth", "unclass", "doc" -> true
-            else -> false
-        }
-    }
-    
-    private fun getJMNEChipTypeForTag(tag: String): DetailChipType {
-        return when (tag) {
-            "person" -> DetailChipType.JMNE_PERSON
-            "place" -> DetailChipType.JMNE_PLACE
-            "company" -> DetailChipType.JMNE_COMPANY
-            "organization" -> DetailChipType.JMNE_ORGANIZATION
-            "given", "fem", "masc" -> DetailChipType.JMNE_GIVEN
-            "surname" -> DetailChipType.JMNE_SURNAME
-            "station" -> DetailChipType.JMNE_STATION
-            "group", "char", "fict", "work", "ev", "obj", "product", "serv", 
-            "relig", "dei", "ship", "leg", "myth", "creat", "oth", "unclass", "doc" -> DetailChipType.JMNE_OTHER
-            else -> DetailChipType.JMNE_OTHER
-        }
-    }
 
     private fun createStyledChip(text: String, chipType: DetailChipType): Chip {
         val (bgColorRes, textColorRes) = when (chipType) {
@@ -974,22 +909,13 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
             DetailChipType.COMMON -> Pair(R.color.tag_common_bg, R.color.tag_common_text)
             DetailChipType.FREQUENCY -> Pair(R.color.tag_frequency_bg, R.color.tag_frequency_text)
             DetailChipType.OTHER -> Pair(R.color.tag_other_bg, R.color.tag_other_text)
-            // JMNEDict types
-            DetailChipType.JMNE_PERSON -> Pair(R.color.jmne_person_bg, R.color.jmne_person_text)
-            DetailChipType.JMNE_PLACE -> Pair(R.color.jmne_place_bg, R.color.jmne_place_text)
-            DetailChipType.JMNE_COMPANY -> Pair(R.color.jmne_company_bg, R.color.jmne_company_text)
-            DetailChipType.JMNE_ORGANIZATION -> Pair(R.color.jmne_organization_bg, R.color.jmne_organization_text)
-            DetailChipType.JMNE_GIVEN -> Pair(R.color.jmne_given_bg, R.color.jmne_given_text)
-            DetailChipType.JMNE_SURNAME -> Pair(R.color.jmne_surname_bg, R.color.jmne_surname_text)
-            DetailChipType.JMNE_STATION -> Pair(R.color.jmne_station_bg, R.color.jmne_station_text)
-            DetailChipType.JMNE_OTHER -> Pair(R.color.jmne_other_bg, R.color.jmne_other_text)
             // Form-level tags (using existing colors)
             DetailChipType.FORM_RARELY_USED_KANJI -> Pair(R.color.purple_100, R.color.purple_700)
             DetailChipType.FORM_IRREGULAR_KANJI -> Pair(R.color.orange_100, R.color.orange_700) 
             DetailChipType.FORM_OUTDATED_KANJI -> Pair(R.color.tag_adverb_bg, R.color.tag_adverb_text) // Brown-ish
             DetailChipType.FORM_SEARCH_ONLY_KANJI -> Pair(R.color.tag_other_bg, R.color.tag_other_text) // Grey
-            DetailChipType.FORM_RARELY_USED_KANA -> Pair(R.color.jmne_station_bg, R.color.jmne_station_text) // Purple-blue
-            DetailChipType.FORM_IRREGULAR_KANA -> Pair(R.color.pink_100, R.color.jmne_given_text) // Pink
+            DetailChipType.FORM_RARELY_USED_KANA -> Pair(R.color.tag_particle_bg, R.color.tag_particle_text) // Purple
+            DetailChipType.FORM_IRREGULAR_KANA -> Pair(R.color.pink_100, R.color.purple_700) // Pink
             DetailChipType.FORM_OUTDATED_KANA -> Pair(R.color.tag_verb_intransitive_bg, R.color.tag_verb_intransitive_text) // Orange
             DetailChipType.FORM_SEARCH_ONLY_KANA -> Pair(R.color.teal_100, R.color.teal_700) // Blue-grey-ish
             DetailChipType.FORM_ATEJI -> Pair(R.color.green_100, R.color.green_700) // Light green

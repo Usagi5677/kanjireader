@@ -106,30 +106,6 @@
     <color name="tag_light_grey">#F0F0F0</color> <!-- Light Grey for unknown JLPT -->
     <color name="text_light_black">#666666</color> <!-- Light black (dark grey) for text -->
 
-    <!-- JMNEDict (proper noun) tag colors - using consistent purple/lavender theme -->
-    <color name="jmne_person_bg">#F3E5F5</color>       <!-- Light purple for person names -->
-    <color name="jmne_person_text">#4A148C</color>     <!-- Dark purple -->
-    
-    <color name="jmne_place_bg">#EDE7F6</color>        <!-- Light purple-indigo for places -->
-    <color name="jmne_place_text">#512DA8</color>      <!-- Dark purple-indigo -->
-    
-    <color name="jmne_company_bg">#F8BBD9</color>      <!-- Light purple-pink for companies -->
-    <color name="jmne_company_text">#880E4F</color>    <!-- Dark purple-pink -->
-    
-    <color name="jmne_organization_bg">#E1BEE7</color> <!-- Light purple-magenta for organizations -->
-    <color name="jmne_organization_text">#6A1B9A</color> <!-- Dark purple-magenta -->
-    
-    <color name="jmne_given_bg">#FCE4EC</color>        <!-- Light pink for given names (keep this - looks good) -->
-    <color name="jmne_given_text">#AD1457</color>      <!-- Dark pink -->
-    
-    <color name="jmne_surname_bg">#F3E5F5</color>      <!-- Light purple for surnames -->
-    <color name="jmne_surname_text">#7B1FA2</color>    <!-- Dark purple -->
-    
-    <color name="jmne_station_bg">#E8EAF6</color>      <!-- Light purple-blue for stations -->
-    <color name="jmne_station_text">#5E35B1</color>    <!-- Dark purple-blue -->
-    
-    <color name="jmne_other_bg">#F3E5F5</color>        <!-- Light purple for other JMNEDict entries (consistent) -->
-    <color name="jmne_other_text">#4A148C</color>      <!-- Dark purple -->
 
     <!-- Search highlighting colors -->
     <color name="search_highlight_text">#1976D2</color>  <!-- Blue text for highlighting -->

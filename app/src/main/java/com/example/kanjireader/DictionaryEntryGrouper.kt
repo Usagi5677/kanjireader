@@ -149,13 +149,13 @@ class DictionaryEntryGrouper(
         // 2. The original query is different from base form
         // 3. The word is actually conjugatable (verb/adjective)
         // 4. This specific word group matches the base form from deinflection
-        Log.d(TAG, "Conjugation check for '$originalQuery': deinflectionInfo=${deinflectionInfo != null}, baseForm=${deinflectionInfo?.baseForm}, isConjugatable=$isConjugatable, primaryWord='$primaryWord', partsOfSpeech=${primaryResult.partsOfSpeech}, isJMNE=${primaryResult.isJMNEDictEntry}")
+        Log.d(TAG, "Conjugation check for '$originalQuery': deinflectionInfo=${deinflectionInfo != null}, baseForm=${deinflectionInfo?.baseForm}, isConjugatable=$isConjugatable, primaryWord='$primaryWord', partsOfSpeech=${primaryResult.partsOfSpeech}")
         
         val conjugationInfo = if (deinflectionInfo != null &&
             originalQuery != null &&
             deinflectionInfo.baseForm != originalQuery &&
             isConjugatable &&
-            !primaryResult.isJMNEDictEntry && // Don't show conjugation info for proper nouns
+            // Don't show conjugation info for proper nouns - check removed
             (primaryWord == deinflectionInfo.baseForm || 
              primaryResult.reading == deinflectionInfo.baseForm ||
              // Also check if any result in this group matches the base form
@@ -226,7 +226,6 @@ class DictionaryEntryGrouper(
             conjugationInfo = conjugationInfo,
             verbType = verbType,
             frequency = frequency,
-            isJMNEDictEntry = primaryResult.isJMNEDictEntry
         )
     }
 

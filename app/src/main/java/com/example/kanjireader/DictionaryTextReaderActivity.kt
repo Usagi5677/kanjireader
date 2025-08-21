@@ -332,7 +332,6 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                         putExtra("reading", bestResult.reading)
                         putExtra("meanings", ArrayList(bestResult.meanings))
                         putExtra("frequency", bestResult.frequency)
-                        putExtra("isJMNEDict", bestResult.isJMNEDictEntry)
                         putExtra("selectedText", wordCard.word)
                     }
                     
@@ -448,7 +447,6 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                         putExtra("reading", bestResult.reading)
                         putExtra("meanings", ArrayList(bestResult.meanings))
                         putExtra("frequency", bestResult.frequency)
-                        putExtra("isJMNEDict", bestResult.isJMNEDictEntry)
                         putExtra("selectedText", selectedText)
                     }
                     
