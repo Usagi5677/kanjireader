@@ -255,6 +255,7 @@ class DictionaryRepository(private val context: Context) {
                 wordResult.copy(isDeinflectedValidConjugation = isDeinflected)
             }
 
+            // The key change: The sorting logic is flipped to prioritize the deinflected form.
             val finalSortedResults = convertedResults.sortedWith(
                 compareBy<WordResult> { !it.isDeinflectedValidConjugation }
                     .thenBy { !(it.kanji == query || it.reading == query) }
@@ -329,7 +330,7 @@ class DictionaryRepository(private val context: Context) {
                 .thenBy { it.meanings.size }
         )
 
-        //logPrioritizationDebug(sorted, query, limit = 10)
+        logPrioritizationDebug(sorted, query, limit = 10)
 
         return sorted
     }
@@ -338,17 +339,20 @@ class DictionaryRepository(private val context: Context) {
      * Calculate meaning score with phrase-aware logic and meaning position penalty
      */
     private fun calculateMeaningScore(result: WordResult, queryLower: String, isPhrase: Boolean): Int {
-        var minScore = 500 // Start with a very high score
+        var minScore = 500
 
+        // Tier 1: Best match - reading/kanji starts with the query.
         if (result.reading.lowercase().startsWith(queryLower) || (result.kanji?.lowercase()?.startsWith(queryLower) == true)) {
             minScore = 0
         }
 
+        // Tier 2: Search through meanings to find the best match.
         result.meanings.forEachIndexed { index, meaning ->
             val meaningLower = meaning.lowercase()
             var currentBaseScore = 5
 
             if (isPhrase) {
+                // Phrase logic
                 when {
                     meaningLower.contains(queryLower) -> currentBaseScore = 1
                     isCompoundWordMatch(meaningLower, queryLower) -> currentBaseScore = 2
@@ -356,11 +360,19 @@ class DictionaryRepository(private val context: Context) {
                     containsSomePhraseWords(meaningLower, queryLower) -> currentBaseScore = 4
                 }
             } else {
+                // Single word logic
                 when {
+                    // Highest priority for single words: Exact match to a meaning.
                     meaningLower == queryLower -> currentBaseScore = 1
+
+                    // Second priority for single words: Direct translation.
                     meaningLower.startsWith("$queryLower ") -> currentBaseScore = 2
+
+                    // Word boundary match anywhere else.
                     meaningLower.contains(" $queryLower") ||
                             meaningLower.contains("($queryLower)") -> currentBaseScore = 2
+
+                    // Substring match.
                     meaningLower.contains(queryLower) -> currentBaseScore = 3
                 }
             }
@@ -491,25 +503,23 @@ class DictionaryRepository(private val context: Context) {
      * FTS5 Parallel search (both romaji->Japanese and English)
      */
     private suspend fun searchFTS5Parallel(query: String, limit: Int, offset: Int = 0): List<WordResult> = withContext(Dispatchers.IO) {
-        Log.d(TAG, "FTS5 Parallel search for: '$query'")
-
         val results = mutableListOf<WordResult>()
 
-        // Search 1: Romaji to Japanese conversion WITH deinflection (both hiragana and katakana)
+        // Tier 1: English dictionary search for the word itself.
+        val englishResults = searchFTS5English(query, limit / 2, offset)
+        results.addAll(englishResults)
+
+        // Tier 2: Romaji to Japanese conversion.
         val kanaVariants = romajiConverter.toBothKanaVariants(query)
         val hiraganaQuery = kanaVariants[0]
         val katakanaQuery = kanaVariants[1]
-        Log.d(TAG, "FTS5 Parallel: Romaji '$query' -> Hiragana '$hiraganaQuery', Katakana '$katakanaQuery'")
 
-        // Use the full Japanese search which includes deinflection for both variants
         val japaneseResults = mutableListOf<WordResult>()
         japaneseResults.addAll(searchFTS5Japanese(hiraganaQuery, limit / 4, offset))
 
-        // Search katakana if different and we have room for more results
         if (katakanaQuery != hiraganaQuery && japaneseResults.size < limit / 2) {
             val remainingLimit = (limit / 2) - japaneseResults.size
             val katakanaResults = searchFTS5Japanese(katakanaQuery, remainingLimit, offset)
-            // Add unique katakana results
             for (katakanaResult in katakanaResults) {
                 if (!japaneseResults.any { it.kanji == katakanaResult.kanji && it.reading == katakanaResult.reading }) {
                     japaneseResults.add(katakanaResult)
@@ -517,19 +527,7 @@ class DictionaryRepository(private val context: Context) {
             }
         }
 
-        Log.d(TAG, "FTS5 Parallel: Japanese search (with deinflection) returned ${japaneseResults.size} results")
-
-        // Add Japanese results
         results.addAll(japaneseResults)
-
-        // Search 2: English dictionary search
-        val englishResults = searchFTS5English(query, limit / 2, offset)
-        Log.d(TAG, "FTS5 Parallel: English search returned ${englishResults.size} results")
-
-        // Add English results
-        results.addAll(englishResults)
-
-        Log.d(TAG, "FTS5 Parallel: Total results ${results.size} (Japanese: ${japaneseResults.size}, English: ${englishResults.size})")
 
         return@withContext results
     }
@@ -1146,6 +1144,41 @@ class DictionaryRepository(private val context: Context) {
         }
 
         return hasProperNounInTags
+    }
+
+    /**
+     * Check if a word can be conjugated (verbs and adjectives only)
+     */
+    private fun isConjugatable(result: WordResult): Boolean {
+        val conjugatableTags = setOf(
+            // Verbs
+            "v1", "v5k", "v5s", "v5t", "v5n", "v5b", "v5m", "v5r", "v5g", "v5u", 
+            "vt", "vi", "vs", "vk", "vn", "vr", "vs-i", "vs-s", "aux-v", "v-unspec",
+            "v5k-s", "v5g-s", "v5s-s", "v5t-s", "v5n-s", "v5b-s", "v5m-s", "v5r-s",
+            "v5aru", "v4k", "v4g", "v4s", "v4t", "v4n", "v4b", "v4m", "v4r", "v4h",
+            "v2k-k", "v2g-k", "v2t-k", "v2d-k", "v2h-k", "v2b-k", "v2m-k", "v2y-k",
+            "v2r-k", "v2k-s", "v2g-s", "v2s-s", "v2z-s", "v2t-s", "v2d-s", "v2n-s",
+            "v2h-s", "v2b-s", "v2m-s", "v2y-s", "v2r-s", "v2w-s",
+            // Adjectives
+            "adj-i", "adj-ix", "adj-ku", "adj-shiku", "adj-t", 
+            "adj-na", "adj-no", "adj-pn", "adj-f"
+        )
+
+        // Check parts of speech first
+        val hasConjugatablePos = result.partsOfSpeech.any { pos ->
+            conjugatableTags.any { tag -> pos.lowercase().contains(tag.lowercase()) }
+        }
+
+        if (hasConjugatablePos) return true
+
+        // Check tags as fallback
+        val hasConjugatableTag = result.tags.any { tag ->
+            conjugatableTags.any { conjugatableTag ->
+                tag.lowercase().contains(conjugatableTag.lowercase())
+            }
+        }
+
+        return hasConjugatableTag
     }
 
     /**

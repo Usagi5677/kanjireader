@@ -13,9 +13,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flowOn
 
 class DictionaryViewModel(application: Application) : AndroidViewModel(application), DictionaryStateObserver {
 
@@ -49,8 +50,8 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private var searchJob: Job? = null
     private var currentQuery: String = ""
 
-    // The key change: A channel to queue up search requests
-    private val searchChannel = Channel<String>()
+    // StateFlow for search queries - eliminates race conditions
+    private val _searchQuery = MutableStateFlow("")
 
     init {
         Log.d(TAG, "DictionaryViewModel initialized")
@@ -63,11 +64,12 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         // Check current dictionary state
         _dictionaryReady.value = DictionaryStateManager.isDictionaryReady()
 
-        // The key change: Launch a coroutine that listens to the search channel on the Main dispatcher.
-        // The inner coroutine (performSearch) will explicitly switch to the IO dispatcher for heavy work.
-        viewModelScope.launch(Dispatchers.Default) { // Launch on a background thread
-            searchChannel.consumeAsFlow()
-                .debounce(50)
+        // Launch a coroutine that listens to the search StateFlow with proper threading
+        // Using flowOn(Dispatchers.IO) ensures debouncing happens on IO thread pool
+        viewModelScope.launch {
+            _searchQuery
+                .debounce(150) // Increased from 50ms to prevent issues during rapid typing
+                .flowOn(Dispatchers.IO) // Process flow operations on IO dispatcher
                 .collect { query ->
                     performSearch(query)
                 }
@@ -125,10 +127,8 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
 
-        // The key change: send the query to the channel instead of starting a job directly
-        viewModelScope.launch {
-            searchChannel.send(trimmedQuery)
-        }
+        // Update StateFlow value - this will trigger debounced search automatically
+        _searchQuery.value = trimmedQuery
     }
 
     // In DictionaryViewModel.kt
@@ -137,6 +137,12 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
     private suspend fun performSearch(query: String) {
         val trimmedQuery = query.trim()
+        
+        // Exit early if query is empty - prevents stale searches from showing results
+        if (trimmedQuery.isEmpty()) {
+            Log.d(TAG, "Skipping empty query from channel")
+            return
+        }
 
         // Cancel any previous search job to prevent outdated results.
         // This must be done at the start of the new search process.
@@ -161,16 +167,18 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                 // Next, perform all the heavy, non-UI-related work on a background thread.
                 // This prevents the main thread from being blocked.
                 val searchResults: List<WordResult> = withContext(Dispatchers.IO) {
-                    val isParagraph = currentQuery.lines().size > 1 || currentQuery.length > 30
-                    Log.d(TAG, "Query analysis: length=${currentQuery.length}, lines=${currentQuery.lines().size}, isParagraph=$isParagraph")
+                    // Use the actual query being searched, not the stored currentQuery
+                    val searchQuery = trimmedQuery
+                    val isParagraph = searchQuery.lines().size > 1 || searchQuery.length > 30
+                    Log.d(TAG, "Query analysis: length=${searchQuery.length}, lines=${searchQuery.lines().size}, isParagraph=$isParagraph")
 
                     val startTime = System.currentTimeMillis()
                     val results = if (isParagraph) {
                         Log.d(TAG, "Processing paragraph with Kuromoji word extraction")
-                        searchParagraphWithKuromoji(currentQuery)
+                        searchParagraphWithKuromoji(searchQuery)
                     } else {
                         Log.d(TAG, "Regular FTS5 search for single word/phrase")
-                        repository.search(currentQuery, limit = 500)
+                        repository.search(searchQuery, limit = 500)
                     }
                     val searchTime = System.currentTimeMillis() - startTime
                     Log.d(TAG, "⏱️ Search query took ${searchTime}ms")
@@ -178,11 +186,11 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                 }
 
                 // Process the raw search results into the final data structure.
-                val unsortedResults = withContext(Dispatchers.Default) {
-                    val queryForDeinflection = if ((repository as DictionaryRepository).isRomajiQuery(currentQuery)) {
-                        repository.convertRomajiToHiragana(currentQuery)
+                val unsortedResults = withContext(Dispatchers.IO) { // Changed to IO since getDeinflectionInfo does heavy work
+                    val queryForDeinflection = if ((repository as DictionaryRepository).isRomajiQuery(trimmedQuery)) {
+                        repository.convertRomajiToHiragana(trimmedQuery)
                     } else {
-                        currentQuery
+                        trimmedQuery
                     }
                     val deinflectionInfo = repository.getDeinflectionInfo(queryForDeinflection)
 
@@ -288,6 +296,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     fun clearSearch() {
         searchJob?.cancel()
         currentQuery = ""
+        _searchQuery.value = "" // Immediately set StateFlow to empty to prevent ghost results
         _searchResults.value = emptyList()
         allSearchResults = mutableListOf()
         currentDisplayedCount = 0

@@ -29,7 +29,7 @@ class UnifiedDictionaryAdapter(
     fun updateEntries(newEntries: List<UnifiedDictionaryEntry>, query: String? = null) {
         entries = newEntries
         searchQuery = query
-        notifyDataSetChanged()
+        notifyDataSetChanged() // Re-enabled - not the cause
     }
     
     fun appendEntries(moreEntries: List<UnifiedDictionaryEntry>) {
