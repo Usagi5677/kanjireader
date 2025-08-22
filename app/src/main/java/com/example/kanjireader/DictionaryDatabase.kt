@@ -407,38 +407,6 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         Log.d(TAG, "=== CREATE FTS TABLE COMPLETE: $tableName ===")
     }
 
-
-    /**
-     * Force recreate database from assets (deletes existing and copies fresh)
-     */
-    fun forceRecreateDatabaseFromAssets() {
-        val dbFile = context.getDatabasePath(DATABASE_NAME)
-
-        // Close any open connections first
-        try {
-            close()
-        } catch (e: Exception) {
-            Log.w(TAG, "Error closing database: ${e.message}")
-        }
-
-        // Delete existing database
-        if (dbFile.exists()) {
-            Log.d(TAG, "Deleting existing database at: ${dbFile.absolutePath}")
-            dbFile.delete()
-
-            // Also delete journal and wal files if they exist
-            File("${dbFile.absolutePath}-journal").delete()
-            File("${dbFile.absolutePath}-wal").delete()
-            File("${dbFile.absolutePath}-shm").delete()
-        }
-
-        // Copy fresh from assets
-        copyDatabaseFromAssets()
-
-        // Re-initialize
-        writableDatabase
-    }
-
     /**
      * Copy pre-built database from assets to app storage
      * This only happens once on first launch or when upgrading to a new asset version
@@ -1623,33 +1591,6 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             }
         }
     }
-    
-    /**
-     * Get kanji characters that contain a specific radical
-     */
-    fun getKanjiByRadical(radical: String): List<String> {
-        val db = readableDatabase
-        val cursor = db.query(
-            TABLE_RADICAL_KANJI_MAPPING,
-            arrayOf(COL_RKM_KANJI_LIST),
-            "$COL_RKM_RADICAL = ?",
-            arrayOf(radical),
-            null, null, null
-        )
-        
-        return cursor.use {
-            if (it.moveToFirst()) {
-                val kanjiString = it.getString(0)
-                if (!kanjiString.isNullOrBlank()) {
-                    kanjiString.split(",").map { kanji -> kanji.trim() }
-                } else {
-                    emptyList()
-                }
-            } else {
-                emptyList()
-            }
-        }
-    }
 
     /**
      * Get all radicals grouped by stroke count for radical search
@@ -1853,50 +1794,6 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         expandedSet.addAll(compositeRadicals)
         
         return expandedSet
-    }
-
-    /**
-     * Get all tag definitions (Unchanged)
-     */
-    fun getTagDefinitions(): Map<String, String> {
-        val tags = mutableMapOf<String, String>()
-        val db = readableDatabase
-
-        val cursor = db.query(
-            TABLE_TAG_DEFINITIONS,
-            arrayOf("tag_code", "tag_name"),
-            null, null, null, null, null
-        )
-
-        cursor.use {
-            while (it.moveToNext()) {
-                tags[it.getString(0)] = it.getString(1)
-            }
-        }
-
-        return tags
-    }
-
-    /**
-     * Get frequency for a specific word (Consider if this is still needed, or if FTS results are sufficient)
-     */
-    fun getWordFrequency(word: String): Int? {
-        val db = readableDatabase
-        val cursor = db.query(
-            TABLE_ENTRIES,
-            arrayOf("frequency"),
-            "kanji = ? OR reading = ?",
-            arrayOf(word, word),
-            null, null, null
-        )
-
-        cursor.use {
-            if (it.moveToFirst()) {
-                val freq = it.getInt(0)
-                return if (freq > 0) freq else null
-            }
-        }
-        return null
     }
 
     /**
@@ -2135,21 +2032,6 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         }
         
         return score
-    }
-    
-    /**
-     * Calculate commonality score for a kanji based on:
-     * - Dictionary entries containing this kanji (frequency and common flags)
-     * - JLPT level (lower level = more common)
-     * - School grade (lower grade = more common)
-     * 
-     * NOTE: This method is kept for compatibility but should use batch version when possible
-     */
-    private fun calculateKanjiCommonalityScore(kanji: String): Int {
-        // Use batch method for single kanji (requires kanji entry for JLPT/grade bonuses)
-        val kanjiEntry = getKanjiByCharacters(listOf(kanji)).firstOrNull()
-        val kanjiMap = if (kanjiEntry != null) mapOf(kanji to kanjiEntry) else emptyMap()
-        return calculateKanjiCommonalityScoresBatch(listOf(kanji), kanjiMap)[kanji] ?: 0
     }
 
     /**

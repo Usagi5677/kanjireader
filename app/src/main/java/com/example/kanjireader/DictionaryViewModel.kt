@@ -23,7 +23,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     // LiveData for UI state
     private val _searchResults = MutableLiveData<List<UnifiedDictionaryEntry>>()
     val searchResults: LiveData<List<UnifiedDictionaryEntry>> = _searchResults
-    
+
     // Pagination support
     private var allSearchResults: MutableList<UnifiedDictionaryEntry> = mutableListOf()
     private var currentDisplayedCount = 0
@@ -33,9 +33,6 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _uiState = MutableLiveData<UiState>()
     val uiState: LiveData<UiState> = _uiState
-
-    private val _errorState = MutableLiveData<ErrorState?>()
-    val errorState: LiveData<ErrorState?> = _errorState
 
     private val _dictionaryReady = MutableLiveData<Boolean>()
     val dictionaryReady: LiveData<Boolean> = _dictionaryReady
@@ -55,10 +52,10 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         Log.d(TAG, "DictionaryViewModel initialized")
         _uiState.value = UiState.Empty
         _dictionaryReady.value = false
-        
+
         // Register for dictionary state changes
         DictionaryStateManager.addObserver(this)
-        
+
         // Check current dictionary state
         _dictionaryReady.value = DictionaryStateManager.isDictionaryReady()
     }
@@ -69,12 +66,12 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
             repository = DictionaryRepository.getInstance(getApplication())
 
             // Entry grouper no longer needed - Kuromoji handles morphological analysis
-            
+
             // Setup with deinflection if dictionaries are ready
             val dictReady = DictionaryStateManager.isDictionaryReady()
-            
+
             Log.d(TAG, "Initialization check: Dict ready=$dictReady")
-            
+
             if (dictReady) {
                 Log.d(TAG, "Proceeding with repository setup...")
                 setupRepositoryWithDeinflection()
@@ -116,11 +113,11 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
             // SQLite FTS5 system is ready for search
             Log.d(TAG, "SQLite FTS5 system initialized - ready for search!")
-            
+
             // Initialize repository with SQLite components only
             repository.initialize(deinflectionEngine, tagLoader)
             Log.d(TAG, "Repository initialized with SQLite FTS5 and deinflection engine")
-            
+
             _dictionaryReady.value = true
 
         } catch (e: Exception) {
@@ -132,7 +129,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     fun search(query: String) {
         val trimmedQuery = query.trim()
         Log.d(TAG, "=== SEARCH REQUEST === Query: '$query' -> '$trimmedQuery' (caller: ${Thread.currentThread().stackTrace[3]})")
-        
+
         if (trimmedQuery.isEmpty()) {
             Log.d(TAG, "Empty query, clearing search")
             _uiState.value = UiState.Empty
@@ -155,7 +152,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
             hasMoreInDatabase = true
             currentSearchOffset = 0
         }
-        
+
         currentQuery = trimmedQuery
         _uiState.value = UiState.Loading
 
@@ -251,71 +248,71 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private suspend fun searchParagraphWithKuromoji(paragraph: String): List<WordResult> {
         Log.d(TAG, "=== KUROMOJI PARAGRAPH PROCESSING START ===")
         Log.d(TAG, "Input paragraph: '${paragraph.take(100)}${if (paragraph.length > 100) "..." else ""}'")
-        
+
         val allResults = mutableListOf<WordResult>()
-        
+
         try {
             // Extract words using Kuromoji
             val wordPositions = wordExtractor.extractWordsWithKuromoji(paragraph, repository)
             Log.d(TAG, "Kuromoji extracted ${wordPositions.size} words")
-            
+
             // Track unique words to avoid duplicates
             val processedWords = mutableSetOf<String>()
-            
+
             // Create set of all words actually found in the paragraph for filtering
             val actualWordsInText = wordPositions.map { it.word }.toSet()
             Log.d(TAG, "Actual words extracted from paragraph: ${actualWordsInText.joinToString(", ")}")
-            
+
             for (wordPos in wordPositions) {
                 val word = wordPos.word
-                
+
                 // Skip if we've already processed this word
                 if (processedWords.contains(word)) {
                     Log.d(TAG, "Skipping duplicate word: '$word'")
                     continue
                 }
                 processedWords.add(word)
-                
+
                 try {
                     Log.d(TAG, "Searching for extracted word: '$word' (${wordPos.startPosition}-${wordPos.endPosition})")
-                    
+
                     // Search dictionary for this individual word
                     val wordResults = repository.search(word, limit = 10) // Get more results for filtering
-                    
+
                     if (wordResults.isNotEmpty()) {
                         Log.d(TAG, "Found ${wordResults.size} dictionary results for word '$word'")
-                        
+
                         // Filter results to only include words that actually appear in the paragraph
                         val filteredResults = wordResults.filter { result ->
                             val resultWord = result.kanji ?: result.reading
                             val isInText = actualWordsInText.contains(resultWord)
-                            
+
                             if (!isInText) {
                                 Log.d(TAG, "Filtering out '$resultWord' - not found in paragraph text")
                             }
-                            
+
                             isInText
                         }
-                        
+
                         Log.d(TAG, "After filtering: ${filteredResults.size} results for word '$word'")
                         allResults.addAll(filteredResults)
                     } else {
                         Log.d(TAG, "No dictionary results for word '$word'")
                     }
-                    
+
                 } catch (e: Exception) {
                     Log.w(TAG, "Error searching for word '$word': ${e.message}")
                 }
             }
-            
+
             Log.d(TAG, "=== KUROMOJI PARAGRAPH PROCESSING COMPLETE ===")
             Log.d(TAG, "Total unique words processed: ${processedWords.size}")
             Log.d(TAG, "Total dictionary results found: ${allResults.size}")
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Error in Kuromoji paragraph processing", e)
         }
-        
+
         return allResults
     }
 
@@ -327,7 +324,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         currentDisplayedCount = 0
         _uiState.value = UiState.Empty
     }
-    
+
     fun loadMoreResults() {
         // Check if we have more results in our current cache
         if (currentDisplayedCount < allSearchResults.size) {
@@ -335,48 +332,48 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
             val nextBatch = allSearchResults.take(currentDisplayedCount + PAGE_SIZE)
             currentDisplayedCount = nextBatch.size
             _searchResults.value = nextBatch
-            
+
             // Update to results state with counts
             _uiState.value = UiState.Results(currentDisplayedCount, allSearchResults.size)
-            
+
             Log.d(TAG, "Loaded more cached results: showing $currentDisplayedCount of ${allSearchResults.size}")
             return
         }
-        
+
         // If we've shown all cached results but there might be more in database
         if (!hasMoreInDatabase) {
             Log.d(TAG, "No more results available in database")
             return
         }
-        
+
         // Fetch more results from database
         fetchMoreFromDatabase()
     }
-    
+
     fun hasMoreResults(): Boolean {
         return false // No pagination - show all results at once
     }
-    
+
     private fun fetchMoreFromDatabase() {
         if (currentQuery.isEmpty()) return
-        
+
         // Don't start new search if one is already running
         if (searchJob?.isActive == true) {
             Log.d(TAG, "Search already in progress, skipping")
             return
         }
-        
+
         Log.d(TAG, "Fetching more results from database for query: '$currentQuery'")
-        
+
         // Set loading state
         _uiState.value = UiState.LoadingMore
-        
+
         searchJob = viewModelScope.launch {
             withContext(NonCancellable) {
                 try {
                     // Use current offset for next batch (already set correctly)
                     Log.d(TAG, "Loading more results with offset $currentSearchOffset")
-                    
+
                     // Fetch more results with offset
                     val moreResults: List<WordResult> = try {
                         Log.d(TAG, "Using FTS5 search for more results with offset $currentSearchOffset")
@@ -394,9 +391,9 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                         Log.d(TAG, "Fallback repository search returned ${results.size} results")
                         results
                     }
-                    
+
                     Log.d(TAG, "Final moreResults size: ${moreResults.size} for offset $currentSearchOffset")
-                
+
                 if (moreResults.isNotEmpty()) {
                     // Convert more results directly (no grouper)
                     val groupedMoreResults: List<UnifiedDictionaryEntry> = moreResults.map { wordResult ->
@@ -414,7 +411,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                         }
                         */
                         val pitchAccents: List<PitchAccent> = emptyList() // Temporarily disabled
-                        
+
                         UnifiedDictionaryEntry(
                             primaryForm = wordResult.kanji ?: wordResult.reading,
                             primaryReading = wordResult.reading,
@@ -429,27 +426,27 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                             pitchAccents = pitchAccents.takeIf { it.isNotEmpty() }
                         )
                     }
-                    
+
                     // Add to existing results (avoiding duplicates)
                     val newEntries = groupedMoreResults.filter { newEntry ->
                         !allSearchResults.any { existing -> existing.primaryForm == newEntry.primaryForm }
                     }
                     allSearchResults.addAll(newEntries)
-                    
+
                     // Update offset for next potential fetch
                     currentSearchOffset += PAGE_SIZE
-                    
+
                     // Check if there are potentially more results
                     hasMoreInDatabase = moreResults.size >= PAGE_SIZE
-                    
+
                     // Update displayed results
                     val nextBatch = allSearchResults.take(currentDisplayedCount + PAGE_SIZE)
                     currentDisplayedCount = nextBatch.size
                     _searchResults.value = nextBatch
-                    
+
                     // Update UI state
                     _uiState.value = UiState.Results(currentDisplayedCount, allSearchResults.size)
-                    
+
                     Log.d(TAG, "Added ${newEntries.size} new results, now showing $currentDisplayedCount of ${allSearchResults.size}, hasMore=$hasMoreInDatabase")
                 } else {
                     // No more results available
@@ -457,7 +454,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                     _uiState.value = UiState.Results(currentDisplayedCount, allSearchResults.size)
                     Log.d(TAG, "No more results available, total: ${allSearchResults.size}")
                 }
-                
+
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) {
                     Log.d(TAG, "LoadMore cancelled - keeping current UI state")
@@ -470,14 +467,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
     }
-    
-    fun getAllResultsCount(): Int {
-        return allSearchResults.size
-    }
 
-    fun clearError() {
-        _errorState.value = null
-    }
 
     // Implementation of DictionaryStateObserver
     override fun onDictionaryStateChanged(isReady: Boolean) {
@@ -495,7 +485,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         DictionaryStateManager.removeObserver(this)
         Log.d(TAG, "DictionaryViewModel cleared")
     }
-    
+
     /**
      * Get DAT system status for debugging
      */
@@ -511,15 +501,5 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         object LoadingMore : UiState()
         object NoResults : UiState()
         object Error : UiState()
-    }
-    
-    // Removed isWordResultProperNoun function - now using database flags
-
-    // Error States
-    sealed class ErrorState {
-        data class RepositoryInitFailed(val message: String) : ErrorState()
-        data class RepositoryNotInitialized(val message: String) : ErrorState()
-        data class SearchFailed(val message: String) : ErrorState()
-        data class DictionaryNotReady(val message: String) : ErrorState()
     }
 }
