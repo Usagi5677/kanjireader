@@ -62,8 +62,6 @@ class DictionaryRepository(private val context: Context) {
     private val romajiConverter = RomajiConverter()
     private val japaneseWordExtractor = JapaneseWordExtractor()
 
-    // Sentence analysis for mixed script sentences
-    private val sentenceAnalysisEngine by lazy { SentenceAnalysisEngine(romajiConverter, database) }
 
     // Now using FTS5 exclusively
 
@@ -90,44 +88,30 @@ class DictionaryRepository(private val context: Context) {
             return null
         }
 
-        // If this query had direct database matches, don't provide deinflection info
-        // BUT allow deinflection for potential conjugated forms
-        if (directMatchQueries.contains(query)) {
+        // Don't compute deinflection if the query is in the exclusion list,
+        // unless it's a potential conjugated form.
+        val isExcluded = directMatchQueries.contains(query) || noDeinfectionQueries.contains(query)
+        if (isExcluded && !isPotentialConjugatedForm(query)) {
             return null
         }
 
-        // If this query is marked as having too many direct results, don't compute deinflection
-        // UNLESS it's a potential conjugated form that we should still try to deinflect
-        if (noDeinfectionQueries.contains(query)) {
-            return null
-        }
-
-        // First check cache, but validate it for direct matches
+        // Check the cache first to avoid redundant computation.
         val cached = deinflectionCache[query]
         if (cached != null) {
-            // No need to perform another database search here.
-            // The cache should be trusted.
             return cached
         }
 
-        // If this query used progressive matching (found a dictionary word), don't compute deinflection
+        // If the query was a progressive match, skip deinflection.
         if (progressiveMatchQueries.contains(query)) {
             return null
         }
 
-        // If this query had direct database matches, don't compute deinflection
-        // UNLESS it's a potential conjugated form that should be deinflected
-        if (directMatchQueries.contains(query)) {
-            return null
-        }
-
-        // If not in cache, try to compute deinflection now using Kuromoji
+        // If all checks fail, try to deinflect the word using Kuromoji.
         try {
             val deinflections = kuromojiAnalyzer.deinflect(query)
             if (deinflections.isNotEmpty()) {
                 val result = selectBestDeinflection(deinflections, query)
                 storeDeinflectionInfo(query, result)
-                // Only return the result if it was successfully stored (passed validation)
                 return deinflectionCache[query]
             }
         } catch (e: Exception) {
@@ -135,6 +119,25 @@ class DictionaryRepository(private val context: Context) {
         }
 
         return null
+    }
+
+    /**
+     * Check if a query might be a conjugated form that should be deinflected
+     * even if there are direct database matches
+     */
+    private fun isPotentialConjugatedForm(query: String): Boolean {
+        // Common conjugated endings that should be deinflected
+        val conjugatedEndings = setOf(
+            "た", "だ",           // past tense
+            "ます", "ました",      // polite forms
+            "ません", "ませんでした", // negative polite
+            "ない", "なかった",    // negative forms
+            "ている", "ていた",    // continuous forms
+            "れる", "られる",      // passive/potential
+            "せる", "させる"       // causative
+        )
+        // Check if query ends with any conjugated ending
+        return conjugatedEndings.any { query.endsWith(it) }
     }
 
     /**
@@ -225,45 +228,26 @@ class DictionaryRepository(private val context: Context) {
      */
     private suspend fun searchFTS5Japanese(query: String, limit: Int, offset: Int = 0): List<WordResult> = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "🔍 searchFTS5Japanese: Starting search for '$query'")
             val startTime = System.currentTimeMillis()
-
-            // Try both kana variants if input is hiragana/katakana
-            val kanaVariants = romajiConverter.getBothKanaVariants(query)
-            val searchQuery = kanaVariants[0]
-            val alternateVariant = if (kanaVariants.size > 1) kanaVariants[1] else null
-
-            Log.d(TAG, "🔍 Kana variants for '$query': primary='$searchQuery', alternate='$alternateVariant'")
-
-            // Fetch all potential results from the database
             val allSearchResults = mutableSetOf<SearchResult>()
 
-            // 1. Direct search on the query itself (and its kana variant)
-            allSearchResults.addAll(database.searchJapaneseFTS(searchQuery, limit))
-            if (alternateVariant != null && alternateVariant != searchQuery) {
-                allSearchResults.addAll(database.searchJapaneseFTS(alternateVariant, limit))
+            val deinflectionResult = getDeinflectionInfo(query)
+
+            // Initial Search: Search for the query itself and its kana variants.
+            val kanaVariants = romajiConverter.getBothKanaVariants(query)
+            allSearchResults.addAll(database.searchJapaneseFTS(kanaVariants[0], limit))
+            if (kanaVariants.size > 1 && kanaVariants[1] != kanaVariants[0]) {
+                allSearchResults.addAll(database.searchJapaneseFTS(kanaVariants[1], limit))
             }
 
-            // 2. Deinflection search for base forms
-            val particles = setOf("を", "は", "が", "の", "に", "で", "と", "から", "まで", "より", "へ", "や", "も", "か", "ね", "よ", "ぞ", "ぜ")
-            val endsWithParticle = particles.any { searchQuery.endsWith(it) }
-
-            if (!endsWithParticle) {
-                val deinflection = getDeinflectionInfo(searchQuery)
-                if (deinflection != null && deinflection.baseForm != searchQuery) {
-                    allSearchResults.addAll(database.searchJapaneseFTS(deinflection.baseForm, limit))
-                }
+            // Deinflection Search: If the query is a verb, find its base form and search for that.
+            if (deinflectionResult != null && deinflectionResult.baseForm != query) {
+                allSearchResults.addAll(database.searchJapaneseFTS(deinflectionResult.baseForm, limit))
             }
 
-            val directSearchTime = System.currentTimeMillis() - startTime
-            Log.d(TAG, "⏱️ Combined search took ${directSearchTime}ms, found ${allSearchResults.size} unique results")
-
-            // Convert all unique SearchResults to WordResult objects
             val convertedResults = allSearchResults.map { searchResult ->
                 val wordResult = convertFTS5ToWordResult(searchResult)
 
-                // Mark the result if it's a valid deinflected conjugation
-                val deinflectionResult = getDeinflectionInfo(query)
                 val isDeinflected = deinflectionResult != null &&
                         (wordResult.kanji == deinflectionResult.baseForm || wordResult.reading == deinflectionResult.baseForm) &&
                         !isProperNoun(wordResult)
@@ -271,16 +255,14 @@ class DictionaryRepository(private val context: Context) {
                 wordResult.copy(isDeinflectedValidConjugation = isDeinflected)
             }
 
-            // Apply a single, clear sort order
             val finalSortedResults = convertedResults.sortedWith(
-                compareBy<WordResult> { !it.isDeinflectedValidConjugation }  // Priority 1: Deinflected forms first
-                    .thenBy { !(it.kanji == query || it.reading == query) }   // Priority 2: Exact matches next
-                    .thenByDescending { it.isCommon }                     // Priority 3: Common words next
-                    .thenByDescending { it.frequency ?: 0 }               // Priority 4: Higher frequency
-                    .thenBy { it.reading.length }                         // Priority 5: Shorter readings
+                compareBy<WordResult> { !it.isDeinflectedValidConjugation }
+                    .thenBy { !(it.kanji == query || it.reading == query) }
+                    .thenByDescending { it.isCommon }
+                    .thenByDescending { it.frequency ?: 0 }
+                    .thenBy { it.reading.length }
             )
 
-            // Add single kanji character search for single kanji queries
             val finalResultsWithKanji = if (query.length == 1 && isKanji(query)) {
                 if (finalSortedResults.none { it.kanji == query }) {
                     val kanjiResults = database.searchKanjiCharacters(query, 5).map { convertKanjiEntryToWordResult(it, query) }
@@ -295,11 +277,8 @@ class DictionaryRepository(private val context: Context) {
             val filteredResults = filterKatakanaDuplicatesSimple(finalResultsWithKanji).distinctBy { "${it.kanji}|${it.reading}" }.take(limit)
 
             val totalTime = System.currentTimeMillis() - startTime
-            Log.d(TAG, "🏁 Search completed in ${totalTime}ms with ${filteredResults.size} total results")
-
             return@withContext filteredResults
         } catch (e: Exception) {
-            Log.e(TAG, "❌ REPOSITORY ERROR: searchFTS5Japanese failed", e)
             return@withContext emptyList()
         }
     }
@@ -1361,5 +1340,16 @@ class DictionaryRepository(private val context: Context) {
     private fun storeDeinflectionInfo(query: String, result: DeinflectionResult) {
         // Store the deinflection result in cache
         deinflectionCache[query] = result
+    }
+    
+    /**
+     * Public helper methods for romaji handling
+     */
+    fun isRomajiQuery(query: String): Boolean {
+        return containsRomaji(query) && !isJapaneseText(query) && isLikelyJapaneseRomaji(query)
+    }
+    
+    fun convertRomajiToHiragana(query: String): String {
+        return romajiConverter.toHiragana(query)
     }
 }

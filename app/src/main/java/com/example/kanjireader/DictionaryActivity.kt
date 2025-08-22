@@ -249,39 +249,32 @@ class DictionaryActivity : AppCompatActivity() {
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                
+
                 override fun afterTextChanged(s: Editable?) {
                     val newText = s?.toString() ?: ""
                     Log.d(TAG, "=== TEXT CHANGE === '$newText'")
-                    
-                    // Show/hide clear button based on text content
+
+                    // --- REMOVED: Manual delays and filtering logic from Activity
+                    // This logic is redundant and can cause ANRs.
+                    // The ViewModel's channel/debounce handles this correctly.
+                    // searchJob?.cancel()
+                    // searchJob = lifecycleScope.launch { delay(300) ... }
+                    // ---
+
+                    // Show/hide UI elements immediately based on text content
                     binding.clearButton.visibility = if (newText.isNotEmpty()) View.VISIBLE else View.GONE
-                    
-                    // Show/hide word navigation button when search bar has multi-line content
                     val lineCount = binding.searchEditText.lineCount
                     binding.wordNavigationButton.visibility = if (lineCount > 1 || newText.length > 30) View.VISIBLE else View.GONE
-                    
-                    searchJob?.cancel()
-                    
+
+                    // This is the core logic: Always send the raw query to the ViewModel.
+                    // The ViewModel is responsible for deciding when to perform the search.
                     if (newText.isEmpty()) {
                         Log.d(TAG, "Empty query, clearing search")
                         viewModel.clearSearch()
                         binding.searchHelpText.visibility = View.VISIBLE
                     } else {
                         binding.searchHelpText.visibility = View.GONE
-                        
-                        // Add minimal debouncing to avoid searching for every IME intermediate state
-                        searchJob = lifecycleScope.launch {
-                            delay(50) // Minimal delay for fastest response
-                            
-                            // Skip if it looks like an IME intermediate state or is too short
-                            if (!isIMEIntermediateState(newText) && !isSuspiciousQuery(newText)) {
-                                Log.d(TAG, "=== TRIGGERING SEARCH === '$newText' (not IME intermediate)")
-                                viewModel.search(newText)
-                            } else {
-                                Log.d(TAG, "Skipping suspicious query: '$newText' (IME: ${isIMEIntermediateState(newText)}, suspicious: ${isSuspiciousQuery(newText)})")
-                            }
-                        }
+                        viewModel.search(newText)
                     }
                 }
             })
@@ -408,56 +401,5 @@ class DictionaryActivity : AppCompatActivity() {
         binding.emptyStateLayout.visibility = View.VISIBLE
         binding.searchHelpText.visibility = View.VISIBLE
         supportActionBar?.subtitle = null
-    }
-
-    private fun showSearchError(title: String, message: String) {
-        // Show error in place of search results
-        binding.resultsRecyclerView.visibility = View.GONE
-        binding.emptyStateLayout.visibility = View.GONE
-        binding.noResultsLayout.visibility = View.VISIBLE
-        
-        binding.noResultsText.text = title
-        supportActionBar?.subtitle = message
-        
-        // Error is now shown in the UI - no need for toast
-        
-        Log.w(TAG, "Search error: $title - $message")
-    }
-    
-    /**
-     * Check if the text looks like an IME intermediate state
-     * These are typically single full-width Latin characters like 'ｍ' 
-     */
-    private fun isIMEIntermediateState(text: String): Boolean {
-        if (text.length != 1) return false
-        
-        val char = text[0]
-        // Check for full-width Latin characters (commonly used by IMEs)
-        return char in '\uFF01'..'\uFF5E'
-    }
-    
-    /**
-     * Check if a query looks suspicious and should be filtered out
-     * This includes very short queries that might be IME artifacts
-     */
-    private fun isSuspiciousQuery(text: String): Boolean {
-        if (text.length > 2) return false // Allow 3+ character queries
-        
-        // Allow single Japanese characters
-        if (text.length == 1) {
-            val char = text[0]
-            val isJapanese = char in '\u3040'..'\u309F' || // Hiragana
-                           char in '\u30A0'..'\u30FF' || // Katakana  
-                           char in '\u4E00'..'\u9FAF'    // Kanji
-            if (isJapanese) return false
-        }
-        
-        // Block single Latin characters (likely IME artifacts)
-        if (text.length == 1 && text[0] in 'a'..'z') {
-            Log.d(TAG, "Blocking single Latin character: '$text'")
-            return true
-        }
-        
-        return false
     }
 }
