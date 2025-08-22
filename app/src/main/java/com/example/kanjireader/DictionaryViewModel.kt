@@ -45,9 +45,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private var tagDictLoader: TagDictSQLiteLoader? = null
     private val wordExtractor = JapaneseWordExtractor()
     // private lateinit var entryGrouper: DictionaryEntryGrouper  // No longer needed with Kuromoji
-    
-    // Enhanced DAT manager
-    // DATManager removed - using FTS5 exclusively
+
 
     // Search state
     private var searchJob: Job? = null
@@ -161,72 +159,49 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         currentQuery = trimmedQuery
         _uiState.value = UiState.Loading
 
+        // In DictionaryViewModel.kt, inside the search function
         searchJob = viewModelScope.launch {
             try {
                 Log.d(TAG, "=== SEARCH START === Searching for: '$currentQuery' (thread: ${Thread.currentThread().name})")
+                delay(50)
 
-                // FTS5 provides fast search - minimal debounce needed
-                delay(50) // Light debounce for FTS5 searches
-
-                // Check if repository is initialized
                 if (!::repository.isInitialized) {
                     Log.w(TAG, "Repository not initialized yet")
                     _uiState.value = UiState.NoResults
                     return@launch
                 }
 
-                // Detect if this is a paragraph that needs Kuromoji processing
                 val isParagraph = currentQuery.lines().size > 1 || currentQuery.length > 30
                 Log.d(TAG, "Query analysis: length=${currentQuery.length}, lines=${currentQuery.lines().size}, isParagraph=$isParagraph")
-                
+
                 val startTime = System.currentTimeMillis()
+
+                // This is the key change:
+                // The repository already returns a sorted list. We just need to use it.
                 val searchResults: List<WordResult> = if (isParagraph) {
-                    // Use Kuromoji to extract individual words from paragraph
                     Log.d(TAG, "Processing paragraph with Kuromoji word extraction")
                     searchParagraphWithKuromoji(currentQuery)
                 } else {
-                    // Regular single word/phrase search
                     Log.d(TAG, "Regular FTS5 search for single word/phrase")
-                    repository.search(currentQuery)
+                    // Pass a large enough limit to allow for proper prioritization
+                    repository.search(currentQuery, limit = 500)
                 }
+
                 Log.d(TAG, "Search for '$currentQuery' returned ${searchResults.size} results (isParagraph: $isParagraph)")
                 val searchTime = System.currentTimeMillis() - startTime
                 Log.d(TAG, "⏱️ Search query took ${searchTime}ms")
 
-                // Get deinflection info if available
                 val deinflectionInfo = (repository as DictionaryRepository).getDeinflectionInfo(currentQuery)
 
-                // Log for debugging
-                Log.d(TAG, "Search '$currentQuery' returned ${searchResults.size} results")
-                if (deinflectionInfo != null) {
-                    Log.d(TAG, "Deinflection: ${currentQuery} -> ${deinflectionInfo.baseForm}")
-                }
-
-                // Convert WordResult to UnifiedDictionaryEntry directly (bypassing grouper)
                 val unsortedResults: List<UnifiedDictionaryEntry> = searchResults.map { wordResult ->
-                    // Use the database flag to determine if we should show deinflection info
                     val shouldShowDeinflection = wordResult.isDeinflectedValidConjugation
-                    
-                    // TEMPORARILY DISABLED: Pitch accent fetching for performance testing
-                    // Get pitch accent data from database
-                    /*
-                    val pitchAccents: List<PitchAccent> = try {
-                        withContext(Dispatchers.IO) {
-                            val kanjiForm = wordResult.kanji ?: wordResult.reading
-                            repository.getPitchAccents(kanjiForm, wordResult.reading)
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to fetch pitch accents for ${wordResult.kanji ?: wordResult.reading}: ${e.message}")
-                        emptyList<PitchAccent>()
-                    }
-                    */
                     val pitchAccents: List<PitchAccent> = emptyList() // Temporarily disabled
-                    
+
                     UnifiedDictionaryEntry(
                         primaryForm = wordResult.kanji ?: wordResult.reading,
                         primaryReading = wordResult.reading,
                         meanings = wordResult.meanings,
-                        primaryTags = emptyList<String>(), // WordResult doesn't have partOfSpeech
+                        primaryTags = emptyList<String>(),
                         variants = emptyList<VariantInfo>(),
                         isCommon = wordResult.isCommon,
                         verbType = if (shouldShowDeinflection) deinflectionInfo?.verbType?.toString() else null,
@@ -236,45 +211,34 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                         pitchAccents = pitchAccents.takeIf { it.isNotEmpty() }
                     )
                 }
-                
-                // Sort results by common status and frequency
-                val groupedResults = unsortedResults.sortedWith(
-                    compareByDescending<UnifiedDictionaryEntry> { it.isCommon }
-                        .thenByDescending { it.frequency ?: 0 }
-                )
-                
-                Log.d(TAG, "Final results sorted: ${groupedResults.size} total")
 
-                // Store all results (no pagination)
-                allSearchResults = groupedResults.toMutableList()
-                currentDisplayedCount = groupedResults.size
-                hasMoreInDatabase = false // No pagination needed
+                // Remove the extra sorting logic here. The repository already gave you a sorted list.
+                allSearchResults = unsortedResults.toMutableList()
+                currentDisplayedCount = allSearchResults.size
+                hasMoreInDatabase = false
                 currentSearchOffset = 0
-                
+
+                Log.d(TAG, "Final results sorted: ${allSearchResults.size} total")
                 Log.d(TAG, "Search complete: ${allSearchResults.size} total results")
-                
-                // Display all results
-                _searchResults.value = groupedResults
-                _uiState.value = if (groupedResults.isEmpty()) {
+
+                _searchResults.value = allSearchResults
+                _uiState.value = if (allSearchResults.isEmpty()) {
                     UiState.NoResults
                 } else {
-                    UiState.Results(currentDisplayedCount, currentDisplayedCount)
+                    UiState.Results(currentDisplayedCount, allSearchResults.size)
                 }
-                
-                // Log paragraph processing summary
+
                 if (isParagraph) {
-                    Log.d(TAG, "PARAGRAPH SEARCH SUMMARY: Input length=${currentQuery.length}, Words extracted via Kuromoji, Total results=${groupedResults.size}")
+                    Log.d(TAG, "PARAGRAPH SEARCH SUMMARY: Input length=${currentQuery.length}, Words extracted via Kuromoji, Total results=${allSearchResults.size}")
                 }
-                
-                Log.d(TAG, "=== SEARCH COMPLETE === Query: '$currentQuery', Results: ${groupedResults.size}, State: ${_uiState.value}")
+
+                Log.d(TAG, "=== SEARCH COMPLETE === Query: '$currentQuery', Results: ${allSearchResults.size}, State: ${_uiState.value}")
 
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) {
                     Log.d(TAG, "Search cancelled for query '$currentQuery' - not changing UI state")
-                    // Don't change UI state when search is cancelled - keep previous results
                 } else {
                     Log.e(TAG, "Search failed for query '$currentQuery'", e)
-                    // Show no results instead of technical error
                     _uiState.value = UiState.NoResults
                 }
             }

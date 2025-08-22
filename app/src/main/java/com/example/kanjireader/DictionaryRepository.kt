@@ -18,8 +18,9 @@ class DictionaryRepository(private val context: Context) {
 
     companion object {
         private const val TAG = "DictionaryRepository"
-        
+
         // Using SQLite FTS5 exclusively for all searches
+
 
         @Volatile
         private var INSTANCE: DictionaryRepository? = null
@@ -44,26 +45,26 @@ class DictionaryRepository(private val context: Context) {
 
     private var deinflectionEngine: TenTenStyleDeinflectionEngine? = null
     private var tagDictLoader: TagDictSQLiteLoader? = null
-    
+
     // Kuromoji morphological analyzer (works alongside TenTen deinflection)
     private val kuromojiAnalyzer = KuromojiMorphologicalAnalyzer()
-    
+
     // Cache variables for performance optimization
     private val deinflectionCache = mutableMapOf<String, DeinflectionResult?>()
     private val directMatchQueries = mutableSetOf<String>()
     private val progressiveMatchQueries = mutableSetOf<String>()
     private val noDeinfectionQueries = mutableSetOf<String>()
-    
+
     // Enhanced deinflection with suffix tree support (temporarily disabled)
     // private val enhancedDeinflectionEngine = EnhancedDeinflectionEngine()
-    
+
     // Mixed script support
     private val romajiConverter = RomajiConverter()
     private val japaneseWordExtractor = JapaneseWordExtractor()
-    
+
     // Sentence analysis for mixed script sentences
     private val sentenceAnalysisEngine by lazy { SentenceAnalysisEngine(romajiConverter, database) }
-    
+
     // Now using FTS5 exclusively
 
     /**
@@ -76,10 +77,10 @@ class DictionaryRepository(private val context: Context) {
         // Initialize TenTen engine and tag loader
         this.deinflectionEngine = deinflectionEngine ?: TenTenStyleDeinflectionEngine()
         this.tagDictLoader = tagDictLoader
-        
+
         // Kuromoji analyzer is ready to use immediately (no initialization needed)
         Log.d(TAG, "Kuromoji morphological analyzer ready for SQLite FTS5 mode")
-        
+
         Log.d(TAG, "Repository initialized for SQLite FTS5 mode")
     }
 
@@ -93,10 +94,10 @@ class DictionaryRepository(private val context: Context) {
         // Initialize with SQLite components only
         this.deinflectionEngine = deinflectionEngine
         this.tagDictLoader = tagDictLoader
-        
+
         // Kuromoji analyzer is ready to use immediately (no initialization needed)
         Log.d(TAG, "Kuromoji morphological analyzer ready for SQLite FTS5 mode")
-        
+
         Log.d(TAG, "Repository initialized for deinflection-only SQLite FTS5 mode")
     }
 
@@ -106,17 +107,17 @@ class DictionaryRepository(private val context: Context) {
      */
     private fun initializeFTS5Only() {
         Log.i(TAG, "🔄 FTS5 AUTO-INIT: Starting FTS5 database initialization...")
-        
+
         // Kuromoji analyzer is ready to use (no initialization needed for FTS5 mode)
         Log.d(TAG, "Kuromoji analyzer ready for FTS5 mode")
-        
+
         // Check if FTS5 database is ready
         try {
             GlobalScope.launch(Dispatchers.IO) {
                 if (database.isDatabaseReady()) {
                     Log.i(TAG, "✅ FTS5 AUTO-INIT: FTS5 database is ready!")
                     Log.i(TAG, "📊 FTS5 STATS: Database ready with integrated FTS5 tables")
-                    
+
                     // Database is ready for FTS5 searches
                     Log.i(TAG, "✅ FTS5 ready for searches")
                 } else {
@@ -138,352 +139,6 @@ class DictionaryRepository(private val context: Context) {
         return fts5Ready
     }
 
-    
-    
-    
-    
-    /**
-     * Search by Japanese text (kanji/kana) - DEPRECATED
-     * Uses existing HashMap implementation (legacy) - REMOVED
-     * Use search() method instead which uses SQLite FTS5
-     */
-    /*
-    suspend fun searchJapanese(query: String): List<WordResult> = withContext(Dispatchers.IO) {
-        val extractor = jmdictExtractor
-        if (extractor?.isDictionaryLoaded() != true) {
-            Log.w(TAG, "JMdict not loaded for Japanese search")
-            return@withContext emptyList()
-        }
-
-        Log.d(TAG, "searchJapanese: Starting for '$query'")
-
-        // Handle particles specially - only return exact matches
-        if (isParticle(query)) {
-            Log.d(TAG, "searchJapanese: Detected particle '$query', filtering to exact matches only")
-            val allResults = extractor.lookupWordsWithPrefix(query, 100)
-            val exactMatches = allResults.filter { result ->
-                result.kanji == query || result.reading == query
-            }
-            Log.d(TAG, "searchJapanese: Particle filtered from ${allResults.size} to ${exactMatches.size} results")
-            return@withContext exactMatches
-        }
-
-        val results = mutableListOf<WordResult>()
-        
-        // Check if query looks like a conjugated form that should be deinflected
-        val isPotentiallyConjugated = query.endsWith("ています") || query.endsWith("ている") || 
-                                      query.endsWith("てる") || query.endsWith("でる") ||
-                                      query.endsWith("ました") || query.endsWith("ます") ||
-                                      query.endsWith("でした") || query.endsWith("です") ||
-                                      query.endsWith("んだ") || query.endsWith("った") ||
-                                      query.endsWith("いた") || query.endsWith("えた") ||
-                                      query.endsWith("した") || query.endsWith("きた") ||
-                                      query.endsWith("ない") || query.endsWith("なく") ||
-                                      // Only treat "て"/"で" as conjugated if it's more than 1 character and looks like a verb stem
-                                      (query.length > 2 && (query.endsWith("て") || query.endsWith("で"))) ||
-                                      // Specifically catch common te-forms like みて, きて, して, いて, etc.
-                                      (query.length >= 2 && (query.matches(Regex(".*[いきしちにひみりぎじびぴ][て]")) ||
-                                       query.matches(Regex(".*[いきしちにひみりぎじびぴ][で]"))))
-
-        // If it's potentially conjugated, try deinflection first
-        // Use Kuromoji for better performance and coverage
-        if (isPotentiallyConjugated && query.length > 1) {
-            Log.d(TAG, "searchJapanese: Query appears conjugated, trying Kuromoji deinflection first")
-            val deinflectionResults = kuromojiAnalyzer.deinflect(query)
-            Log.d(TAG, "searchJapanese: Found ${deinflectionResults.size} Kuromoji deinflection results")
-
-            for (deinflection in deinflectionResults) {
-                // Skip if it's the same as the query
-                if (deinflection.baseForm == query) continue
-
-                // Store deinflection info for conjugation display
-                storeDeinflectionInfo(query, deinflection)
-
-                // Try exact lookup first
-                val exactResults = extractor.lookupExactWords(listOf(deinflection.baseForm))
-                Log.d(TAG, "searchJapanese: Base form '${deinflection.baseForm}' exact lookup has ${exactResults.size} results")
-
-                for (baseResult in exactResults) {
-                    // Avoid duplicates
-                    if (results.none { it.reading == baseResult.reading && it.kanji == baseResult.kanji }) {
-                        results.add(baseResult)
-                    }
-                }
-                
-                // Also try prefix search for the base form to catch variations
-                val prefixResults = extractor.lookupWordsWithPrefix(deinflection.baseForm, 50)
-                Log.d(TAG, "searchJapanese: Base form '${deinflection.baseForm}' prefix lookup has ${prefixResults.size} results")
-
-                for (baseResult in prefixResults) {
-                    // Avoid duplicates
-                    if (results.none { it.reading == baseResult.reading && it.kanji == baseResult.kanji }) {
-                        results.add(baseResult)
-                    }
-                }
-            }
-        }
-        
-        // Always do prefix search for the original query to catch related entries
-        // This ensures we find entries like 見る when searching みて
-        val prefixResults = extractor.lookupWordsWithPrefix(query, 100)
-        Log.d(TAG, "searchJapanese: Prefix lookup for original query found ${prefixResults.size} results")
-        
-        for (prefixResult in prefixResults) {
-            // Avoid duplicates
-            if (results.none { it.reading == prefixResult.reading && it.kanji == prefixResult.kanji }) {
-                results.add(prefixResult)
-            }
-        }
-
-        // If we still don't have many results and haven't tried deinflection yet, try it now
-        if (results.size < 20 && query.length > 1 && !isPotentiallyConjugated) {
-            Log.d(TAG, "searchJapanese: Trying Kuromoji deinflection for more results")
-            val deinflectionResults = kuromojiAnalyzer.deinflect(query)
-            Log.d(TAG, "searchJapanese: Found ${deinflectionResults.size} Kuromoji deinflection results")
-
-            for (deinflection in deinflectionResults) {
-                // Skip if it's the same as the query
-                if (deinflection.baseForm == query) continue
-
-                // Store deinflection info for conjugation display
-                storeDeinflectionInfo(query, deinflection)
-
-                val baseResults = extractor.lookupExactWords(listOf(deinflection.baseForm))
-                Log.d(TAG, "searchJapanese: Base form '${deinflection.baseForm}' has ${baseResults.size} results")
-
-                for (baseResult in baseResults) {
-                    // Avoid duplicates
-                    if (results.none { it.reading == baseResult.reading && it.kanji == baseResult.kanji }) {
-                        results.add(baseResult)
-                    }
-                }
-
-                // Limit results to avoid too many
-                if (results.size >= 100) break
-            }
-        }
-
-        Log.d(TAG, "searchJapanese: Final result count: ${results.size}")
-        
-        // Sort results before returning - prioritize by frequency, but deprioritize proper nouns
-        val sortedResults = results.sortedWith(
-            compareBy<WordResult> { isProperNoun(it) }  // Proper nouns go to bottom (false = 0, true = 1)
-                .thenByDescending { it.frequency ?: 0 }
-                .thenByDescending { it.isCommon }
-                .thenBy { it.reading.length }
-        )
-        
-        // Debug logging for sorting
-        if (query.contains("みた") || query.contains("みる")) {
-            Log.d(TAG, "Japanese search results ordering for '$query':")
-            sortedResults.take(10).forEachIndexed { index, result ->
-                val isProper = isProperNoun(result)
-                Log.d(TAG, "  $index: '${result.kanji}' (${result.reading}) isProper=$isProper tags=${result.tags}")
-            }
-        }
-        
-        // Supplement with legacy SQLite search for additional coverage
-        try {
-            val sqliteResults = database.searchJapaneseLegacy(query, 50)
-            val supplementalResults: List<WordResult> = sqliteResults.map { result ->
-                WordResult(
-                    kanji = result.kanji,
-                    reading = result.reading,
-                    meanings = parseMeaningsJson(result.meanings),
-                    isCommon = result.isCommon,
-                    frequency = result.frequency,
-                    wordOrder = 999,
-                    tags = emptyList(), // Tags will be loaded by TagDictSQLiteLoader for both JMdict and JMNEDict entries
-                    partsOfSpeech = emptyList()
-                )
-            }
-            
-            // Add supplemental results that aren't already in the main results
-            for (supplemental in supplementalResults) {
-                if (results.none { it.reading == supplemental.reading && it.kanji == supplemental.kanji }) {
-                    results.add(supplemental)
-                }
-            }
-            
-            Log.d(TAG, "searchJapanese: Added ${supplementalResults.size} supplemental SQLite results")
-        } catch (e: Exception) {
-            Log.w(TAG, "Supplemental SQLite search failed", e)
-        }
-        
-        // Sort final results - deprioritize proper nouns
-        val finalSortedResults = results.sortedWith(
-            compareBy<WordResult> { isProperNoun(it) }  // Proper nouns go to bottom
-                .thenByDescending { it.frequency ?: 0 }
-                .thenByDescending { it.isCommon }
-                .thenBy { it.reading.length }
-        )
-        
-        // Debug final sorting
-        if (query.contains("みた") || query.contains("みる")) {
-            Log.d(TAG, "FINAL Japanese search results for '$query':")
-            finalSortedResults.take(10).forEachIndexed { index, result ->
-                val isProper = isProperNoun(result)
-                Log.d(TAG, "  FINAL $index: '${result.kanji}' (${result.reading}) isProper=$isProper tags=${result.tags}")
-            }
-        }
-        
-        return@withContext finalSortedResults.take(150)
-    }
-
-    private val deinflectionCache = mutableMapOf<String, DeinflectionResult>()
-    private val progressiveMatchQueries = mutableSetOf<String>() // Track queries that used progressive matching
-    private val directMatchQueries = mutableSetOf<String>() // Track queries that had direct database matches
-    private val noDeinfectionQueries = mutableSetOf<String>() // Track queries that shouldn't show deinflection info
-
-    private fun storeDeinflectionInfo(originalQuery: String, deinflection: DeinflectionResult) {
-        // Validate with Kuromoji to ensure it's actually a conjugation
-        val kuromojiResult = kuromojiAnalyzer.analyzeWord(originalQuery)
-        
-        Log.d(TAG, "Validating deinflection for '$originalQuery': kuromoji=${kuromojiResult != null}, " +
-                "baseFormDiffers=${kuromojiResult?.baseForm != originalQuery}")
-        
-        if (kuromojiResult != null && 
-            kuromojiResult.baseForm != originalQuery && 
-            isValidConjugationByKuromoji(originalQuery, kuromojiResult)) {
-            // Kuromoji confirms this is a conjugation
-            deinflectionCache[originalQuery] = deinflection
-            Log.d(TAG, "✅ Stored deinflection (Kuromoji validated): '$originalQuery' -> '${deinflection.baseForm}' (${deinflection.verbType})")
-        } else {
-            // Kuromoji doesn't recognize this as a conjugation - don't store
-            Log.d(TAG, "❌ Kuromoji validation failed for '$originalQuery' - not storing as conjugation")
-            Log.d(TAG, "   Reason: kuromoji=${kuromojiResult != null}, baseForm='${kuromojiResult?.baseForm}', " +
-                    "partOfSpeech='${kuromojiResult?.partOfSpeech}'")
-        }
-    }
-    
-    private fun isValidConjugationByKuromoji(originalQuery: String, kuromojiResult: MorphologyResult): Boolean {
-        // Check if Kuromoji can tokenize the word as a single meaningful token
-        val tokens = kuromojiAnalyzer.tokenize(originalQuery)
-        
-        // Check if any token contains non-Japanese characters or is marked as unknown
-        var hasUnknownTokens = false
-        var hasAlphabetTokens = false
-        var hasValidConjugatablePOS = false
-        
-        for (token in tokens) {
-            val surface = token.surface
-            val pos1 = token.partOfSpeechLevel1 ?: ""
-            val pos2 = token.partOfSpeechLevel2 ?: ""
-            val baseForm = token.baseForm ?: surface
-            
-            // If any token is unknown, reject
-            if (pos1 == "その他" || pos1 == "未知語") {
-                Log.d(TAG, "Token '$surface' has pos '$pos1' - rejecting as invalid conjugation")
-                hasUnknownTokens = true
-            }
-            
-            // If any token is marked as alphabet symbol, reject
-            if (pos1 == "記号" && pos2 == "アルファベット") {
-                Log.d(TAG, "Token '$surface' is alphabet symbol - rejecting as invalid conjugation")
-                hasAlphabetTokens = true
-            }
-            
-            // Only allow conjugation for verbs and adjectives, and only if base form differs from surface
-            if (pos1 == "動詞" || pos1 == "形容詞") {
-                if (baseForm != surface) {
-                    hasValidConjugatablePOS = true
-                }
-            } else if (pos1 == "名詞") {
-                // Nouns should never be considered conjugated - reject immediately
-                Log.d(TAG, "Token '$surface' is a noun (pos='$pos1') - rejecting as invalid conjugation")
-                return false
-            }
-            
-            Log.d(TAG, "Token analysis: surface='$surface', baseForm='$baseForm', pos1='$pos1', pos2='$pos2'")
-        }
-        
-        // Reject if we found unknown tokens or alphabet symbols
-        if (hasUnknownTokens || hasAlphabetTokens) {
-            return false
-        }
-        
-        // Only accept if we found at least one token that can actually be conjugated
-        if (!hasValidConjugatablePOS) {
-            Log.d(TAG, "No conjugatable POS found for '$originalQuery' - rejecting as invalid conjugation")
-            return false
-        }
-        
-        // Additional check: reject if the word ends with a particle
-        // (e.g., "みまで" should not be treated as a conjugation of "みる")
-        val particles = setOf("を", "は", "が", "の", "に", "で", "と", "から", "まで", "より", "へ", "や", "も", "か", "ね", "よ", "ぞ", "ぜ")
-        if (particles.any { originalQuery.endsWith(it) }) {
-            Log.d(TAG, "Query '$originalQuery' ends with particle - rejecting as invalid conjugation")
-            return false
-        }
-        
-        // Also check if the last token is a particle
-        val lastToken = tokens.lastOrNull()
-        if (lastToken?.partOfSpeechLevel1 == "助詞") {
-            Log.d(TAG, "Query '$originalQuery' ends with particle token '${lastToken.surface}' - rejecting as invalid conjugation")
-            return false
-        }
-        
-        Log.d(TAG, "Kuromoji validation passed for '$originalQuery' - valid conjugation (${tokens.size} tokens)")
-        return true
-    }
-
-    private fun clearDeinflectionInfo(query: String) {
-        deinflectionCache.remove(query)
-    }
-
-    /**
-     * Select the best deinflection result from multiple candidates
-     */
-    private fun selectBestDeinflection(deinflections: List<DeinflectionResult>, originalQuery: String): DeinflectionResult {
-        Log.d(TAG, "Selecting best from ${deinflections.size} deinflection candidates:")
-        deinflections.forEachIndexed { index, result ->
-            Log.d(TAG, "  $index: ${result.baseForm} (${result.verbType})")
-        }
-        
-        // Priority ranking:
-        // 1. Prefer results that end with る (ichidan verbs) or う (godan verbs) 
-        // 2. Prefer shorter base forms (more likely to be dictionary forms)
-        // 3. Prefer results with proper verb types
-        // 4. Avoid obvious intermediate forms
-        
-        val scored = deinflections.map { result ->
-            var score = 0
-            
-            // Dictionary form endings get highest priority
-            when {
-                result.baseForm.endsWith("る") -> score += 100
-                result.baseForm.endsWith("う") || result.baseForm.endsWith("く") || 
-                result.baseForm.endsWith("ぐ") || result.baseForm.endsWith("す") || 
-                result.baseForm.endsWith("つ") || result.baseForm.endsWith("ぬ") || 
-                result.baseForm.endsWith("ぶ") || result.baseForm.endsWith("む") -> score += 90
-                result.baseForm.endsWith("い") -> score += 80 // Adjectives
-            }
-            
-            // Proper verb types get bonus
-            if (result.verbType != null) {
-                score += 50
-            }
-            
-            // Shorter forms are generally better (dictionary forms)
-            score += (10 - result.baseForm.length).coerceAtLeast(0)
-            
-            // Avoid obvious junk forms
-            when {
-                result.baseForm.contains("まする") -> score -= 200 // "見まする" is nonsense
-                result.baseForm.contains("ましる") -> score -= 200 // "見ましる" is nonsense  
-                result.baseForm.endsWith("ます") -> score -= 100  // Still conjugated
-                result.baseForm == originalQuery -> score -= 50   // No transformation
-            }
-            
-            result to score
-        }.sortedByDescending { it.second }
-        
-        val best = scored.first().first
-        Log.d(TAG, "Selected best deinflection: ${best.baseForm} (score: ${scored.first().second})")
-        
-        return best
-    }
-    */
 
     fun getDeinflectionInfo(query: String): DeinflectionResult? {
         // Don't provide conjugation info for space-separated queries
@@ -491,21 +146,21 @@ class DictionaryRepository(private val context: Context) {
             Log.d(TAG, "Query '$query' contains spaces - not providing conjugation info")
             return null
         }
-        
+
         // If this query had direct database matches, don't provide deinflection info
         // BUT allow deinflection for potential conjugated forms
         if (directMatchQueries.contains(query) && !isPotentialConjugatedForm(query)) {
             Log.d(TAG, "Query '$query' had direct database matches - not providing deinflection info")
             return null
         }
-        
+
         // If this query is marked as having too many direct results, don't compute deinflection
         // UNLESS it's a potential conjugated form that we should still try to deinflect
         if (noDeinfectionQueries.contains(query) && !isPotentialConjugatedForm(query)) {
             Log.d(TAG, "Query '$query' marked as no deinflection due to too many direct results")
             return null
         }
-        
+
         // First check cache, but validate it for direct matches
         val cached = deinflectionCache[query]
         if (cached != null) {
@@ -513,7 +168,7 @@ class DictionaryRepository(private val context: Context) {
             // Allow both conjugated forms AND direct matches to coexist (e.g., みた can be both 見る conjugation AND 共)
             try {
                 val directCheck = runBlocking { database.searchJapaneseFTS(query, 5) }
-                val commonDirectMatch = directCheck.find { 
+                val commonDirectMatch = directCheck.find {
                     (it.kanji == query || it.reading == query) && it.isCommon && (it.frequency > 50000)
                 }
                 if (commonDirectMatch != null) {
@@ -527,33 +182,33 @@ class DictionaryRepository(private val context: Context) {
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to validate cached deinflection for '$query'", e)
             }
-            
+
             Log.d(TAG, "Retrieved validated cached deinflection for '$query': ${cached.baseForm} (${cached.verbType})")
             return cached
         }
-        
+
         // If this query used progressive matching (found a dictionary word), don't compute deinflection
         if (progressiveMatchQueries.contains(query)) {
             Log.d(TAG, "Query '$query' used progressive matching - not computing deinflection")
             return null
         }
-        
+
         // If this query had direct database matches, don't compute deinflection
         // UNLESS it's a potential conjugated form that should be deinflected
         if (directMatchQueries.contains(query) && !isPotentialConjugatedForm(query)) {
             Log.d(TAG, "Query '$query' had direct database matches - not computing deinflection")
             return null
         }
-        
-        
+
+
         // Debug logging for specific problematic queries
         if (query == "みた") {
             Log.d(TAG, "DEBUG: Processing deinflection for '$query'")
         }
-        
+
         // If not in cache, try to compute deinflection now using Kuromoji
         Log.d(TAG, "Computing deinflection for '$query' using Kuromoji...")
-        
+
         try {
             val deinflections = kuromojiAnalyzer.deinflect(query)
             if (deinflections.isNotEmpty()) {
@@ -561,18 +216,18 @@ class DictionaryRepository(private val context: Context) {
                 val result = selectBestDeinflection(deinflections, query)
                 storeDeinflectionInfo(query, result)
                 Log.d(TAG, "Computed deinflection for '$query': ${result.baseForm} (${result.verbType})")
-                
+
                 // Only return the result if it was successfully stored (passed validation)
                 return deinflectionCache[query]
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to compute deinflection for '$query'", e)
         }
-        
+
         Log.d(TAG, "No deinflection found for '$query'")
         return null
     }
-    
+
 
     /**
      * Search by English text
@@ -627,7 +282,7 @@ class DictionaryRepository(private val context: Context) {
 
         return@withContext results.drop(offset).take(limit)
     }
-    
+
     /**
      * Search using FTS5 implementation
      */
@@ -636,12 +291,12 @@ class DictionaryRepository(private val context: Context) {
             Log.e(TAG, "FTS5 database not ready")
             return@withContext emptyList()
         }
-        
+
         Log.d(TAG, "=== FTS5 SEARCH START ===")
         Log.d(TAG, "Query: '$query'")
-        
+
         val results = mutableListOf<WordResult>()
-        
+
         // Check if query contains spaces - if so, treat as separate word search
         if (query.contains(Regex("\\s+"))) {
             Log.d(TAG, "FTS5: Space-separated query detected: '$query'")
@@ -686,13 +341,13 @@ class DictionaryRepository(private val context: Context) {
                 }
             }
         }
-        
+
         Log.d(TAG, "FTS5 search returned ${results.size} results")
         Log.d(TAG, "=== FTS5 SEARCH END ===")
-        
+
         return@withContext results.distinctBy { "${it.kanji ?: ""}|${it.reading}" }
     }
-    
+
     /**
      * FTS5 Japanese search - Updated to use integrated DictionaryDatabase
      */
@@ -700,345 +355,82 @@ class DictionaryRepository(private val context: Context) {
         try {
             Log.d(TAG, "🔍 searchFTS5Japanese: Starting search for '$query'")
             val startTime = System.currentTimeMillis()
-            
+
             // Try both kana variants if input is hiragana/katakana
             val kanaVariants = romajiConverter.getBothKanaVariants(query)
-            val searchQuery = kanaVariants[0] // Always use primary variant for main search
+            val searchQuery = kanaVariants[0]
             val alternateVariant = if (kanaVariants.size > 1) kanaVariants[1] else null
-            
+
             Log.d(TAG, "🔍 Kana variants for '$query': primary='$searchQuery', alternate='$alternateVariant'")
-            
-            // Single database call for direct search
-            val fts5Results = database.searchJapaneseFTS(searchQuery, limit).toMutableList()
-            
-            // If we have an alternate variant and didn't find enough results, try it too
-            if (alternateVariant != null && alternateVariant != searchQuery && fts5Results.size < limit) {
-                val remainingLimit = limit - fts5Results.size
-                Log.d(TAG, "🔍 Trying alternate kana variant '$alternateVariant' (remaining limit: $remainingLimit)")
-                val alternateResults = database.searchJapaneseFTS(alternateVariant, remainingLimit)
-                // Add unique results from alternate search
-                for (altResult in alternateResults) {
-                    if (!fts5Results.any { it.kanji == altResult.kanji && it.reading == altResult.reading }) {
-                        fts5Results.add(altResult)
-                    }
-                }
-            }
-            
-            val directSearchTime = System.currentTimeMillis() - startTime
-            Log.d(TAG, "⏱️ Direct search took ${directSearchTime}ms, found ${fts5Results.size} results")
-            
-            // Always attempt deinflection for Japanese queries to find base forms
-            val deinflectedResults = mutableListOf<SearchResult>()
-            
-            // Check for particle suffixes before attempting deinflection
-            val particles = setOf("を", "は", "が", "の", "に", "で", "と", "から", "まで", "より", "へ", "や", "も", "か", "ね", "よ", "ぞ", "ぜ")
-            val endsWithParticle = particles.any { searchQuery.endsWith(it) }
-            
-            // Clear any incorrect cache entries for words ending with particles
-            if (endsWithParticle && deinflectionCache.containsKey(searchQuery)) {
-                Log.d(TAG, "🔧 Clearing incorrect cache entry for particle word: '$searchQuery'")
-                deinflectionCache.remove(searchQuery)
-            }
-            
-            // Use Kuromoji for accurate deinflection, but skip if ends with particle
-            if (!endsWithParticle) {
-                Log.d(TAG, "🔧 Attempting deinflection for '$searchQuery' using Kuromoji")
-                
-                // First, check for irregular verb patterns
-                val irregularDeinflection = checkIrregularVerbs(searchQuery)
-                if (irregularDeinflection != null) {
-                    Log.d(TAG, "🔧 Irregular verb deinflection: '$searchQuery' -> '${irregularDeinflection.baseForm}'")
-                    
-                    val irregularResults = database.searchJapaneseFTS(
-                        irregularDeinflection.baseForm,
-                        30,
-                        exactMatch = false,
-                        isDeinflectedQuery = true,
-                        baseForm = irregularDeinflection.baseForm
-                    )
-                    
-                    if (irregularResults.isNotEmpty()) {
-                        Log.d(TAG, "✅ Found ${irregularResults.size} results for irregular verb '${irregularDeinflection.baseForm}'")
-                        deinflectedResults.addAll(irregularResults)
-                        
-                        // Store the irregular deinflection result
-                        storeDeinflectionInfo(query, irregularDeinflection)
-                    }
-                }
-                
-                // If no irregular match found, try Kuromoji
-                if (deinflectedResults.isEmpty()) {
-                    val kuromojiDeinflection = getDeinflectionInfo(searchQuery)
-                    if (kuromojiDeinflection != null && kuromojiDeinflection.baseForm != searchQuery) {
-                        Log.d(TAG, "🔧 Kuromoji deinflection: '$searchQuery' -> '${kuromojiDeinflection.baseForm}'")
-                        
-                        // Try searching for the base form
-                        val kuromojiResults = database.searchJapaneseFTS(
-                            kuromojiDeinflection.baseForm,
-                            30,
-                            exactMatch = false,
-                            isDeinflectedQuery = true,
-                            baseForm = kuromojiDeinflection.baseForm
-                        )
-                        
-                        if (kuromojiResults.isNotEmpty()) {
-                            Log.d(TAG, "✅ Found ${kuromojiResults.size} results for Kuromoji base form '${kuromojiDeinflection.baseForm}'")
-                            deinflectedResults.addAll(kuromojiResults)
-                        } else {
-                            Log.d(TAG, "❌ No results found for base form '${kuromojiDeinflection.baseForm}'")
-                            
-                            // If hiragana base form failed, try to find entries that have this reading
-                            // This handles the case where database has "見る" but not "みる" as separate entries
-                            Log.d(TAG, "🔧 Trying alternative search: looking for entries with reading '${kuromojiDeinflection.baseForm}'")
-                            try {
-                                val alternativeResults = database.searchJapaneseFTS("${kuromojiDeinflection.baseForm}*", 30)
-                                    .filter { result -> result.reading == kuromojiDeinflection.baseForm }
-                                
-                                if (alternativeResults.isNotEmpty()) {
-                                    Log.d(TAG, "✅ Found ${alternativeResults.size} alternative results with reading '${kuromojiDeinflection.baseForm}'")
-                                    deinflectedResults.addAll(alternativeResults)
-                                } else {
-                                    Log.d(TAG, "❌ No alternative results found either")
-                                    // DEBUGGING: Let's try a broader search to see what exists
-                                    Log.d(TAG, "🔧 DEBUG: Attempting broader search for '${kuromojiDeinflection.baseForm}*'")
-                                    val debugResults = database.searchJapaneseFTS("${kuromojiDeinflection.baseForm}*", 5)
-                                    Log.d(TAG, "🔧 DEBUG: Broader search found ${debugResults.size} results")
-                                    debugResults.take(3).forEach { result ->
-                                        Log.d(TAG, "🔧 DEBUG: Result: kanji='${result.kanji}', reading='${result.reading}'")
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                Log.e(TAG, "🔧 Alternative search failed", e)
-                            }
-                        }
-                    } else {
-                        Log.d(TAG, "🔧 No deinflection found for '$query'")
-                    }
-                }
-            } else {
-                Log.d(TAG, "🔧 Skipping deinflection for '$query' - ends with particle")
-            }
-            
-            // If no results found, try progressive shortening to find the longest valid conjugation
-            if (fts5Results.isEmpty() && deinflectedResults.isEmpty() && query.length > 3) {
-                Log.d(TAG, "🔧 No results found, trying progressive shortening for '$query'")
-                var shortenedQuery = query
-                
-                // Try removing characters from the end until we find a valid conjugation
-                for (length in query.length - 1 downTo 3) {
-                    shortenedQuery = query.substring(0, length)
-                    Log.d(TAG, "🔧 Trying shortened query: '$shortenedQuery'")
-                    
-                    val shortenedDeinflection = getDeinflectionInfo(shortenedQuery)
-                    if (shortenedDeinflection != null && shortenedDeinflection.baseForm != shortenedQuery) {
-                        // Additional validation: check if this is actually a valid conjugation
-                        // by analyzing with Kuromoji and ensuring it's not just a cached bad result
-                        val morphologyResult = MorphologyResult(
-                            originalForm = shortenedQuery,
-                            baseForm = shortenedDeinflection.baseForm,
-                            conjugationType = "POLITE_NEGATIVE_PAST", // Generic conjugation type
-                            partOfSpeech = "動詞", // Assume verb for deinflected forms
-                            verbType = shortenedDeinflection.verbType
-                        )
-                        val isActuallyValid = isValidConjugationByKuromoji(shortenedQuery, shortenedDeinflection.baseForm)
-                        
-                        if (isActuallyValid) {
-                            Log.d(TAG, "🔧 Found valid conjugation: '$shortenedQuery' -> '${shortenedDeinflection.baseForm}'")
-                            
-                            val shortenedResults = database.searchJapaneseFTS(
-                                shortenedDeinflection.baseForm,
-                                30,
-                                exactMatch = false,
-                                isDeinflectedQuery = true,
-                                baseForm = shortenedDeinflection.baseForm
-                            )
-                            
-                            if (shortenedResults.isNotEmpty()) {
-                                Log.d(TAG, "✅ Found ${shortenedResults.size} results for shortened conjugation")
-                                deinflectedResults.addAll(shortenedResults)
-                                break // Stop at first valid conjugation found
-                            }
-                        } else {
-                            Log.d(TAG, "🔧 Rejected '$shortenedQuery' - cached result but failed Kuromoji validation")
-                            // Clear the bad cache entry
-                            deinflectionCache.remove(shortenedQuery)
-                        }
-                    }
-                }
-            }
-            
-            // Combine direct and deinflected results
-            if (deinflectedResults.isNotEmpty()) {
-                fts5Results.addAll(deinflectedResults)
-                Log.d(TAG, "✅ Added ${deinflectedResults.size} deinflected results")
-            }
-            
-            // Get deinflection info to mark valid conjugations
-            val deinflectionResult = getDeinflectionInfo(query)
-            val deinflectedBaseForm = deinflectionResult?.baseForm
-            
-            // Convert results and mark valid deinflections
-            val convertedResults = fts5Results.map { searchResult ->
-                val wordResult = convertFTS5ToWordResult(searchResult)
-                
-                // Check if this result is a valid deinflected form
-                val isDeinflectedValid = if (deinflectedBaseForm != null && deinflectedBaseForm != query) {
-                    // This result is a valid deinflection if:
-                    // 1. It exactly matches the base form (reading or kanji)
-                    // 2. AND it's actually conjugatable (verb/adjective)
-                    val matchesBaseForm = searchResult.kanji == deinflectedBaseForm || searchResult.reading == deinflectedBaseForm
-                    
-                    if (matchesBaseForm) {
-                        // Check if it's actually conjugatable by examining parts of speech
-                        val partsOfSpeech = try {
-                            searchResult.partsOfSpeech?.let {
-                                gson.fromJson(it, typeToken.type) as? List<String>
-                            } ?: emptyList()
-                        } catch (e: Exception) {
-                            emptyList<String>()
-                        }
-                        
-                        val isConjugatable = partsOfSpeech.any { pos ->
-                            pos.contains("verb", ignoreCase = true) ||
-                            pos.contains("adjective", ignoreCase = true) ||
-                            pos.startsWith("v", ignoreCase = true) ||      // v1, v5k, vs, etc.
-                            pos.startsWith("adj-", ignoreCase = true) ||   // adj-i, adj-na, etc.
-                            pos == "aux-v"                                 // auxiliary verbs
-                        }
-                        
-                        isConjugatable
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-                
-                // Return updated WordResult with correct deinflection flag
-                wordResult.copy(isDeinflectedValidConjugation = isDeinflectedValid)
-            }
-            
-            // Apply improved sorting with special priority for deinflected results
-            
-            // Separate results by type for better control
-            val validDeinflectedResults = convertedResults.filter { it.isDeinflectedValidConjugation }
-            val exactMatches = convertedResults.filter { (it.kanji == query || it.reading == query) && !it.isDeinflectedValidConjugation }
-            val otherMatches = convertedResults.filter { 
-                !(it.kanji == query || it.reading == query) && !it.isDeinflectedValidConjugation 
-            }
-            
-            // Sort deinflected results: highest frequency and common words first (these should be #1 priority)
-            val sortedDeinflectedResults = validDeinflectedResults.sortedWith(
-                compareByDescending<WordResult> { it.isCommon }     // Common words first
-                    .thenByDescending { it.frequency ?: 0 }         // High frequency first
-                    .thenBy { it.reading.length }                   // Shorter readings for tie-breaking
-            )
-            
-            // Sort exact and other matches by common status and frequency
-            val sortedExactResults = exactMatches.sortedWith(
-                compareByDescending<WordResult> { it.isCommon }     // Common words first
-                    .thenByDescending { it.frequency ?: 0 }         // High frequency first
-                    .thenBy { it.reading.length }                   // Shorter readings for tie-breaking
-            )
-            
-            val sortedOtherResults = otherMatches.sortedWith(
-                compareByDescending<WordResult> { it.isCommon }     // Common words first
-                    .thenByDescending { it.frequency ?: 0 }         // High frequency first
-                    .thenBy { it.reading.length }                   // Shorter readings for tie-breaking
-            )
-            
-            // Combine all matches and sort by relevance
-            // Priority: common + high frequency words should come before low-frequency exact matches
-            val allResults = (sortedExactResults + sortedOtherResults).sortedWith(
-                // Remove exact match priority - let frequency and common status decide
-                compareByDescending<WordResult> { if (it.isCommon) 1000000 + (it.frequency ?: 0) else (it.frequency ?: 0) }  // Boost common words significantly
-                    .thenBy { !(it.kanji == query || it.reading == query) }  // Exact matches as tie-breaker only
-                    .thenBy { it.reading.length }  // Shorter readings for final tie-breaking
-            )
-            
-            // Final priority order:
-            // 1. Deinflected results (like みる from みた) - HIGHEST PRIORITY  
-            // 2. All other results (exact matches + others, but common high-frequency prioritized)
-            val finalResults = sortedDeinflectedResults + allResults
-            
-            // Debug: Let's see what the sorting is actually doing for first few results
-            if (query == "みた") {
-                Log.d(TAG, "🔍 NEW DEBUG: Advanced sorting results")
-                Log.d(TAG, "🔍 NEW DEBUG: Total results: ${convertedResults.size}")
-                Log.d(TAG, "🔍 NEW DEBUG: Deinflected: ${validDeinflectedResults.size}")
-                Log.d(TAG, "🔍 NEW DEBUG: Exact matches: ${exactMatches.size}")
-                Log.d(TAG, "🔍 NEW DEBUG: Other matches: ${otherMatches.size}")
-                Log.d(TAG, "🔍 NEW DEBUG: Exact matches: ${exactMatches.size}")
-                Log.d(TAG, "🔍 NEW DEBUG: Other matches: ${otherMatches.size}")
-                
-                Log.d(TAG, "🔍 NEW DEBUG: Top 3 deinflected results (PRIORITY #1):")
-                sortedDeinflectedResults.take(3).forEachIndexed { i, result ->
-                    Log.d(TAG, "🔍 NEW DEBUG: #${i+1}: ${result.kanji ?: result.reading} (common=${result.isCommon}, freq=${result.frequency})")
-                }
-            }
-            
-            val totalTime = System.currentTimeMillis() - startTime
-            Log.d(TAG, "🏁 searchFTS5Japanese completed in ${totalTime}ms with ${finalResults.size} total results")
-            Log.d(TAG, "🔍 Sorting: Exact matches: ${finalResults.count { it.kanji == query || it.reading == query }}")
-            Log.d(TAG, "🔍 Sorting: Valid deinflections: ${finalResults.count { it.isDeinflectedValidConjugation }}")
-            
-            // Log first 10 results for debugging
-            if (query == "みた") {
-                finalResults.take(10).forEachIndexed { index, result ->
-                    val displayForm = result.kanji ?: result.reading
-                    val kanjiInfo = result.kanji?.let { "kanji='$it'" } ?: "no kanji"
-                    Log.d(TAG, "🔍 Result #${index + 1}: $displayForm ($kanjiInfo, reading='${result.reading}', " +
-                        "exact=${result.reading == query || result.kanji == query}, " +
-                        "deinflected=${result.isDeinflectedValidConjugation}, " +
-                        "common=${result.isCommon}, freq=${result.frequency}, " +
-                        "meanings=${result.meanings.take(2)})")
-                }
-            }
-            
-            // Add individual kanji character search for single character queries
-            // This handles cases like 瓴 that exist in Kanjidic but not in word entries
-            val finalResultsWithKanji = if (query.length == 1 && isKanji(query)) {
-                Log.d(TAG, "🔍 Single kanji character detected: '$query' - adding kanji character search")
-                
-                try {
-                    // Check if we already have dictionary entries for this kanji
-                    val hasDictionaryEntries = finalResults.any { result ->
-                        result.kanji == query || result.reading == query
-                    }
-                    
-                    if (hasDictionaryEntries) {
-                        Log.d(TAG, "🔍 Dictionary entries found for '$query' - skipping kanji character search")
-                        finalResults
-                    } else {
-                        // Only add kanji character results if no dictionary entries exist
-                        val kanjiResults = database.searchKanjiCharacters(query, 5)
-                        val convertedKanjiResults = kanjiResults.map { kanjiEntry ->
-                            convertKanjiEntryToWordResult(kanjiEntry, query)
-                        }
-                        
-                        Log.d(TAG, "🔍 No dictionary entries found - using ${convertedKanjiResults.size} kanji character results for '$query'")
-                        convertedKanjiResults + finalResults
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to search kanji characters for '$query'", e)
-                    finalResults
-                }
-            } else {
-                finalResults
+
+            // Fetch all potential results from the database
+            val allSearchResults = mutableSetOf<SearchResult>()
+
+            // 1. Direct search on the query itself (and its kana variant)
+            allSearchResults.addAll(database.searchJapaneseFTS(searchQuery, limit))
+            if (alternateVariant != null && alternateVariant != searchQuery) {
+                allSearchResults.addAll(database.searchJapaneseFTS(alternateVariant, limit))
             }
 
-            // Filter out katakana duplicates BEFORE returning results
-            // This ensures duplicates are removed before any grouping happens
-            val filteredResults = filterKatakanaDuplicatesSimple(finalResultsWithKanji)
-            
+            // 2. Deinflection search for base forms
+            val particles = setOf("を", "は", "が", "の", "に", "で", "と", "から", "まで", "より", "へ", "や", "も", "か", "ね", "よ", "ぞ", "ぜ")
+            val endsWithParticle = particles.any { searchQuery.endsWith(it) }
+
+            if (!endsWithParticle) {
+                val deinflection = getDeinflectionInfo(searchQuery)
+                if (deinflection != null && deinflection.baseForm != searchQuery) {
+                    allSearchResults.addAll(database.searchJapaneseFTS(deinflection.baseForm, limit))
+                }
+            }
+
+            val directSearchTime = System.currentTimeMillis() - startTime
+            Log.d(TAG, "⏱️ Combined search took ${directSearchTime}ms, found ${allSearchResults.size} unique results")
+
+            // Convert all unique SearchResults to WordResult objects
+            val convertedResults = allSearchResults.map { searchResult ->
+                val wordResult = convertFTS5ToWordResult(searchResult)
+
+                // Mark the result if it's a valid deinflected conjugation
+                val deinflectionResult = getDeinflectionInfo(query)
+                val isDeinflected = deinflectionResult != null &&
+                        (wordResult.kanji == deinflectionResult.baseForm || wordResult.reading == deinflectionResult.baseForm) &&
+                        !isProperNoun(wordResult)
+
+                wordResult.copy(isDeinflectedValidConjugation = isDeinflected)
+            }
+
+            // Apply a single, clear sort order
+            val finalSortedResults = convertedResults.sortedWith(
+                compareBy<WordResult> { !it.isDeinflectedValidConjugation }  // Priority 1: Deinflected forms first
+                    .thenBy { !(it.kanji == query || it.reading == query) }   // Priority 2: Exact matches next
+                    .thenByDescending { it.isCommon }                     // Priority 3: Common words next
+                    .thenByDescending { it.frequency ?: 0 }               // Priority 4: Higher frequency
+                    .thenBy { it.reading.length }                         // Priority 5: Shorter readings
+            )
+
+            // Add single kanji character search for single kanji queries
+            val finalResultsWithKanji = if (query.length == 1 && isKanji(query)) {
+                if (finalSortedResults.none { it.kanji == query }) {
+                    val kanjiResults = database.searchKanjiCharacters(query, 5).map { convertKanjiEntryToWordResult(it, query) }
+                    kanjiResults + finalSortedResults
+                } else {
+                    finalSortedResults
+                }
+            } else {
+                finalSortedResults
+            }
+
+            val filteredResults = filterKatakanaDuplicatesSimple(finalResultsWithKanji).distinctBy { "${it.kanji}|${it.reading}" }.take(limit)
+
+            val totalTime = System.currentTimeMillis() - startTime
+            Log.d(TAG, "🏁 Search completed in ${totalTime}ms with ${filteredResults.size} total results")
+
             return@withContext filteredResults
         } catch (e: Exception) {
             Log.e(TAG, "❌ REPOSITORY ERROR: searchFTS5Japanese failed", e)
-            Log.e(TAG, "❌ REPOSITORY: Error message: ${e.message}")
-            throw e
+            return@withContext emptyList()
         }
     }
-    
     /**
      * Result of progressive matching
      */
@@ -1064,7 +456,7 @@ class DictionaryRepository(private val context: Context) {
         for (length in query.length - 1 downTo 2) {
             val substring = query.substring(0, length)
             Log.d(TAG, "Trying progressive match: '$substring' (from '$query')")
-            
+
             // Try direct search first, but only if the substring looks like a valid conjugation
             if (looksLikeValidConjugation(substring)) {
                 val directResults = database.searchJapaneseFTS(substring, 50)
@@ -1076,7 +468,7 @@ class DictionaryRepository(private val context: Context) {
                     return ProgressiveMatchResult(substring, null)
                 }
             }
-            
+
             // Try deinflection on the substring
             deinflectionEngine?.let { engine ->
                 val tenTenResults = engine.deinflect(substring, tagDictLoader)
@@ -1084,8 +476,8 @@ class DictionaryRepository(private val context: Context) {
                     if (deinflection.baseForm != substring) {
                         // Validate with Kuromoji first to get the correct base form
                         val kuromojiResult = kuromojiAnalyzer.analyzeWord(substring)
-                        val actualBaseForm = if (kuromojiResult != null && 
-                                               kuromojiResult.baseForm != substring && 
+                        val actualBaseForm = if (kuromojiResult != null &&
+                                               kuromojiResult.baseForm != substring &&
                                                isValidConjugationByKuromoji(substring, kuromojiResult.baseForm)) {
                             // Use Kuromoji's base form for search
                             Log.d(TAG, "Progressive: Using Kuromoji correction: '${deinflection.baseForm}' -> '${kuromojiResult.baseForm}'")
@@ -1095,7 +487,7 @@ class DictionaryRepository(private val context: Context) {
                             Log.d(TAG, "Progressive: Using TenTen result: '${deinflection.baseForm}'")
                             deinflection.baseForm
                         }
-                        
+
                         val baseResults = database.searchJapaneseFTS(actualBaseForm, 50, exactMatch = false, isDeinflectedQuery = true, baseForm = actualBaseForm)
                         if (baseResults.isNotEmpty()) {
                             Log.d(TAG, "Found progressive match (deinflection): '$substring' -> '$actualBaseForm'")
@@ -1121,11 +513,11 @@ class DictionaryRepository(private val context: Context) {
                 }
             }
         }
-        
+
         // No progressive match found
         return null
     }
-    
+
     /**
      * FTS5 English search - Updated to use integrated DictionaryDatabase with meaning prioritization
      */
@@ -1136,86 +528,160 @@ class DictionaryRepository(private val context: Context) {
                 Log.d(TAG, "FTS5 English: Wildcard detected in '$query' - wildcards not supported for English search")
                 return@withContext emptyList()
             }
-            
+
             val fts5Results = database.searchEnglishFTS(query, limit)
             val wordResults = fts5Results.map { convertFTS5ToWordResult(it) }
-            
+
             // Apply meaning-based prioritization
             val prioritizedResults = prioritizeByMeaningPosition(wordResults, query)
-            
+
             Log.d(TAG, "FTS5 English: Applied meaning prioritization for '$query' - ${prioritizedResults.size} results")
-            
+
             return@withContext prioritizedResults
         } catch (e: Exception) {
             Log.e(TAG, "FTS5 English search failed for '$query': ${e.message}")
             return@withContext emptyList()
         }
     }
-    
+
     /**
      * Prioritize search results based on meaning position and match quality
-     * Results with exact matches or starts-with matches get highest priority
-     * Also deprioritizes proper nouns
+     * Enhanced with phrase-aware scoring and stop words filtering
      */
     private fun prioritizeByMeaningPosition(results: List<WordResult>, query: String): List<WordResult> {
         val queryLower = query.lowercase().trim()
-        
-        return results.sortedWith(
-            compareBy<WordResult> { isProperNoun(it) }  // Proper nouns go to bottom first
+        val isPhrase = queryLower.contains(" ")
+
+        val sorted = results.sortedWith(
+            compareBy<WordResult> { isProperNoun(it) }
                 .thenBy { result ->
-                    // Enhanced scoring for meaning matches
-                    val meaningScores = result.meanings.map { meaning ->
-                        val meaningLower = meaning.lowercase()
-                        when {
-                            // Exact match in meaning = highest priority (score 0)
-                            meaningLower == queryLower -> 0
-                            // Meaning starts with query = high priority (score 1)
-                            meaningLower.startsWith(queryLower) -> 1
-                            // Meaning starts with "query " (word boundary) = high priority (score 1)
-                            meaningLower.startsWith("$queryLower ") -> 1
-                            // Query appears at word boundary = medium priority (score 2)
-                            meaningLower.contains(" $queryLower ") || 
-                            meaningLower.contains(" $queryLower,") ||
-                            meaningLower.contains(" $queryLower;") ||
-                            meaningLower.contains(" $queryLower.") ||
-                            meaningLower.contains("($queryLower)") ||
-                            meaningLower.endsWith(" $queryLower") -> 2
-                            // Query appears anywhere in meaning = lower priority (score 3)
-                            meaningLower.contains(queryLower) -> 3
-                            // No match = lowest priority (score 4)
-                            else -> 4
-                        }
-                    }
-                    // Return the best (lowest) score from all meanings
-                    meaningScores.minOrNull() ?: 4
+                    calculateMeaningScore(result, queryLower, isPhrase)
                 }
-                .thenBy { result ->
-                    // Secondary: position of best matching meaning (1st, 2nd, etc.)
-                    result.meanings.indexOfFirst { meaning ->
-                        meaning.lowercase().contains(queryLower)
-                    }.takeIf { it >= 0 } ?: 999
-                }
-                .thenByDescending { it.isCommon }  // Common words first
-                .thenByDescending { it.frequency }  // Higher frequency first
-                .thenBy { it.meanings.size }  // Fewer meanings first (more specific)
+                .thenByDescending { it.isCommon }
+                .thenByDescending { it.frequency ?: 0 }
+                .thenBy { it.reading.length }
+                .thenBy { it.meanings.size }
         )
+
+        //logPrioritizationDebug(sorted, query, limit = 10)
+
+        return sorted
     }
-    
+
+    /**
+     * Check if a result is primarily just a stop word
+     */
+    private fun isStopWordResult(result: WordResult, query: String): Boolean {
+        // Remove stop word logic entirely - it wasn't in the original working code
+        return false
+    }
+
+    /**
+     * Calculate meaning score with phrase-aware logic and meaning position penalty
+     */
+    private fun calculateMeaningScore(result: WordResult, queryLower: String, isPhrase: Boolean): Int {
+        var minScore = 500 // Start with a very high score
+
+        if (result.reading.lowercase().startsWith(queryLower) || (result.kanji?.lowercase()?.startsWith(queryLower) == true)) {
+            minScore = 0
+        }
+
+        result.meanings.forEachIndexed { index, meaning ->
+            val meaningLower = meaning.lowercase()
+            var currentBaseScore = 5
+
+            if (isPhrase) {
+                when {
+                    meaningLower.contains(queryLower) -> currentBaseScore = 1
+                    isCompoundWordMatch(meaningLower, queryLower) -> currentBaseScore = 2
+                    containsMostPhraseWords(meaningLower, queryLower) -> currentBaseScore = 3
+                    containsSomePhraseWords(meaningLower, queryLower) -> currentBaseScore = 4
+                }
+            } else {
+                when {
+                    meaningLower == queryLower -> currentBaseScore = 1
+                    meaningLower.startsWith("$queryLower ") -> currentBaseScore = 2
+                    meaningLower.contains(" $queryLower") ||
+                            meaningLower.contains("($queryLower)") -> currentBaseScore = 2
+                    meaningLower.contains(queryLower) -> currentBaseScore = 3
+                }
+            }
+
+            val meaningPositionPenalty = index * 5
+            val finalScore = currentBaseScore + meaningPositionPenalty
+
+            if (finalScore < minScore) {
+                minScore = finalScore
+            }
+        }
+
+        return minScore
+    }
+
+    /**
+     * Helper function to log the top N results after prioritization.
+     */
+    private fun logPrioritizationDebug(sortedResults: List<WordResult>, query: String, limit: Int = 50) {
+        Log.d(TAG, "=== PRIORITIZATION DEBUG for '$query' ===")
+        Log.d(TAG, "Total results: ${sortedResults.size}")
+        Log.d(TAG, "First ${limit} results after prioritization:")
+
+        sortedResults.take(limit).forEachIndexed { index, result ->
+            val displayName = result.kanji ?: result.reading
+            val meaningScore = calculateMeaningScore(result, query.lowercase().trim(), query.contains(" "))
+            val primaryMeaning = result.meanings.firstOrNull()?.lowercase()?.trim() ?: ""
+
+            Log.d(TAG, "  #${index + 1}: '$displayName' (score=$meaningScore, common=${result.isCommon}, freq=${result.frequency})")
+            Log.d(TAG, "      Primary meaning: '$primaryMeaning'")
+        }
+    }
+
+    /**
+     * Check if meaning represents a compound word that matches the phrase concept
+     */
+    private fun isCompoundWordMatch(meaning: String, phrase: String): Boolean {
+        // Examples: "mother and child" should match "parent and child", "family", etc.
+        val meaningWords = meaning.split(" ", ",", ";").map { it.trim() }
+        val phraseWords = phrase.split(" ")
+
+        // If meaning is a single compound concept that relates to multiple phrase words
+        return meaningWords.size <= 2 && phraseWords.size >= 2 &&
+               phraseWords.any { word -> meaningWords.any { it.contains(word) || word.contains(it) } }
+    }
+
+    /**
+     * Check if meaning contains most words from the phrase
+     */
+    private fun containsMostPhraseWords(meaning: String, phrase: String): Boolean {
+        val phraseWords = phrase.split(" ")
+        val matchedWords = phraseWords.count { meaning.contains(it) }
+        return matchedWords >= (phraseWords.size * 0.7).toInt() // At least 70% of phrase words
+    }
+
+    /**
+     * Check if meaning contains some words from the phrase
+     */
+    private fun containsSomePhraseWords(meaning: String, phrase: String): Boolean {
+        val phraseWords = phrase.split(" ")
+        val matchedWords = phraseWords.count { meaning.contains(it) }
+        return matchedWords >= 1 && matchedWords < (phraseWords.size * 0.7).toInt()
+    }
+
     /**
      * FTS5 Unified search (searches both Japanese and English)
      */
     private suspend fun searchFTS5Unified(query: String, limit: Int, offset: Int = 0): List<WordResult> = withContext(Dispatchers.IO) {
         val japaneseResults = database.searchJapaneseFTS(query, limit / 2)
         val englishResults = database.searchEnglishFTS(query, limit / 2)
-        
+
         val allResults = (japaneseResults + englishResults).map { convertFTS5ToWordResult(it) }
-        
+
         // Apply meaning-based prioritization for better English match ranking
         val prioritizedResults = prioritizeByMeaningPosition(allResults, query)
-        
+
         return@withContext prioritizedResults.take(limit)
     }
-    
+
     /**
      * FTS5 Romaji search
      */
@@ -1225,12 +691,12 @@ class DictionaryRepository(private val context: Context) {
         val hiraganaQuery = kanaVariants[0]
         val katakanaQuery = kanaVariants[1]
         Log.d(TAG, "FTS5 Romaji converted: '$query' -> hiragana: '$hiraganaQuery', katakana: '$katakanaQuery'")
-        
+
         val results = mutableListOf<WordResult>()
-        
+
         // Search hiragana first (for native Japanese words)
         results.addAll(searchFTS5Japanese(hiraganaQuery, limit, offset))
-        
+
         // Search katakana if different from hiragana (for foreign loanwords)
         if (katakanaQuery != hiraganaQuery && results.size < limit) {
             val remainingLimit = limit - results.size
@@ -1242,45 +708,45 @@ class DictionaryRepository(private val context: Context) {
                 }
             }
         }
-        
+
         return@withContext results
     }
-    
+
     /**
      * FTS5 Wildcard search
      */
     private suspend fun searchFTS5Wildcard(query: String, limit: Int, offset: Int = 0): List<WordResult> = withContext(Dispatchers.IO) {
         Log.d(TAG, "FTS5 Wildcard search for pattern: '$query'")
-        
+
         // Convert wildcard pattern to SQL LIKE pattern
         val likePattern = query.replace("?", "_")
         Log.d(TAG, "Converted wildcard pattern: '$query' -> '$likePattern'")
-        
+
         // Search using LIKE pattern in the database
         val fts5Results = database.searchWildcard(likePattern, limit)
         Log.d(TAG, "Wildcard search returned ${fts5Results.size} results")
-        
+
         return@withContext fts5Results.map { convertFTS5ToWordResult(it) }
     }
-    
+
     /**
      * FTS5 Parallel search (both romaji->Japanese and English)
      */
     private suspend fun searchFTS5Parallel(query: String, limit: Int, offset: Int = 0): List<WordResult> = withContext(Dispatchers.IO) {
         Log.d(TAG, "FTS5 Parallel search for: '$query'")
-        
+
         val results = mutableListOf<WordResult>()
-        
+
         // Search 1: Romaji to Japanese conversion WITH deinflection (both hiragana and katakana)
         val kanaVariants = romajiConverter.toBothKanaVariants(query)
         val hiraganaQuery = kanaVariants[0]
         val katakanaQuery = kanaVariants[1]
         Log.d(TAG, "FTS5 Parallel: Romaji '$query' -> Hiragana '$hiraganaQuery', Katakana '$katakanaQuery'")
-        
+
         // Use the full Japanese search which includes deinflection for both variants
         val japaneseResults = mutableListOf<WordResult>()
         japaneseResults.addAll(searchFTS5Japanese(hiraganaQuery, limit / 4, offset))
-        
+
         // Search katakana if different and we have room for more results
         if (katakanaQuery != hiraganaQuery && japaneseResults.size < limit / 2) {
             val remainingLimit = (limit / 2) - japaneseResults.size
@@ -1292,130 +758,139 @@ class DictionaryRepository(private val context: Context) {
                 }
             }
         }
-        
+
         Log.d(TAG, "FTS5 Parallel: Japanese search (with deinflection) returned ${japaneseResults.size} results")
-        
+
         // Add Japanese results
         results.addAll(japaneseResults)
-        
+
         // Search 2: English dictionary search
         val englishResults = searchFTS5English(query, limit / 2, offset)
         Log.d(TAG, "FTS5 Parallel: English search returned ${englishResults.size} results")
-        
+
         // Add English results
         results.addAll(englishResults)
-        
+
         Log.d(TAG, "FTS5 Parallel: Total results ${results.size} (Japanese: ${japaneseResults.size}, English: ${englishResults.size})")
-        
+
         return@withContext results
     }
-    
+
     /**
      * FTS5 Space-separated search - First try as complete phrase, then individual words
      */
     private suspend fun searchFTS5SpaceSeparated(query: String, limit: Int, offset: Int = 0): List<WordResult> = withContext(Dispatchers.IO) {
         Log.d(TAG, "FTS5 Space-separated search for: '$query'")
-        
+
         val results = mutableListOf<WordResult>()
-        
+
         // FIRST: Try searching for the complete phrase in English meanings
         if (isEnglishText(query)) {
             Log.d(TAG, "FTS5 Space-separated: First trying complete phrase search for: '$query'")
-            val phraseResults = searchFTS5English(query, limit / 4, offset)
+            val phraseResults = searchFTS5English(query, limit, offset)
+
             if (phraseResults.isNotEmpty()) {
-                Log.d(TAG, "FTS5 Space-separated: Complete phrase search returned ${phraseResults.size} results")
+                Log.d(TAG, "FTS5 Space-separated: Complete phrase search returned ${phraseResults.size} results. Prioritizing these.")
+                // Add phrase results directly - no wordOrder modification needed
                 results.addAll(phraseResults)
+            } else {
+                Log.d(TAG, "FTS5 Space-separated: Phrase search returned no results, falling back to individual words.")
             }
-        }
-        
-        // THEN: Split query by spaces and search each word individually
-        val words = query.split(Regex("\\s+")).filter { it.isNotBlank() }
-        Log.d(TAG, "FTS5 Space-separated: Also searching ${words.size} individual words: ${words.joinToString(", ")}")
-        
-        // Calculate remaining limit after phrase results
-        val remainingLimit = limit - results.size
-        if (remainingLimit > 0) {
+
+            // ONLY search for individual words if the phrase search found nothing
+            if (results.isEmpty()) {
+                // Split query by spaces and search each word individually
+                val words = query.split(Regex("\\s+")).filter { it.isNotBlank() }
+                Log.d(TAG, "FTS5 Space-separated: Searching ${words.size} individual words: ${words.joinToString(", ")}")
+
+                // Calculate remaining limit
+                val remainingLimit = limit - results.size
+                if (remainingLimit > 0) {
+                    for ((index, word) in words.withIndex()) {
+                        // Skip if we already have enough results
+                        if (results.size >= limit) break
+
+                        Log.d(TAG, "FTS5 Space-separated: Searching word ${index + 1}/${words.size}: '$word'")
+
+                        val wordLimit = remainingLimit / words.size.coerceAtLeast(1)
+                        val wordResults = when {
+                            // The rest of your existing logic for searching individual words...
+                            // (no changes needed here)
+                            word.contains("?") && isWildcardPattern(word) && isJapaneseText(word) -> {
+                                searchFTS5Wildcard(word, wordLimit)
+                            }
+                            word.contains("?") && !isJapaneseText(word) -> {
+                                emptyList()
+                            }
+                            isMixedScript(word) -> {
+                                searchFTS5MixedScript(word, wordLimit)
+                            }
+                            containsRomaji(word) && !isJapaneseText(word) && isLikelyJapaneseRomaji(word) -> {
+                                searchFTS5Parallel(word, wordLimit)
+                            }
+                            isJapaneseText(word) -> {
+                                searchFTS5Japanese(word, wordLimit)
+                            }
+                            isEnglishText(word) -> {
+                                searchFTS5English(word, wordLimit)
+                            }
+                            else -> {
+                                searchFTS5Unified(word, wordLimit)
+                            }
+                        }
+
+                        // Filter out duplicates before adding
+                        for (newResult in wordResults) {
+                            val isDuplicate = results.any { existing ->
+                                existing.kanji == newResult.kanji && existing.reading == newResult.reading
+                            }
+                            if (!isDuplicate && results.size < limit) {
+                                results.add(newResult)
+                            }
+                        }
+                        Log.d(TAG, "FTS5 Space-separated: Word '$word' returned ${wordResults.size} results")
+                    }
+                }
+            }
+        } else {
+            // Handle non-English space-separated queries (your existing logic)
+            // This part remains unchanged
+            val words = query.split(Regex("\\s+")).filter { it.isNotBlank() }
             for ((index, word) in words.withIndex()) {
-                // Skip if we already have enough results
                 if (results.size >= limit) break
-                
-                Log.d(TAG, "FTS5 Space-separated: Searching word ${index + 1}/${words.size}: '$word'")
-                
-                val wordLimit = remainingLimit / words.size.coerceAtLeast(1)
                 val wordResults = when {
-                // Check for wildcard pattern - only for Japanese text
-                word.contains("?") && isWildcardPattern(word) && isJapaneseText(word) -> {
-                    Log.d(TAG, "FTS5 Space-separated: Wildcard search for Japanese: '$word'")
-                    searchFTS5Wildcard(word, wordLimit)
+                    isJapaneseText(word) -> searchFTS5Japanese(word, limit)
+                    else -> searchFTS5Unified(word, limit)
                 }
-                // Handle wildcard on non-Japanese text gracefully
-                word.contains("?") && !isJapaneseText(word) -> {
-                    Log.d(TAG, "FTS5 Space-separated: Wildcard detected on non-Japanese word '$word' - skipping")
-                    emptyList()
-                }
-                // Mixed script (Japanese + romaji)
-                isMixedScript(word) -> {
-                    Log.d(TAG, "FTS5 Space-separated: Mixed script search for: '$word'")
-                    searchFTS5MixedScript(word, wordLimit)
-                }
-                // Pure romaji input
-                containsRomaji(word) && !isJapaneseText(word) && isLikelyJapaneseRomaji(word) -> {
-                    Log.d(TAG, "FTS5 Space-separated: Parallel romaji+English search for: '$word'")
-                    searchFTS5Parallel(word, wordLimit)
-                }
-                // Pure Japanese text
-                isJapaneseText(word) -> {
-                    Log.d(TAG, "FTS5 Space-separated: Japanese search for: '$word'")
-                    searchFTS5Japanese(word, wordLimit)
-                }
-                // English text
-                isEnglishText(word) -> {
-                    Log.d(TAG, "FTS5 Space-separated: English search for: '$word'")
-                    searchFTS5English(word, wordLimit)
-                }
-                else -> {
-                    Log.d(TAG, "FTS5 Space-separated: Unified search for: '$word'")
-                    searchFTS5Unified(word, wordLimit)
-                }
-            }
-            
-                // Filter out duplicates before adding
-                for (newResult in wordResults) {
-                    // Check if this result is already in our list
-                    val isDuplicate = results.any { existing ->
-                        existing.kanji == newResult.kanji && existing.reading == newResult.reading
-                    }
-                    if (!isDuplicate && results.size < limit) {
-                        results.add(newResult)
-                    }
-                }
-                Log.d(TAG, "FTS5 Space-separated: Word '$word' returned ${wordResults.size} results")
+                results.addAll(wordResults)
             }
         }
-        
+
         Log.d(TAG, "FTS5 Space-separated: Total results ${results.size}")
-        
-        return@withContext results
+
+        // Final prioritization happens here on the (now smaller) result set
+        val prioritizedResults = prioritizeByMeaningPosition(results, query)
+
+        return@withContext prioritizedResults
     }
-    
     /**
      * FTS5 Mixed script search
      */
     private suspend fun searchFTS5MixedScript(query: String, limit: Int, offset: Int = 0): List<WordResult> = withContext(Dispatchers.IO) {
         Log.d(TAG, "FTS5 Mixed script search for: '$query'")
-        
+
         // Check if this looks like a sentence and analyze it if so
         if (isSentenceInput(query)) {
             Log.d(TAG, "Detected sentence input, analyzing with Kuromoji")
             return@withContext searchWithSentenceAnalysis(query, limit, offset)
         }
-        
+
         // Fall back to token-based parsing for non-sentence inputs
         val parser = MixedScriptParser()
         val tokens = parser.parseSentence(query)
-        
+
         val results = mutableListOf<WordResult>()
-        
+
         for (token in tokens) {
             when (token.tokenType) {
                 TokenType.KANJI, TokenType.HIRAGANA, TokenType.KATAKANA, TokenType.MIXED -> {
@@ -1434,117 +909,117 @@ class DictionaryRepository(private val context: Context) {
                     // Skip unknown tokens
                 }
             }
-            
+
             if (results.size >= limit) break
         }
-        
+
         return@withContext results.take(limit)
     }
-    
+
     /**
      * Check if input looks like a sentence (has multiple meaningful words/particles)
      */
     private fun isSentenceInput(input: String): Boolean {
         // Convert to Japanese first to normalize the analysis
         val normalized = japaneseWordExtractor.convertMixedScriptToJapanese(input)
-        
+
         // Simple heuristics to detect sentences:
         // 1. Contains particles
         val commonParticles = listOf("は", "が", "を", "に", "で", "と", "の", "から", "まで", "より", "wo", "ga", "ni", "de", "to", "no", "kara", "made", "yori")
-        val hasParticles = commonParticles.any { particle -> 
+        val hasParticles = commonParticles.any { particle ->
             input.contains(particle, ignoreCase = true) || normalized.contains(particle)
         }
-        
+
         // 2. Has multiple words (length > 4 and contains multiple components)
         val hasMultipleWords = normalized.length > 4 && (
             normalized.contains(Regex("[\\u3040-\\u309F]+[\\u4E00-\\u9FAF]+")) || // hiragana + kanji
-            normalized.contains(Regex("[\\u4E00-\\u9FAF]+[\\u3040-\\u309F]+")) || // kanji + hiragana  
+            normalized.contains(Regex("[\\u4E00-\\u9FAF]+[\\u3040-\\u309F]+")) || // kanji + hiragana
             input.split(Regex("[a-zA-Z]+")).size > 2 // multiple romaji words
         )
-        
+
         // 3. Contains verb endings that suggest conjugation
         val verbEndings = listOf("ます", "した", "して", "ている", "shite", "teiru", "masu", "shita")
         val hasVerbEndings = verbEndings.any { ending ->
             input.contains(ending, ignoreCase = true) || normalized.contains(ending)
         }
-        
+
         val isSentence = hasParticles || (hasMultipleWords && hasVerbEndings)
         Log.d(TAG, "Sentence detection for '$input': particles=$hasParticles, multipleWords=$hasMultipleWords, verbEndings=$hasVerbEndings -> isSentence=$isSentence")
-        
+
         return isSentence
     }
-    
+
     /**
-     * Search using simplified sentence analysis - use Kuromoji directly for better tokenization  
+     * Search using simplified sentence analysis - use Kuromoji directly for better tokenization
      */
     private suspend fun searchWithSentenceAnalysis(query: String, limit: Int, offset: Int): List<WordResult> = withContext(Dispatchers.IO) {
         try {
             // Convert mixed script to Japanese first
             val japaneseQuery = japaneseWordExtractor.convertMixedScriptToJapanese(query)
             Log.d(TAG, "Converted mixed script: '$query' -> '$japaneseQuery'")
-            
+
             // Use Kuromoji to tokenize the full sentence properly
             val tokens = kuromojiAnalyzer.tokenize(japaneseQuery)
             Log.d(TAG, "Kuromoji tokenized sentence into ${tokens.size} tokens")
-            
+
             val results = mutableListOf<WordResult>()
             val sentenceTokens = mutableSetOf<String>() // Track tokens we found from the sentence
             var tokenOrder = 0 // Track the order of tokens in the sentence
-            
+
             // Process each meaningful token from the sentence
             for (token in tokens) {
                 val surface = token.surface
                 val baseForm = token.baseForm ?: surface
                 val pos = token.partOfSpeechLevel1 ?: ""
                 val reading = token.reading
-                
+
                 Log.d(TAG, "Processing token: surface='$surface', base='$baseForm', pos='$pos', reading='$reading'")
-                
+
                 // Only process meaningful words (nouns, verbs, adjectives)
                 if (pos in setOf("名詞", "動詞", "形容詞", "副詞", "連体詞")) {
                     // Try multiple search strategies for better matching
                     val searches = mutableListOf<String>()
-                    
+
                     // 1. Base form (dictionary form)
                     if (baseForm.isNotEmpty() && baseForm != "*") {
                         searches.add(baseForm)
                     }
-                    
+
                     // 2. Surface form (as it appears in text)
                     if (surface != baseForm && surface.isNotEmpty()) {
                         searches.add(surface)
                     }
-                    
+
                     // 3. Reading (if available and different from surface/base)
                     if (!reading.isNullOrEmpty() && reading != "*" && reading != surface && reading != baseForm) {
                         searches.add(reading)
                     }
-                    
+
                     // Search for each form and take the best results
                     var bestResults: List<WordResult>? = null
                     var bestSearchTerm = ""
-                    
+
                     for (searchTerm in searches) {
                         // For sentence analysis, search directly without deinflection
                         // Kuromoji already gave us the base form
                         // Use exactMatch=true to avoid wildcard matches like 国語*
                         val tokenResults = database.searchJapaneseFTS(searchTerm, 5, exactMatch = true)
                             .map { convertFTS5ToWordResult(it) }
-                        
+
                         if (tokenResults.isNotEmpty()) {
                             // Prefer results with higher frequency/common status
                             val sortedResults = tokenResults.sortedWith(
                                 compareByDescending<WordResult> { it.isCommon }
                                     .thenByDescending { it.frequency }
                             )
-                            
+
                             if (bestResults == null || sortedResults.first().frequency > (bestResults.firstOrNull()?.frequency ?: 0)) {
                                 bestResults = sortedResults
                                 bestSearchTerm = searchTerm
                             }
                         }
                     }
-                    
+
                     bestResults?.let { tokenResults ->
                         // Filter results to only include words that contain the search term
                         val filteredResults = tokenResults.filter { result ->
@@ -1552,7 +1027,7 @@ class DictionaryRepository(private val context: Context) {
                             val containsInReading = result.reading.contains(bestSearchTerm, ignoreCase = true)
                             containsInKanji || containsInReading
                         }
-                        
+
                         if (filteredResults.isNotEmpty()) {
                             // Mark these results as coming from sentence analysis
                             // Use tokenOrder to maintain the order of appearance in the sentence
@@ -1566,7 +1041,7 @@ class DictionaryRepository(private val context: Context) {
                             sentenceTokens.add(surface)
                             sentenceTokens.add(baseForm)
                             tokenOrder++ // Increment for next token
-                            
+
                             Log.d(TAG, "Added ${sentenceResults.size} filtered results for token '$bestSearchTerm' (from surface='$surface', base='$baseForm')")
                         } else {
                             Log.d(TAG, "No results containing '$bestSearchTerm' found from ${tokenResults.size} candidates")
@@ -1574,20 +1049,20 @@ class DictionaryRepository(private val context: Context) {
                     }
                 }
             }
-            
+
             // Sort results by wordOrder to maintain sentence order
             val sortedResults = results.sortedBy { it.wordOrder }
             results.clear()
             results.addAll(sortedResults)
-            
+
             Log.d(TAG, "Found ${results.size} results from sentence tokens (sorted by sentence order)")
-            
+
             // If we have room for more results, add regular mixed script search
             val remaining = limit - results.size
             if (remaining > 0) {
                 val parser = MixedScriptParser()
                 val parserTokens = parser.parseSentence(query)
-                
+
                 for (token in parserTokens) {
                     when (token.tokenType) {
                         TokenType.KANJI, TokenType.HIRAGANA, TokenType.KATAKANA, TokenType.MIXED -> {
@@ -1622,21 +1097,21 @@ class DictionaryRepository(private val context: Context) {
                         }
                         else -> { /* Skip other token types */ }
                     }
-                    
+
                     if (results.size >= limit) break
                 }
             }
-            
+
             return@withContext results.take(limit)
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Error in sentence analysis, falling back to regular search", e)
             // Fall back to regular mixed script search
             val parser = MixedScriptParser()
             val tokens = parser.parseSentence(query)
-            
+
             val results = mutableListOf<WordResult>()
-            
+
             for (token in tokens) {
                 when (token.tokenType) {
                     TokenType.KANJI, TokenType.HIRAGANA, TokenType.KATAKANA, TokenType.MIXED -> {
@@ -1654,25 +1129,25 @@ class DictionaryRepository(private val context: Context) {
                     }
                     else -> { /* Skip other token types */ }
                 }
-                
+
                 if (results.size >= limit) break
             }
-            
+
             return@withContext results.take(limit)
         }
     }
-    
+
     /**
      * Convert SearchResult to WordResult
      */
-    private fun convertFTS5ToWordResult(searchResult: SearchResult): WordResult {
+    private fun convertFTS5ToWordResult(searchResult: SearchResult, wordOrder: Int = 999): WordResult {
         return WordResult(
             kanji = searchResult.kanji,
             reading = searchResult.reading,
             meanings = parseMeaningsJson(searchResult.meanings),
             isCommon = searchResult.isCommon, // Use form-specific common flag
             frequency = searchResult.frequency,
-            wordOrder = 999,
+            wordOrder = wordOrder,
             tags = emptyList(), // Tags will be loaded by TagDictSQLiteLoader for both JMdict and JMNEDict entries
             partsOfSpeech = try {
                 searchResult.partsOfSpeech?.let {
@@ -1684,28 +1159,28 @@ class DictionaryRepository(private val context: Context) {
             isDeinflectedValidConjugation = false // Not computed in simplified SQL anymore
         )
     }
-    
+
     /**
      * Get pitch accent data for a word
      */
     suspend fun getPitchAccents(kanjiForm: String, reading: String): List<PitchAccent> = withContext(Dispatchers.IO) {
         return@withContext database.getPitchAccents(kanjiForm, reading)
     }
-    
+
     /**
      * Get all pitch accent variations for a word (any reading)
      */
     suspend fun getAllPitchAccentsForWord(kanjiForm: String): List<PitchAccent> = withContext(Dispatchers.IO) {
         return@withContext database.getAllPitchAccentsForWord(kanjiForm)
     }
-    
+
     /**
      * Get all variants for a given kanji form
      */
     suspend fun getVariants(kanjiForm: String): List<Variant> = withContext(Dispatchers.IO) {
         return@withContext database.getWordVariants(kanjiForm)
     }
-    
+
     /**
      * Legacy combined search - tries both Japanese and English using HashMap
      * Kept for fallback purposes when FTS5 is not available
@@ -1764,7 +1239,7 @@ class DictionaryRepository(private val context: Context) {
 
         results.distinctBy { "${it.kanji ?: ""}|${it.reading}" }
     }
-    
+
     /**
      * Search for romaji input - converts to hiragana and searches
      * Example: "shiteimasu" -> convert to "しています" -> search
@@ -1772,14 +1247,14 @@ class DictionaryRepository(private val context: Context) {
      */
     suspend fun searchRomaji(query: String): List<WordResult> = withContext(Dispatchers.IO) {
         Log.d(TAG, "Searching romaji: '$query'")
-        
+
         // Convert romaji to hiragana
         val hiraganaQuery = romajiConverter.toHiragana(query)
         Log.d(TAG, "Converted to hiragana: '$hiraganaQuery'")
-        
+
         // Search using the converted hiragana with SQLite FTS5
         var results = searchFTS5(hiraganaQuery, 100, 0)
-        
+
         // If no results found and the conversion seems incomplete (contains latin letters),
         // try prefix search for partial romaji input - but only if it looks like Japanese romaji
         if (results.isEmpty() && hiraganaQuery.any { it.code in 0x0041..0x007A }) {
@@ -1788,10 +1263,10 @@ class DictionaryRepository(private val context: Context) {
             val hiraganaCount = hiraganaQuery.count { it.code in 0x3040..0x309F }
             val latinCount = hiraganaQuery.count { it.code in 0x0041..0x007A }
             val isLikelyJapaneseRomaji = hiraganaCount >= 3 && hiraganaCount > latinCount
-            
+
             if (isLikelyJapaneseRomaji) {
                 Log.d(TAG, "No exact results found and conversion incomplete, trying prefix search")
-                
+
                 // Remove any remaining latin letters and try SQLite FTS5 search
                 val cleanHiragana = hiraganaQuery.filter { it.code !in 0x0041..0x007A }
                 if (cleanHiragana.length >= 2) { // At least 2 hiragana characters
@@ -1802,7 +1277,7 @@ class DictionaryRepository(private val context: Context) {
                 Log.d(TAG, "Appears to be English word, skipping prefix search")
             }
         }
-        
+
         // IMPORTANT: Copy deinflection info from hiragana key to romaji key
         // so the UI can find it using the original romaji query
         // But store the hiragana form for display purposes
@@ -1819,63 +1294,29 @@ class DictionaryRepository(private val context: Context) {
             deinflectionCache[query] = displayInfo
             Log.d(TAG, "Copied deinflection info from '$hiraganaQuery' to '$query' with hiragana display")
         }
-        
+
         return@withContext results
     }
-    
-    /**
-     * Search for Japanese words that start with the given prefix - DEPRECATED
-     * Used for autocomplete-style searching - REMOVED
-     * Use search() method instead which uses SQLite FTS5
-     */
-    /*
-    private suspend fun searchJapanesePrefix(prefix: String): List<WordResult> = withContext(Dispatchers.IO) {
-        val extractor = jmdictExtractor
-        if (extractor?.isDictionaryLoaded() != true) {
-            return@withContext emptyList()
-        }
-        
-        Log.d(TAG, "Prefix search for: '$prefix'")
-        
-        // Use existing prefix search but with higher limit for autocomplete
-        val prefixResults = extractor.lookupWordsWithPrefix(prefix, 50)
-        Log.d(TAG, "Prefix search found ${prefixResults.size} results")
-        
-        // Sort by relevance: exact prefix match in reading > kanji > longer words last
-        // Also deprioritize proper nouns
-        return@withContext prefixResults.sortedWith(
-            compareBy<WordResult> { isProperNoun(it) }  // Proper nouns go to bottom
-                .thenBy { result ->
-                    when {
-                        result.reading.startsWith(prefix) -> 0  // Reading starts with prefix
-                        result.kanji?.startsWith(prefix) == true -> 1  // Kanji starts with prefix  
-                        else -> 2  // Other matches
-                    }
-                }
-                .thenBy { it.reading.length }  // Shorter words first
-                .thenByDescending { it.frequency ?: 0 }  // Higher frequency first
-        ).take(20)  // Limit results for autocomplete
-    }
-    */
-    
+
+
     /**
      * Search mixed script text with smart prioritization
      * Example: "国語woべんきょうshiteimasu" -> extract and search individual words
      */
     suspend fun searchMixedScript(query: String): List<WordResult> = withContext(Dispatchers.IO) {
         Log.d(TAG, "Searching mixed script: '$query'")
-        
+
         // Use a list of lists to maintain word order
         val resultsByWord = mutableListOf<List<WordResult>>()
-        
+
         // Extract all words from mixed script text
         val extractedWords = japaneseWordExtractor.extractMixedScriptWords(query)
         Log.d(TAG, "Extracted words: $extractedWords")
-        
+
         // Keep words in original order based on their appearance in the query
         // Create a map of word to its position for reliable ordering
         val wordPositions = mutableMapOf<String, Int>()
-        
+
         for (word in extractedWords) {
             val position = when {
                 // Direct match in query
@@ -1900,23 +1341,23 @@ class DictionaryRepository(private val context: Context) {
             }
             wordPositions[word] = position
         }
-        
+
         Log.d(TAG, "Word positions: $wordPositions")
-        
+
         val sortedWords = extractedWords.sortedWith(
             compareBy<String> { wordPositions[it] ?: 999 }
                 .thenByDescending { it.length } // Within same position, prefer longer matches
         )
-        
+
         // Keep track of which exact word matches we've found
         val exactMatches = mutableSetOf<String>()
-        
+
         // Check if we have any meaningful words (2+ characters)
         val hasMeaningfulWords = sortedWords.any { it.length >= 2 }
-        
+
         // Keep track of any conjugated words for main query deinflection info
         var mainQueryDeinflectionInfo: DeinflectionResult? = null
-        
+
         // Search for each extracted word, maintaining order
         for ((wordIndex, word) in sortedWords.withIndex()) {
             val wordResults = if (containsRomaji(word)) {
@@ -1924,7 +1365,7 @@ class DictionaryRepository(private val context: Context) {
                 // Check if this romaji word has deinflection info we should use for the main query
                 // Only use deinflection info from significant verbs, not short words or particles
                 val wordDeinflectionInfo = deinflectionCache[word]
-                if (wordDeinflectionInfo != null && mainQueryDeinflectionInfo == null && 
+                if (wordDeinflectionInfo != null && mainQueryDeinflectionInfo == null &&
                     word.length >= 3 && !isParticle(romajiConverter.toHiragana(word))) {
                     mainQueryDeinflectionInfo = wordDeinflectionInfo
                 }
@@ -1945,29 +1386,29 @@ class DictionaryRepository(private val context: Context) {
                     // Check if this Japanese word has deinflection info we should use for the main query
                     // Only use deinflection info from significant verbs, not short words or particles
                     val wordDeinflectionInfo = deinflectionCache[word]
-                    if (wordDeinflectionInfo != null && mainQueryDeinflectionInfo == null && 
+                    if (wordDeinflectionInfo != null && mainQueryDeinflectionInfo == null &&
                         word.length >= 3 && !isParticle(word)) {
                         mainQueryDeinflectionInfo = wordDeinflectionInfo
                     }
                     results
                 }
             }
-            
+
             // Process results for this word and add to ordered collection
             val currentWordResults = mutableListOf<WordResult>()
-            
+
             // Prioritize exact matches for longer words
             if (word.length >= 2) {
                 val exactWordMatches = wordResults.filter { result ->
                     result.kanji == word || result.reading == word
                 }
-                
+
                 if (exactWordMatches.isNotEmpty()) {
                     exactMatches.addAll(exactWordMatches.map { "${it.kanji ?: ""}|${it.reading}" })
                     currentWordResults.addAll(exactWordMatches)
                 } else {
                     // For deinflection results, add all results since they come from conjugated forms
-                    val isConjugatedForm = word.endsWith("ています") || word.endsWith("ている") || 
+                    val isConjugatedForm = word.endsWith("ています") || word.endsWith("ている") ||
                                           word.endsWith("てる") || word.endsWith("でる") ||
                                           word.endsWith("ました") || word.endsWith("ます") ||
                                           word.endsWith("でした") || word.endsWith("です") ||
@@ -1975,7 +1416,7 @@ class DictionaryRepository(private val context: Context) {
                                           word.endsWith("いた") || word.endsWith("えた") ||
                                           word.endsWith("した") || word.endsWith("きた") ||
                                           word.endsWith("ない") || word.endsWith("なく")
-                    
+
                     if (containsRomaji(word) || isConjugatedForm) {
                         // These are likely deinflection results, keep them all
                         currentWordResults.addAll(wordResults)
@@ -1985,7 +1426,7 @@ class DictionaryRepository(private val context: Context) {
                             val kanji = result.kanji ?: ""
                             val reading = result.reading
                             // Only keep if it starts with or equals our search word
-                            kanji == word || reading == word || 
+                            kanji == word || reading == word ||
                             kanji.startsWith(word) || reading.startsWith(word)
                         }
                         currentWordResults.addAll(relevantResults)
@@ -1994,14 +1435,14 @@ class DictionaryRepository(private val context: Context) {
             } else {
                 currentWordResults.addAll(wordResults)
             }
-            
+
             // Assign word order and sort this word's results by frequency and common status
             if (currentWordResults.isNotEmpty()) {
                 // Assign word order to all results from this word
                 val resultsWithOrder = currentWordResults.map { result ->
                     result.copy(wordOrder = wordIndex)
                 }
-                
+
                 val sortedWordResults = resultsWithOrder.sortedWith(
                     compareBy<WordResult> { isProperNoun(it) }  // Proper nouns go to bottom
                         .thenByDescending { it.isCommon }
@@ -2010,16 +1451,16 @@ class DictionaryRepository(private val context: Context) {
                 resultsByWord.add(sortedWordResults)
             }
         }
-        
+
         // Store deinflection info under main query if we found any conjugated words
         if (mainQueryDeinflectionInfo != null) {
             deinflectionCache[query] = mainQueryDeinflectionInfo
             Log.d(TAG, "Stored deinflection info for main query '$query': ${mainQueryDeinflectionInfo.baseForm}")
         }
-        
+
         // Flatten results while maintaining word order: word1 results, then word2 results, etc.
         val allResults = resultsByWord.flatten()
-        
+
         // Remove duplicates while preserving order (first occurrence wins)
         val seenResults = mutableSetOf<String>()
         val filteredResults = allResults.filter { result ->
@@ -2031,7 +1472,7 @@ class DictionaryRepository(private val context: Context) {
                 true
             }
         }
-        
+
         Log.d(TAG, "Processed ${allResults.size} results into ${filteredResults.size} unique results in word order")
         return@withContext filteredResults
     }
@@ -2069,27 +1510,27 @@ class DictionaryRepository(private val context: Context) {
                     (code in 0x4E00..0x9FAF)
         }
     }
-    
+
     /**
      * Check if text contains romaji characters
      */
     private fun containsRomaji(text: String): Boolean {
         return romajiConverter.containsRomaji(text)
     }
-    
+
     /**
      * Check if text is a valid wildcard pattern
      */
     private fun isWildcardPattern(text: String): Boolean {
         if (!text.contains("?")) return false
-        
+
         // Check if the non-wildcard characters are Japanese
         val nonWildcardText = text.replace("?", "")
         if (nonWildcardText.isEmpty()) return false
-        
+
         return isJapaneseText(nonWildcardText)
     }
-    
+
     /**
      * Check if a string contains only kanji characters
      */
@@ -2100,7 +1541,7 @@ class DictionaryRepository(private val context: Context) {
             (codePoint in 0x4E00..0x9FAF) || (codePoint in 0x3400..0x4DBF)
         }
     }
-    
+
     /**
      * Check if a string contains any katakana
      */
@@ -2111,7 +1552,7 @@ class DictionaryRepository(private val context: Context) {
             codePoint in 0x30A0..0x30FF
         }
     }
-    
+
     /**
      * Convert all katakana characters in text to hiragana
      * Handles mixed scripts like アガる → あがる
@@ -2126,7 +1567,7 @@ class DictionaryRepository(private val context: Context) {
             }
         }.joinToString("")
     }
-    
+
     /**
      * Filter out katakana entries if equivalent hiragana entries exist
      * This prevents showing duplicate entries like アガル and あがる
@@ -2134,15 +1575,15 @@ class DictionaryRepository(private val context: Context) {
     private fun filterKatakanaDuplicates(results: List<WordResult>): List<WordResult> {
         // Group results by their kanji (if any) to compare variants
         val resultsByKanji = results.groupBy { it.kanji ?: "" }
-        
+
         val filteredResults = mutableListOf<WordResult>()
-        
+
         resultsByKanji.forEach { (kanji, group) ->
             if (kanji.isEmpty()) {
                 // No kanji - check for katakana/hiragana duplicates
                 val hiraganaReadings = mutableSetOf<String>()
                 val katakanaResults = mutableListOf<WordResult>()
-                
+
                 group.forEach { result ->
                     if (containsKatakana(result.reading)) {
                         katakanaResults.add(result)
@@ -2151,7 +1592,7 @@ class DictionaryRepository(private val context: Context) {
                         filteredResults.add(result)
                     }
                 }
-                
+
                 // Only add katakana results if no equivalent hiragana exists
                 katakanaResults.forEach { katakanaResult ->
                     val hiraganaEquivalent = convertKatakanaToHiragana(katakanaResult.reading)
@@ -2165,7 +1606,7 @@ class DictionaryRepository(private val context: Context) {
                 // Has kanji - check for duplicate readings within same kanji
                 val hiraganaReadings = mutableSetOf<String>()
                 val toAdd = mutableListOf<WordResult>()
-                
+
                 group.forEach { result ->
                     if (containsKatakana(result.reading)) {
                         val hiraganaEquivalent = convertKatakanaToHiragana(result.reading)
@@ -2180,14 +1621,14 @@ class DictionaryRepository(private val context: Context) {
                         toAdd.add(result)
                     }
                 }
-                
+
                 filteredResults.addAll(toAdd)
             }
         }
-        
+
         return filteredResults
     }
-    
+
     /**
      * Simple filter to remove katakana duplicates based on kanji+reading combination
      * This works on raw results before any grouping
@@ -2196,7 +1637,7 @@ class DictionaryRepository(private val context: Context) {
         // Create a map to track hiragana versions
         val hiraganaVersions = mutableMapOf<String, WordResult>()
         val toFilter = mutableListOf<WordResult>()
-        
+
         // First pass: collect all hiragana readings
         results.forEach { result ->
             val key = result.kanji ?: ""
@@ -2206,14 +1647,14 @@ class DictionaryRepository(private val context: Context) {
             }
             toFilter.add(result)
         }
-        
+
         // Second pass: filter out katakana versions if hiragana exists
         val filtered = toFilter.filter { result ->
             if (containsKatakana(result.reading)) {
                 val key = result.kanji ?: ""
                 val hiraganaReading = convertKatakanaToHiragana(result.reading)
                 val hiraganaKey = "$key|$hiraganaReading"
-                
+
                 if (hiraganaVersions.containsKey(hiraganaKey)) {
                     Log.d(TAG, "Filtering out katakana duplicate: ${result.kanji}/${result.reading} → $hiraganaReading")
                     false // Filter out this katakana version
@@ -2224,18 +1665,18 @@ class DictionaryRepository(private val context: Context) {
                 true // Keep all hiragana entries
             }
         }
-        
+
         Log.d(TAG, "Filtered ${results.size} results to ${filtered.size} (removed ${results.size - filtered.size} katakana duplicates)")
         return filtered
     }
-    
+
     /**
      * Check if a word is a common Japanese particle
      */
     private fun isParticle(word: String): Boolean {
         return word in setOf("を", "は", "が", "の", "に", "で", "と", "から", "まで", "より", "へ", "や", "も", "か", "ね", "よ", "ぞ", "ぜ")
     }
-    
+
     /**
      * Check if a query might be a conjugated form that should be deinflected
      * even if there are direct database matches
@@ -2251,42 +1692,42 @@ class DictionaryRepository(private val context: Context) {
             "れる", "られる",      // passive/potential
             "せる", "させる"       // causative
         )
-        
+
         // Check if query ends with any conjugated ending
         return conjugatedEndings.any { query.endsWith(it) }
     }
-    
+
     /**
      * Check if a word result is a proper noun (person/place name)
      * Proper nouns should be deprioritized in search results
      */
     private fun isProperNoun(result: WordResult): Boolean {
-        
+
         // Fallback to tag-based check for entries without database flag
         val properNounTags = setOf(
-            "n-pr", "person", "place", "surname", "given", "masc", "fem", "unclass", 
-            "company", "organization", "station", "group", "char", "fict", "legend", 
-            "myth", "relig", "dei", "ship", "product", "work", "ev", "obj", "creat", 
+            "n-pr", "person", "place", "surname", "given", "masc", "fem", "unclass",
+            "company", "organization", "station", "group", "char", "fict", "legend",
+            "myth", "relig", "dei", "ship", "product", "work", "ev", "obj", "creat",
             "serv", "doc", "oth"
         )
-        
+
         // Check parts of speech first (fastest)
         val hasProperNounTag = result.partsOfSpeech.any { pos ->
             properNounTags.any { tag -> pos.lowercase().contains(tag) }
         }
-        
+
         if (hasProperNounTag) return true
-        
+
         // Check tags
         val hasProperNounInTags = result.tags.any { tag ->
-            properNounTags.any { properTag -> 
+            properNounTags.any { properTag ->
                 tag.lowercase().contains(properTag) || tag.lowercase() == properTag
             }
         }
-        
+
         return hasProperNounInTags
     }
-    
+
     /**
      * Check if a SearchResult is a proper noun (person/place name)
      * Helper function for sorting SearchResult objects
@@ -2296,7 +1737,7 @@ class DictionaryRepository(private val context: Context) {
         val wordResult = convertFTS5ToWordResult(result)
         return isProperNoun(wordResult)
     }
-    
+
     /**
      * Check if text is mixed script (Japanese + romaji)
      */
@@ -2311,7 +1752,7 @@ class DictionaryRepository(private val context: Context) {
         return text.any { it.code in 0x0041..0x007A } &&  // Has English letters
                 !isJapaneseText(text)  // But no Japanese
     }
-    
+
     /**
      * Check if text is likely Japanese romaji (not just English with some romaji letters)
      */
@@ -2326,26 +1767,26 @@ class DictionaryRepository(private val context: Context) {
         if (text.lowercase() in commonEnglishWords) {
             return false
         }
-        
+
         // Common Japanese romaji patterns
         val japaneseRomajiPatterns = listOf(
             ".*[aiueo].*[aiueo].*", // Multiple vowels (common in Japanese)
             ".*sh.*", ".*ch.*", ".*ts.*", ".*ky.*", ".*gy.*", ".*ny.*", // Japanese sounds
-            ".*ou.*", ".*ei.*", ".*ai.*", // Long vowel patterns  
+            ".*ou.*", ".*ei.*", ".*ai.*", // Long vowel patterns
             ".*masu.*", ".*desu.*", ".*shimasu.*", // Common endings
             ".*[aiueo]{3,}.*", // 3+ consecutive vowels (more specifically Japanese)
         )
-        
+
         // Check if it matches Japanese patterns
         val hasJapanesePattern = japaneseRomajiPatterns.any { text.matches(it.toRegex()) }
-        
+
         // For short words, be more lenient if they don't look obviously English
         if (text.length <= 3) {
             // Short words with consonant clusters are likely English (like "str", "thr")
             val hasConsonantCluster = text.lowercase().matches(Regex(".*[bcdfghjklmnpqrstvwxz]{2,}.*"))
             return !hasConsonantCluster && hasJapanesePattern
         }
-        
+
         return hasJapanesePattern
     }
 
@@ -2382,7 +1823,7 @@ class DictionaryRepository(private val context: Context) {
             Log.w(TAG, "Failed to warm up cache", e)
         }
     }
-    
+
     /**
      * Clear all cached deinflection information - useful for debugging
      */
@@ -2400,14 +1841,14 @@ class DictionaryRepository(private val context: Context) {
     private fun convertKanjiEntryToWordResult(kanjiEntry: KanjiDatabaseEntry, query: String): WordResult {
         // Parse meanings from the database format
         val meanings = parseMeaningsFromDatabase(kanjiEntry.meanings)
-        
+
         // Parse readings from the database format
         val kunReadings = parseReadingsFromDatabase(kanjiEntry.kunReadings)
         val onReadings = parseReadingsFromDatabase(kanjiEntry.onReadings)
-        
+
         // Create a reading string - prioritize kun readings, then on readings
         val primaryReading = kunReadings.firstOrNull() ?: onReadings.firstOrNull() ?: kanjiEntry.kanji
-        
+
         return WordResult(
             kanji = kanjiEntry.kanji,
             reading = primaryReading,
@@ -2422,71 +1863,14 @@ class DictionaryRepository(private val context: Context) {
     }
 
     /**
-     * Search by Japanese text with wildcard support - DEPRECATED
-     * ? = any single character
-     * Uses SQL LIKE with _ for single character wildcard - REMOVED
-     * Use search() method instead which uses SQLite FTS5
-     */
-    /*
-    suspend fun searchJapaneseWithWildcard(query: String): List<WordResult> = withContext(Dispatchers.IO) {
-        if (!query.contains("?")) {
-            // No wildcards, use regular search
-            return@withContext searchJapanese(query)
-        }
-
-        // Convert ? to SQL LIKE wildcard _
-        val sqlPattern = query.replace("?", "_")
-
-        val db = database.readableDatabase
-        val results = mutableListOf<WordResult>()
-
-        // Search in both kanji and reading columns
-        // Remove the length restriction as it's causing issues
-        val sql = """
-        SELECT DISTINCT kanji, reading, meanings, frequency
-        FROM ${DictionaryDatabase.TABLE_ENTRIES}
-        WHERE kanji LIKE ? OR reading LIKE ?
-        ORDER BY frequency DESC
-        LIMIT 100
-    """
-
-        db.rawQuery(sql, arrayOf(sqlPattern, sqlPattern)).use { cursor ->
-            while (cursor.moveToNext()) {
-                val kanji = cursor.getString(0)
-                val reading = cursor.getString(1)
-                val meaningsJson = cursor.getString(2)
-                val frequency = cursor.getInt(3)
-
-                // Only include results that match the pattern length
-                if ((kanji != null && kanji.length == query.length) ||
-                    (reading.length == query.length)) {
-                    results.add(WordResult(
-                        kanji = kanji,
-                        reading = reading,
-                        meanings = parseMeaningsJson(meaningsJson),
-                        frequency = frequency,
-                        wordOrder = 999,
-                        tags = emptyList(),
-                        partsOfSpeech = emptyList()
-                    ))
-                }
-            }
-        }
-
-        Log.d(TAG, "Wildcard search for '$query' (pattern: '$sqlPattern') returned ${results.size} results")
-        return@withContext results
-    }
-    */
-    
-    /**
      * Get kanji information from database
      */
     suspend fun getKanjiInfo(kanjiList: List<String>): List<KanjiResult> = withContext(Dispatchers.IO) {
         val databaseEntries = database.getKanjiByCharacters(kanjiList)
-        
+
         // Create a map for quick lookup
         val entriesMap: Map<String, KanjiDatabaseEntry> = databaseEntries.associateBy { entry -> entry.kanji }
-        
+
         // Return results in the same order as the input list
         val orderedResults = kanjiList.mapNotNull { kanji ->
             entriesMap[kanji]?.let { entry ->
@@ -2495,16 +1879,16 @@ class DictionaryRepository(private val context: Context) {
                 Log.d(TAG, "  radicalNames: '${entry.radicalNames}'")
                 Log.d(TAG, "  radical: '${entry.radical}'")
                 Log.d(TAG, "  radicalNumber: ${entry.radicalNumber}")
-                
+
                 val parsedRadicalNames = parseReadingsFromDatabase(entry.radicalNames)
                 Log.d(TAG, "  parsed radicalNames: $parsedRadicalNames")
-                
+
                 val finalRadicalNames = parsedRadicalNames
-                
+
                 // Get kanji components from kradfile data
                 val components = database.getKanjiComponents(entry.kanji)
                 Log.d(TAG, "  components: $components")
-                
+
                 KanjiResult(
                     kanji = entry.kanji,
                     onReadings = parseReadingsFromDatabase(entry.onReadings),
@@ -2522,7 +1906,7 @@ class DictionaryRepository(private val context: Context) {
                 )
             }
         }
-        
+
         return@withContext orderedResults
     }
 
@@ -2532,62 +1916,62 @@ class DictionaryRepository(private val context: Context) {
      */
     private fun checkIrregularVerbs(query: String): DeinflectionResult? {
         Log.d(TAG, "Checking irregular verb patterns for: '$query'")
-        
+
         // 来る (kuru) irregular patterns
         val kuruPatterns = mapOf(
             // Negative patterns
             "こない" to "来る",        // konai -> kuru
-            "こなかった" to "来る",    // konakatta -> kuru  
+            "こなかった" to "来る",    // konakatta -> kuru
             "きません" to "来る",      // kimasen -> kuru
             "きませんでした" to "来る", // kimasendeshita -> kuru
-            
-            // Potential/passive patterns  
+
+            // Potential/passive patterns
             "こられる" to "来る",      // korareru -> kuru
             "こられない" to "来る",    // korarenai -> kuru
             "こられません" to "来る",  // koráremasen -> kuru
             "こられた" to "来る",      // korareta -> kuru
-            
+
             // Te-form and related
             "きて" to "来る",         // kite -> kuru
             "きている" to "来る",     // kiteiru -> kuru
             "きた" to "来る",         // kita -> kuru
-            
+
             // Conditional
             "くれば" to "来る",       // kureba -> kuru
             "きたら" to "来る",       // kitara -> kuru
-            
+
             // Polite forms
             "きます" to "来る",       // kimasu -> kuru
             "きました" to "来る",     // kimashita -> kuru
-            
+
             // Imperative
             "こい" to "来る"          // koi -> kuru
         )
-        
+
         // 行く (iku) irregular patterns
         val ikuPatterns = mapOf(
             // Past tense (irregular)
             "いった" to "行く",       // itta -> iku (irregular past)
             "いかなかった" to "行く", // ikanakatta -> iku
-            
+
             // Te-form (irregular)
             "いって" to "行く",       // itte -> iku (irregular te-form)
             "いっている" to "行く",   // itteiru -> iku
-            
+
             // Negative
             "いかない" to "行く",     // ikanai -> iku
             "いきません" to "行く",   // ikimasen -> iku
             "いきませんでした" to "行く", // ikimasendeshita -> iku
-            
+
             // Polite forms
             "いきます" to "行く",     // ikimasu -> iku
             "いきました" to "行く",   // ikimashita -> iku
-            
+
             // Conditional
             "いけば" to "行く",       // ikeba -> iku
             "いったら" to "行く"      // ittara -> iku
         )
-        
+
         // Check 来る patterns first
         kuruPatterns[query]?.let { baseForm ->
             Log.d(TAG, "Found 来る irregular pattern: '$query' -> '$baseForm'")
@@ -2606,7 +1990,7 @@ class DictionaryRepository(private val context: Context) {
                 )
             )
         }
-        
+
         // Check 行く patterns
         ikuPatterns[query]?.let { baseForm ->
             Log.d(TAG, "Found 行く irregular pattern: '$query' -> '$baseForm'")
@@ -2625,12 +2009,12 @@ class DictionaryRepository(private val context: Context) {
                 )
             )
         }
-        
+
         // No irregular patterns found
         Log.d(TAG, "No irregular verb patterns found for: '$query'")
         return null
     }
-    
+
     /**
      * Parse and clean meanings from database field
      * Handles JSON arrays, quoted strings, and comma-separated values
@@ -2639,12 +2023,12 @@ class DictionaryRepository(private val context: Context) {
         if (meaningsString.isNullOrBlank()) {
             return emptyList()
         }
-        
+
         // Remove surrounding brackets if present (JSON array format)
         val cleaned = meaningsString.trim()
             .removePrefix("[")
             .removeSuffix("]")
-        
+
         // Split by comma and clean each meaning
         return cleaned.split(",")
             .map { meaning ->
@@ -2666,12 +2050,12 @@ class DictionaryRepository(private val context: Context) {
         if (readingsString.isNullOrBlank()) {
             return emptyList()
         }
-        
+
         // Remove surrounding brackets if present (JSON array format)
         val cleaned = readingsString.trim()
             .removePrefix("[")
             .removeSuffix("]")
-        
+
         // Split by comma and clean each reading
         return cleaned.split(",")
             .map { reading ->
@@ -2684,7 +2068,7 @@ class DictionaryRepository(private val context: Context) {
             }
             .filter { it.isNotBlank() }
     }
-    
+
     /**
      * Helper methods for deinflection and cache management
      */
@@ -2692,12 +2076,12 @@ class DictionaryRepository(private val context: Context) {
         // Return the first (best) deinflection result
         return deinflections.first()
     }
-    
+
     private fun storeDeinflectionInfo(query: String, result: DeinflectionResult) {
         // Store the deinflection result in cache
         deinflectionCache[query] = result
     }
-    
+
     private fun isValidConjugationByKuromoji(query: String, baseForm: String): Boolean {
         // Simple validation - could be enhanced with more sophisticated checks
         return query != baseForm && baseForm.isNotEmpty()

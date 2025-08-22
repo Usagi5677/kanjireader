@@ -45,7 +45,7 @@ data class WordResult(
     val wordOrder: Int,
     val tags: List<String>,
     val partsOfSpeech: List<String>,
-    val isDeinflectedValidConjugation: Boolean
+    val isDeinflectedValidConjugation: Boolean,
 )
 
 data class KanjiResult(

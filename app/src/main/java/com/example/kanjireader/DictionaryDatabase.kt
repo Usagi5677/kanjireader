@@ -192,33 +192,6 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
             )
         """
 
-        // Japanese FTS5 table - REMOVED: No longer needed, using entries_fts5 instead
-        /*
-        private const val CREATE_JAPANESE_FTS5_TABLE = """
-            CREATE VIRTUAL TABLE IF NOT EXISTS $TABLE_JAPANESE_FTS USING fts5(
-                entry_id UNINDEXED,
-                kanji_tokens,
-                reading_tokens,
-                original_kanji UNINDEXED,
-                original_reading UNINDEXED,
-                tokenize='unicode61',
-                prefix='1 2 3'
-            )
-        """
-
-        // Japanese FTS4 fallback
-        private const val CREATE_JAPANESE_FTS4_TABLE = """
-            CREATE VIRTUAL TABLE IF NOT EXISTS $TABLE_JAPANESE_FTS USING fts4(
-                entry_id,
-                kanji_tokens,
-                reading_tokens,
-                original_kanji,
-                original_reading,
-                tokenize=unicode61,
-                prefix='1,2,3'
-            )
-        """
-        */
 
         // --- FTS Trigger Definitions ---
 
