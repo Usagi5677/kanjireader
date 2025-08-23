@@ -1863,8 +1863,8 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         val kanjiEntries = getKanjiByCharacters(kanjiList)
         val kanjiMap = kanjiEntries.associateBy { it.kanji }
         
-        // PERFORMANCE: Simple conversion without expensive commonality scoring
-        return kanjiList.mapNotNull { kanji ->
+        // Convert kanji to cards, creating basic entries for missing kanji
+        return kanjiList.map { kanji ->
             kanjiMap[kanji]?.let { entry ->
                 // Clean up readings - remove brackets and quotes
                 val cleanOnReadings = entry.onReadings
@@ -1903,6 +1903,18 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                     grade = entry.grade,
                     commonalityScore = basicScore,
                     hasReadings = hasReadings
+                )
+            } ?: run {
+                // Create basic card for kanji not in main dictionary
+                KanjiCardInfo(
+                    kanji = kanji,
+                    onReadings = "",
+                    kunReadings = "",
+                    primaryMeaning = "Rare kanji (limited info)",
+                    jlptLevel = null,
+                    grade = null,
+                    commonalityScore = 0,
+                    hasReadings = false
                 )
             }
         }.sortedWith(compareByDescending<KanjiCardInfo> { it.hasReadings }

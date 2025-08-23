@@ -160,13 +160,13 @@ class RadicalSearchActivity : AppCompatActivity() {
                     
                     // Find radicals that are valid for the current kanji set
                     enabledRadicals = if (currentKanjiResults.isNotEmpty()) {
+                        // When we have results, show radicals that appear in those kanji
                         database.getValidRadicalsForKanjiSet(currentKanjiResults)
                     } else {
-                        setOf() // No valid radicals if no kanji results
+                        // When no results, only keep currently selected radicals enabled
+                        // This prevents selecting additional radicals that won't produce results
+                        selectedRadicals
                     }
-                    
-                    // Always keep selected radicals enabled
-                    enabledRadicals = enabledRadicals + selectedRadicals
                 }
                 
                 // Update both grids

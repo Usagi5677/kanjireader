@@ -1455,6 +1455,23 @@ class DatabaseBuilder:
         
         print("🔧 Building radical kanji mapping from kradfile data...")
         
+        # Unicode normalization map for radicals (same as preserve_modifications.py)
+        unicode_normalization = {
+            "灬": "⺣",  # Fire radical - normalize to standard form (KEEP - was working)
+            "辶": "⻌",  # Advance radical - kanji form -> radical form (KEEP - was working)
+            "\uFA66": "⻌",  # Advance radical - compatibility char -> radical form (KEEP - was working)
+            "礻": "⺭",  # Spirit radical - kanji form -> radical form (FIXED)
+            "罒": "⺲",  # Net radical - kanji form -> radical form (FIXED)
+            "氵": "⺡",  # Water radical - kanji form -> radical form (FIXED)
+            "犭": "⺨",  # Dog radical - kanji form -> radical form (FIXED)
+            "忄": "⺖",  # Heart radical - kanji form -> radical form (FIXED)
+            "扌": "⺘",  # Hand radical - kanji form -> radical form (FIXED)
+            "疒": "⽧",  # Sickness radical - kanji form -> radical form (FIXED)
+            "刂": "⺉",  # Knife radical - kanji form (U+5202) -> radical form (U+2E89) (FIXED)
+            "禸": "⽱",  # Track radical - kanji form -> radical form (FIXED)
+            "衤": "⻂",  # Clothes radical - kanji form -> radical form (FIXED)
+        }
+        
         # Build radical -> kanji mapping from kradfile
         radical_to_kanji = {}
         
@@ -1462,12 +1479,19 @@ class DatabaseBuilder:
         for kanji, components in kradfile_data.items():
             if isinstance(components, list):
                 for radical in components:
-                    if radical not in radical_to_kanji:
-                        radical_to_kanji[radical] = []
-                    radical_to_kanji[radical].append(kanji)
+                    # Apply Unicode normalization to radicals
+                    normalized_radical = unicode_normalization.get(radical, radical)
+                    
+                    if normalized_radical not in radical_to_kanji:
+                        radical_to_kanji[normalized_radical] = []
+                    radical_to_kanji[normalized_radical].append(kanji)
+                    
+                    # Debug spirit radical normalization
+                    if radical in ["⺭", "礻"]:
+                        print(f"    🔧 Normalized '{radical}' → '{normalized_radical}' for kanji '{kanji}'")
                     
                     # Debug 人 radical specifically
-                    if radical == '人' and kanji == '火':
+                    if normalized_radical == '人' and kanji == '火':
                         print(f"    🎯 Found 火 with 人 component in kradfile!")
         
         print(f"  📊 Built mapping for {len(radical_to_kanji)} unique radicals from kradfile")
@@ -1486,7 +1510,9 @@ class DatabaseBuilder:
             print("  📏 Getting stroke counts from radkfile...")
             for radical, info in radkfile_data.items():
                 stroke_count = info.get('strokeCount', 0)
-                radical_stroke_counts[radical] = stroke_count
+                # Apply same normalization to radical keys for stroke count lookup
+                normalized_radical = unicode_normalization.get(radical, radical)
+                radical_stroke_counts[normalized_radical] = stroke_count
         
         # Insert or update radical mappings
         for radical, kanji_list in radical_to_kanji.items():
@@ -1508,7 +1534,9 @@ class DatabaseBuilder:
         if radkfile_data:
             radkfile_only_count = 0
             for radical, info in radkfile_data.items():
-                if radical not in radical_to_kanji:
+                # Apply normalization to check if radical already exists after normalization
+                normalized_radical = unicode_normalization.get(radical, radical)
+                if normalized_radical not in radical_to_kanji:
                     stroke_count = info.get('strokeCount', 0)
                     kanji_list = info.get('kanji', [])
                     kanji_str = ", ".join(kanji_list) if isinstance(kanji_list, list) else str(kanji_list)
@@ -1516,7 +1544,7 @@ class DatabaseBuilder:
                     cursor.execute("""
                         INSERT OR REPLACE INTO radical_kanji_mapping (radical, stroke_count, kanji_list)
                         VALUES (?, ?, ?)
-                    """, (radical, stroke_count, kanji_str))
+                    """, (normalized_radical, stroke_count, kanji_str))
                     radkfile_only_count += 1
             
             if radkfile_only_count > 0:

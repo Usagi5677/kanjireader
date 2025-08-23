@@ -276,9 +276,19 @@ class ModificationPreserver:
         
         # Unicode normalization map (kensaku -> kradical)
         unicode_normalization = {
-            "灬": "⺣",  # Fire radical - kensaku uses 灬, kradical uses ⺣
-            "辶": "⻌",  # Advance radical - kensaku uses 辶 (kanji form U+8FB6), kradical uses ⻌ (radical form)
-            "\uFA66": "⻌",  # Advance radical - compatibility character U+FA66 -> radical form
+            "灬": "⺣",  # Fire radical - kensaku uses 灬, kradical uses ⺣ (KEEP - was working)
+            "辶": "⻌",  # Advance radical - kensaku uses 辶 (kanji form U+8FB6), kradical uses ⻌ (radical form) (KEEP - was working)
+            "\uFA66": "⻌",  # Advance radical - compatibility character U+FA66 -> radical form (KEEP - was working)
+            "礻": "⺭",  # Spirit radical - normalize kanji form (U+793B) to radical form (U+2EAD) (FIXED)
+            "罒": "⺲",  # Net radical - normalize kanji form (U+7F52) to radical form (U+2EB2) (FIXED)
+            "氵": "⺡",  # Water radical - normalize kanji form (U+6C35) to radical form (U+2EA1) (FIXED)
+            "犭": "⺨",  # Dog radical - normalize kanji form (U+72AD) to radical form (U+2EA8) (FIXED)
+            "忄": "⺖",  # Heart radical - normalize kanji form (U+5FC4) to radical form (U+2E96) (FIXED)
+            "扌": "⺘",  # Hand radical - normalize kanji form (U+624C) to radical form (U+2E98) (FIXED)
+            "疒": "⽧",  # Sickness radical - normalize kanji form (U+7592) to radical form (U+2F67) (FIXED)
+            "刂": "⺉",  # Knife radical - normalize kanji form (U+5202) to radical form (U+2E89) (FIXED)
+            "禸": "⽱",  # Track radical - normalize kanji form (U+79B8) to radical form (U+2F71) (FIXED)
+            "衤": "⻂",  # Clothes radical - normalize kanji form (U+8864) to radical form (U+2EC2) (FIXED)
             # Add more mappings if discovered
         }
         
@@ -337,9 +347,19 @@ class ModificationPreserver:
         print("Performing final comprehensive Unicode normalization...")
         
         unicode_map = {
-            "辶": "⻌",  # Advance radical: kanji form (U+8FB6) -> radical form
-            "\uFA66": "⻌",  # Advance radical: compatibility char (U+FA66) -> radical form
-            "灬": "⺣",  # Fire radical: alternative -> standard
+            "辶": "⻌",  # Advance radical: kanji form (U+8FB6) -> radical form (KEEP - was working)
+            "\uFA66": "⻌",  # Advance radical: compatibility char (U+FA66) -> radical form (KEEP - was working)
+            "灬": "⺣",  # Fire radical: alternative -> standard (KEEP - was working)
+            "礻": "⺭",  # Spirit radical: kanji form (U+793B) -> radical form (U+2EAD) (FIXED)
+            "罒": "⺲",  # Net radical: kanji form (U+7F52) -> radical form (U+2EB2) (FIXED)
+            "氵": "⺡",  # Water radical: kanji form (U+6C35) to radical form (U+2EA1) (FIXED)
+            "犭": "⺨",  # Dog radical: kanji form (U+72AD) to radical form (U+2EA8) (FIXED)
+            "忄": "⺖",  # Heart radical: kanji form (U+5FC4) to radical form (U+2E96) (FIXED)
+            "扌": "⺘",  # Hand radical: kanji form (U+624C) to radical form (U+2E98) (FIXED)
+            "疒": "⽧",  # Sickness radical: kanji form (U+7592) to radical form (U+2F67) (FIXED)
+            "刂": "⺉",  # Knife radical: kanji form (U+5202) to radical form (U+2E89) (FIXED)
+            "禸": "⽱",  # Track radical: kanji form (U+79B8) to radical form (U+2F71) (FIXED)
+            "衤": "⻂",  # Clothes radical: kanji form (U+8864) to radical form (U+2EC2) (FIXED)
         }
         
         kanji_data = merged_data.get("kanji", {})

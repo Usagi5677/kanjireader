@@ -117,6 +117,17 @@ class RadicalItemAdapter(
                     onRadicalClick(item.radical)
                 }
             }
+            
+            // Set long press listener to copy radical to clipboard
+            radicalButton.setOnLongClickListener {
+                val clipboardManager = itemView.context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clipData = android.content.ClipData.newPlainText("Radical", item.radical)
+                clipboardManager.setPrimaryClip(clipData)
+                
+                // Show toast confirmation
+                android.widget.Toast.makeText(itemView.context, "Copied: ${item.radical}", android.widget.Toast.LENGTH_SHORT).show()
+                true // Consume the long press event
+            }
         }
     }
 }
