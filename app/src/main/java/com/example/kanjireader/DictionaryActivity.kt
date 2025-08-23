@@ -243,15 +243,80 @@ class DictionaryActivity : AppCompatActivity() {
 
     private fun setupSearchView() {
         binding.searchEditText.apply {
-            hint = getString(R.string.search_hint)
+            hint = "Search..."
             requestFocus()
+            
+            // Block Enter key completely - prevent new lines
+            setOnKeyListener { _, keyCode, event ->
+                if (keyCode == android.view.KeyEvent.KEYCODE_ENTER && event.action == android.view.KeyEvent.ACTION_DOWN) {
+                    // Consume the Enter key event completely
+                    true
+                } else {
+                    false
+                }
+            }
+            
+            // Also handle IME action
+            setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
+                    actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE ||
+                    actionId == android.view.inputmethod.EditorInfo.IME_ACTION_NEXT) {
+                    // Hide keyboard on search action
+                    val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    imm.hideSoftInputFromWindow(windowToken, 0)
+                    true
+                } else {
+                    false
+                }
+            }
 
             addTextChangedListener(object : TextWatcher {
+                private var isProcessingNewline = false
+                private var wasNewlineOnly = false
+                
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    // Skip if we're already processing a newline
+                    if (isProcessingNewline) return
+                    
+                    val text = s?.toString() ?: ""
+                    
+                    // Remove any newline characters that somehow got through
+                    if (text.contains("\n")) {
+                        isProcessingNewline = true
+                        val cleanedText = if (text.trim().isEmpty()) {
+                            wasNewlineOnly = true // Mark that this was just Enter key
+                            "" // If only newlines, clear everything
+                        } else {
+                            wasNewlineOnly = false
+                            text.replace("\n", " ") // Replace newlines with spaces for paragraphs
+                        }
+                        setText(cleanedText)
+                        setSelection(cleanedText.length)
+                        // Update clear button visibility after cleaning
+                        binding.clearButton.visibility = if (cleanedText.isNotEmpty()) View.VISIBLE else View.GONE
+                        isProcessingNewline = false
+                        // Don't return - let the height adjustment happen in afterTextChanged
+                    } else {
+                        wasNewlineOnly = false
+                        // Update clear button visibility immediately based on actual text content
+                        binding.clearButton.visibility = if (text.isNotEmpty()) View.VISIBLE else View.GONE
+                    }
+                }
 
                 override fun afterTextChanged(s: Editable?) {
+                    // Skip if we're processing a newline replacement
+                    if (isProcessingNewline) return
+                    
+                    // Skip search if this was just an Enter key press on empty text
+                    if (wasNewlineOnly) {
+                        wasNewlineOnly = false
+                        return
+                    }
+                    
                     val newText = s?.toString() ?: ""
+                    
                     Log.d(TAG, "=== TEXT CHANGE === '$newText'")
 
                     // --- REMOVED: Manual delays and filtering logic from Activity
@@ -260,11 +325,37 @@ class DictionaryActivity : AppCompatActivity() {
                     // searchJob?.cancel()
                     // searchJob = lifecycleScope.launch { delay(300) ... }
                     // ---
-
-                    // Show/hide UI elements immediately based on text content
-                    binding.clearButton.visibility = if (newText.isNotEmpty()) View.VISIBLE else View.GONE
-                    val lineCount = binding.searchEditText.lineCount
-                    binding.wordNavigationButton.visibility = if (lineCount > 1 || newText.length > 30) View.VISIBLE else View.GONE
+                    
+                    // Force layout to calculate line count for long text
+                    if (newText.length > 20) {
+                        binding.searchEditText.requestLayout()
+                    }
+                    
+                    // Check line count after layout update and adjust height
+                    binding.searchEditText.post {
+                        val lineCount = binding.searchEditText.lineCount
+                        val density = resources.displayMetrics.density
+                        
+                        // Calculate new height based on line count
+                        val newHeight = when {
+                            lineCount <= 1 -> (48 * density).toInt()
+                            lineCount == 2 -> (72 * density).toInt()
+                            lineCount == 3 -> (96 * density).toInt()
+                            else -> (120 * density).toInt() // Max 4 lines
+                        }
+                        
+                        // Update CardView height
+                        val layoutParams = binding.searchCardView.layoutParams
+                        if (layoutParams.height != newHeight) {
+                            layoutParams.height = newHeight
+                            binding.searchCardView.layoutParams = layoutParams
+                            binding.searchCardView.requestLayout() // Force layout update
+                        }
+                        
+                        // Show word navigation button for wrapped text or long text
+                        binding.wordNavigationButton.visibility = 
+                            if (lineCount > 1 || newText.length > 30) View.VISIBLE else View.GONE
+                    }
 
                     // This is the core logic: Always send the raw query to the ViewModel.
                     // The ViewModel is responsible for deciding when to perform the search.
@@ -307,10 +398,11 @@ class DictionaryActivity : AppCompatActivity() {
             return
         }
         
-        // Check if this is a paragraph (multi-line or long text)
-        val isParagraph = currentQuery.lines().size > 1 || currentQuery.length > 30
+        // Check if this is long text (wrapped lines or length > 30)
+        val lineCount = binding.searchEditText.lineCount
+        val isLongText = lineCount > 1 || currentQuery.length > 30
         
-        if (!isParagraph) {
+        if (!isLongText) {
             Toast.makeText(this, "Word navigation is for longer texts", Toast.LENGTH_SHORT).show()
             return
         }
