@@ -108,6 +108,7 @@ class RadicalSearchActivity : AppCompatActivity() {
                 allRadicalsByStroke = database.getAllRadicalsByStrokeCount()
                 Log.d(TAG, "Loaded ${allRadicalsByStroke.size} stroke count groups")
                 
+                
                 // Initially all radicals are enabled
                 enabledRadicals = allRadicalsByStroke.values.flatten().toSet()
                 
@@ -123,12 +124,18 @@ class RadicalSearchActivity : AppCompatActivity() {
     private fun onRadicalClicked(radical: String) {
         Log.d(TAG, "Radical clicked: $radical")
         
+        if (radical == "⻂") {
+            Log.d(TAG, "⻂ radical clicked successfully!")
+        }
+        
         if (selectedRadicals.contains(radical)) {
             // Deselect radical
             selectedRadicals.remove(radical)
+            Log.d(TAG, "Deselected radical: $radical")
         } else {
             // Select radical
             selectedRadicals.add(radical)
+            Log.d(TAG, "Selected radical: $radical")
         }
         
         updateSearchResults()
@@ -158,15 +165,11 @@ class RadicalSearchActivity : AppCompatActivity() {
                     currentKanjiResults = database.getKanjiForMultipleRadicals(selectedRadicals.toList())
                     Log.d(TAG, "Found ${currentKanjiResults.size} kanji for radicals: $selectedRadicals")
                     
-                    // Find radicals that are valid for the current kanji set
-                    enabledRadicals = if (currentKanjiResults.isNotEmpty()) {
-                        // When we have results, show radicals that appear in those kanji
-                        database.getValidRadicalsForKanjiSet(currentKanjiResults)
-                    } else {
-                        // When no results, only keep currently selected radicals enabled
-                        // This prevents selecting additional radicals that won't produce results
-                        selectedRadicals
-                    }
+                    // Find radicals that would produce results when combined with selected ones
+                    // This returns all radicals that appear in kanji containing ALL selected radicals
+                    enabledRadicals = database.getValidRadicalsForCombination(selectedRadicals)
+                    Log.d(TAG, "Enabled ${enabledRadicals.size} radicals that would produce results")
+                    
                 }
                 
                 // Update both grids

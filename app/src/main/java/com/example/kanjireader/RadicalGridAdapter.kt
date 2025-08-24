@@ -27,18 +27,23 @@ class RadicalGridAdapter(
     private var sections: List<RadicalSection> = emptyList()
 
     fun updateData(radicalsByStroke: Map<Int, List<String>>, selectedRadicals: Set<String>, enabledRadicals: Set<String>) {
+        val oldSections = sections
         sections = radicalsByStroke.keys.sorted().map { strokeCount ->
             val radicals = radicalsByStroke[strokeCount]?.map { radical ->
+                val isEnabled = enabledRadicals.contains(radical)
+                
+                
                 RadicalItem(
                     radical = radical,
                     isSelected = selectedRadicals.contains(radical),
-                    isEnabled = enabledRadicals.contains(radical)
+                    isEnabled = isEnabled
                 )
             } ?: emptyList()
             
             RadicalSection(strokeCount, radicals)
         }
         
+        // Force complete refresh to avoid caching issues
         notifyDataSetChanged()
     }
 
@@ -56,10 +61,12 @@ class RadicalGridAdapter(
 
     inner class SectionViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val headerText: TextView = itemView.findViewById(R.id.headerText)
+        private val radicalCounter: TextView = itemView.findViewById(R.id.radicalCounter)
         private val radicalsGrid: RecyclerView = itemView.findViewById(R.id.radicalsGrid)
         
         fun bind(section: RadicalSection) {
             headerText.text = "${section.strokeCount} stroke${if (section.strokeCount != 1) "s" else ""}"
+            radicalCounter.text = section.radicals.size.toString()
             
             // Setup grid for this section's radicals
             val adapter = RadicalItemAdapter(section.radicals, onRadicalClick)
@@ -91,6 +98,7 @@ class RadicalItemAdapter(
 
         fun bind(item: RadicalItem) {
             radicalButton.text = item.radical
+            
             
             // Set appearance based on state
             when {

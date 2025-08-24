@@ -1627,8 +1627,11 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         
         val db = readableDatabase
         
+        // Debug logging for 裧 tracing
+        
         // Expand the radical selection to include composite radicals
         val expandedRadicals = expandRadicalSelection(radicals)
+        
         
         // Build query to find kanji that appear in all radical lists
         val placeholders = expandedRadicals.joinToString(",") { "?" }
@@ -1661,6 +1664,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                 // Get expansion for this specific radical
                 val expansionForRadical = expandRadicalSelection(listOf(originalRadical))
                 
+                
                 // Union all kanji sets for radicals that satisfy this original radical
                 var satisfiedKanji = emptySet<String>()
                 for (expandedRadical in expansionForRadical) {
@@ -1668,6 +1672,7 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
                         satisfiedKanji = satisfiedKanji.union(kanjiSet)
                     }
                 }
+                
                 
                 if (satisfiedKanji.isNotEmpty()) {
                     originalRadicalSatisfiedKanji.add(satisfiedKanji)
@@ -1716,6 +1721,63 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
         }
         
         return allRadicals
+    }
+    
+    /**
+     * Get radicals that would produce results when combined with already selected radicals
+     * More efficient version - finds all radicals from kanji that contain ALL selected radicals
+     */
+    fun getValidRadicalsForCombination(selectedRadicals: Set<String>): Set<String> {
+        if (selectedRadicals.isEmpty()) {
+            // If nothing is selected, return empty (caller should handle this case)
+            return emptySet()
+        }
+        
+        val db = readableDatabase
+        
+        // First, get all kanji that contain ALL the selected radicals
+        val kanjiWithSelectedRadicals = getKanjiForMultipleRadicals(selectedRadicals.toList())
+        
+        if (kanjiWithSelectedRadicals.isEmpty()) {
+            // No kanji found with these radicals, only keep selected ones enabled
+            return selectedRadicals
+        }
+        
+        // Now get all radicals from these kanji
+        val validRadicals = mutableSetOf<String>()
+        validRadicals.addAll(selectedRadicals) // Always keep selected radicals enabled
+        
+        val placeholders = kanjiWithSelectedRadicals.joinToString(",") { "?" }
+        val sql = """
+            SELECT $COL_KRM_KANJI, $COL_KRM_COMPONENTS
+            FROM $TABLE_KANJI_RADICAL_MAPPING 
+            WHERE $COL_KRM_KANJI IN ($placeholders)
+        """
+        
+        val cursor = db.rawQuery(sql, kanjiWithSelectedRadicals.toTypedArray())
+        
+        cursor.use {
+            while (it.moveToNext()) {
+                val kanji = it.getString(0)
+                val components = it.getString(1)
+                if (!components.isNullOrBlank()) {
+                    val radicals = components.split(",").map { radical -> radical.trim() }
+                    validRadicals.addAll(radicals)
+                }
+            }
+        }
+        
+        // Add reverse decomposition: if a composite radical is valid, enable its components too
+        val componentsToAdd = mutableSetOf<String>()
+        for (validRadical in validRadicals) {
+            val components = getRadicalComponents(validRadical)
+            if (components.isNotEmpty()) {
+                componentsToAdd.addAll(components)
+            }
+        }
+        validRadicals.addAll(componentsToAdd)
+        
+        return validRadicals
     }
 
     /**

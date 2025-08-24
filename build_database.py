@@ -1697,6 +1697,7 @@ class DatabaseBuilder:
         
         print("🔧 Populating radical decomposition mapping...")
         
+        
         # Chinese → Japanese radical substitutions
         chinese_to_japanese_substitutions = {
             # Fire and line radicals
@@ -1806,8 +1807,38 @@ class DatabaseBuilder:
                     if radical in ['魚', '肉', '鳥', '馬', '丷'] or len(expanded_components) != len(components):
                         print(f"    🎯 Added decomposition: {radical} → {valid_components} (from {components})")
         
+        # Add custom radical decompositions for Unicode variants
+        custom_decompositions = {
+            "⻂": ["⺭", "丶"],  # CJK clothes radical = spirit radical + dot
+            # Add more custom decompositions here as needed
+        }
+        
+        custom_count = 0
+        print("🔧 Adding custom radical decompositions...")
+        for radical, components in custom_decompositions.items():
+            if radical in existing_radicals:
+                # Verify all components exist in our radical system
+                valid_components = [comp for comp in components if comp in existing_radicals]
+                if len(valid_components) == len(components):  # All components are valid
+                    components_str = ",".join(valid_components)
+                    component_count = len(valid_components)
+                    
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO radical_decomposition_mapping (radical, components, component_count)
+                        VALUES (?, ?, ?)
+                    """, (radical, components_str, component_count))
+                    
+                    custom_count += 1
+                    print(f"    ✅ Custom decomposition: {radical} → {valid_components}")
+                else:
+                    print(f"    ⚠️  Skipped {radical} → {components} (invalid components: {set(components) - set(valid_components)})")
+            else:
+                print(f"    ⚠️  Skipped {radical} → {components} (radical not in system)")
+        
         conn.commit()
         print(f"✅ Added {valid_decompositions} radical decompositions from makemeahanzi")
+        if custom_count > 0:
+            print(f"✅ Added {custom_count} custom radical decompositions")
         print(f"✅ Added {corrected_count} manual corrections")
         print(f"🔄 Applied substitutions/expansions to {substitution_count} radicals")
 
