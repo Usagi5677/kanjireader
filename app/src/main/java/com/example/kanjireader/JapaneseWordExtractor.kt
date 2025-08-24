@@ -280,9 +280,13 @@ class JapaneseWordExtractor {
         val results = mutableListOf<WordPosition>()
         val particles = setOf("を", "は", "が", "に", "で", "と", "も", "の", "へ", "から", "まで", "より", "や", "か", "ね", "よ", "わ", "さ", "ぞ", "な", "だ", "です", "ます")
         
+        // First, handle middle dot separators in compound words
+        val textWithSplitCompounds = splitCompoundWords(text)
+        
         // Preprocess text to remove spaces within Japanese words
-        val processedText = reconnectJapaneseWords(text)
+        val processedText = reconnectJapaneseWords(textWithSplitCompounds)
         Log.d(TAG, "Original text: '$text'")
+        Log.d(TAG, "Split compounds: '$textWithSplitCompounds'")
         Log.d(TAG, "Processed text: '$processedText'")
         
         try {
@@ -306,8 +310,8 @@ class JapaneseWordExtractor {
                     continue
                 }
                 
-                // Map back to original text position (accounting for removed spaces)
-                val tokenStart = findOriginalPosition(text, processedText, tokenStartInProcessed, surface)
+                // Map back to original text position (accounting for split compounds and removed spaces)
+                val tokenStart = findOriginalPosition(text, textWithSplitCompounds, processedText, tokenStartInProcessed, surface)
                 if (tokenStart == -1) {
                     Log.w(TAG, "Could not map token '$surface' back to original text")
                     currentPosition = tokenStartInProcessed + surface.length
@@ -385,6 +389,16 @@ class JapaneseWordExtractor {
     }
     
     /**
+     * Split compound words separated by middle dot (・) into individual words
+     * Example: "エレクトロニック・テキスト・センター" -> "エレクトロニック|テキスト|センター"
+     * Using | as a temporary marker that won't be removed by reconnectJapaneseWords
+     */
+    private fun splitCompoundWords(text: String): String {
+        // Replace middle dot with pipe character as temporary marker
+        return text.replace("・", "|")
+    }
+    
+    /**
      * Remove spaces within Japanese words that were incorrectly split by OCR
      * Example: "輝か しい" -> "輝かしい"
      */
@@ -395,8 +409,13 @@ class JapaneseWordExtractor {
         while (i < text.length) {
             val char = text[i]
             
+            // If current char is a pipe marker (word boundary), keep as-is
+            if (char == '|') {
+                result.append(char)
+                i++
+            }
             // If current char is Japanese
-            if (JAPANESE_CHAR.matches(char.toString())) {
+            else if (JAPANESE_CHAR.matches(char.toString())) {
                 result.append(char)
                 i++
                 
@@ -420,7 +439,8 @@ class JapaneseWordExtractor {
             }
         }
         
-        return result.toString()
+        // Replace pipe markers with spaces for word separation
+        return result.toString().replace("|", " ")
     }
     
     /**
@@ -437,68 +457,77 @@ class JapaneseWordExtractor {
     
     /**
      * Map a position in the processed text back to the original text
-     * This accounts for spaces that were removed during processing
+     * This accounts for compound word splitting and spaces that were removed during processing
      */
     private fun findOriginalPosition(
         originalText: String, 
+        splitCompoundsText: String,
         processedText: String, 
         processedPos: Int,
         surface: String
     ): Int {
-        // Simple approach: search for the surface text in the original
-        // starting from an estimated position
-        
-        var originalPos = 0
-        var processedIndex = 0
-        
-        // Map to approximate position first
-        for (i in originalText.indices) {
-            if (processedIndex >= processedPos) {
-                originalPos = i
-                break
-            }
-            
-            val char = originalText[i]
-            if (JAPANESE_CHAR.matches(char.toString())) {
-                processedIndex++
-                // Skip spaces in original that were removed in processed
-                var j = i + 1
-                while (j < originalText.length && originalText[j].isWhitespace()) {
-                    val nextNonSpace = findNextNonSpace(originalText, j)
-                    if (nextNonSpace != -1 && JAPANESE_CHAR.matches(originalText[nextNonSpace].toString())) {
-                        // This space was removed in processing
-                        j = nextNonSpace - 1
-                    } else {
-                        break
-                    }
-                    j++
-                }
-            } else if (!originalText[i].isWhitespace() || 
-                      (i > 0 && !JAPANESE_CHAR.matches(originalText[i-1].toString()))) {
-                processedIndex++
-            }
+        // Search for the surface text in the original text
+        // First try exact match
+        var foundPos = originalText.indexOf(surface)
+        if (foundPos != -1) {
+            return foundPos
         }
         
-        // Now search for the exact surface text near this position
-        // Account for possible spaces within the word in original text
-        val searchStart = maxOf(0, originalPos - 10)
-        val searchEnd = minOf(originalText.length, originalPos + surface.length + 20)
+        // If not found, it might be because the word spans a middle dot
+        // Try to find the word by searching in chunks
+        val searchWindow = 50 // characters
+        val estimatedPos = (processedPos.toFloat() / processedText.length * originalText.length).toInt()
+        val searchStart = maxOf(0, estimatedPos - searchWindow)
+        val searchEnd = minOf(originalText.length, estimatedPos + searchWindow)
         
-        // Try to find exact match first
-        var foundPos = originalText.indexOf(surface, searchStart)
+        // Search within the estimated window
+        foundPos = originalText.indexOf(surface, searchStart)
         if (foundPos != -1 && foundPos < searchEnd) {
             return foundPos
         }
         
-        // Try to find with spaces removed
+        // If still not found, try searching for the word spanning a middle dot
+        // For compound word parts, they might appear after removing the middle dot
         val surfaceNoSpaces = surface.replace(" ", "")
-        for (i in searchStart until searchEnd) {
-            if (matchesWithSpaces(originalText, i, surfaceNoSpaces)) {
+        for (i in searchStart until searchEnd - surfaceNoSpaces.length) {
+            if (matchesIgnoringMiddleDot(originalText, i, surfaceNoSpaces)) {
                 return i
             }
         }
         
         return -1
+    }
+    
+    /**
+     * Check if text at position matches the target string, ignoring middle dots
+     */
+    private fun matchesIgnoringMiddleDot(text: String, startPos: Int, target: String): Boolean {
+        var textPos = startPos
+        var targetPos = 0
+        
+        while (targetPos < target.length && textPos < text.length) {
+            // Skip middle dots in original text
+            if (text[textPos] == '・') {
+                textPos++
+                continue
+            }
+            
+            // Skip spaces in original text
+            while (textPos < text.length && text[textPos].isWhitespace()) {
+                textPos++
+            }
+            
+            if (textPos >= text.length) return false
+            
+            if (text[textPos] != target[targetPos]) {
+                return false
+            }
+            
+            textPos++
+            targetPos++
+        }
+        
+        return targetPos == target.length
     }
     
     /**

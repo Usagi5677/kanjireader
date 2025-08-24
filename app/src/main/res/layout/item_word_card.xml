@@ -34,27 +34,26 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- Word and Reading -->
+            <!-- Word and Reading - Vertical Layout for Long Words -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
+                android:orientation="vertical"
                 android:layout_marginBottom="4dp">
 
                 <TextView
                     android:id="@+id/wordText"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/teal_700"
-                    android:layout_marginEnd="8dp"
+                    android:layout_marginBottom="2dp"
                     tools:text="見る" />
 
                 <TextView
                     android:id="@+id/readingText"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:textSize="14sp"
                     android:textColor="@android:color/darker_gray"
