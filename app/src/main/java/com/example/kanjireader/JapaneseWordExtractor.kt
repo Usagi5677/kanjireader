@@ -285,6 +285,10 @@ class JapaneseWordExtractor {
         
         // Preprocess text to remove spaces within Japanese words
         val processedText = reconnectJapaneseWords(textWithSplitCompounds)
+        
+        // Track word occurrences to find correct instance
+        val wordOccurrenceCount = mutableMapOf<String, Int>()
+        
         Log.d(TAG, "Original text: '$text'")
         Log.d(TAG, "Split compounds: '$textWithSplitCompounds'")
         Log.d(TAG, "Processed text: '$processedText'")
@@ -310,10 +314,14 @@ class JapaneseWordExtractor {
                     continue
                 }
                 
-                // Map back to original text position (accounting for split compounds and removed spaces)
-                val tokenStart = findOriginalPosition(text, textWithSplitCompounds, processedText, tokenStartInProcessed, surface)
+                // Track occurrence count for this word to find the correct instance
+                val currentOccurrence = wordOccurrenceCount.getOrDefault(surface, 0)
+                wordOccurrenceCount[surface] = currentOccurrence + 1
+                
+                // Find the correct occurrence of this word in original text
+                val tokenStart = findNthOccurrence(text, surface, currentOccurrence)
                 if (tokenStart == -1) {
-                    Log.w(TAG, "Could not map token '$surface' back to original text")
+                    Log.w(TAG, "Could not find occurrence #$currentOccurrence of '$surface' in original text")
                     currentPosition = tokenStartInProcessed + surface.length
                     continue
                 }
@@ -456,6 +464,34 @@ class JapaneseWordExtractor {
     }
     
     /**
+     * Find the Nth occurrence of a word in text (0-based indexing)
+     * Returns -1 if the occurrence doesn't exist
+     */
+    private fun findNthOccurrence(text: String, word: String, occurrence: Int): Int {
+        var currentOccurrence = 0
+        var searchStart = 0
+        
+        while (searchStart < text.length) {
+            val foundPos = text.indexOf(word, searchStart)
+            if (foundPos == -1) {
+                // No more occurrences found
+                return -1
+            }
+            
+            if (currentOccurrence == occurrence) {
+                // Found the desired occurrence
+                return foundPos
+            }
+            
+            // Continue searching after this occurrence
+            currentOccurrence++
+            searchStart = foundPos + 1
+        }
+        
+        return -1
+    }
+
+    /**
      * Map a position in the processed text back to the original text
      * This accounts for compound word splitting and spaces that were removed during processing
      */
@@ -466,22 +502,14 @@ class JapaneseWordExtractor {
         processedPos: Int,
         surface: String
     ): Int {
-        // Search for the surface text in the original text
-        // First try exact match
-        var foundPos = originalText.indexOf(surface)
-        if (foundPos != -1) {
-            return foundPos
-        }
-        
-        // If not found, it might be because the word spans a middle dot
-        // Try to find the word by searching in chunks
+        // Estimate the position in original text based on processed text position
         val searchWindow = 50 // characters
         val estimatedPos = (processedPos.toFloat() / processedText.length * originalText.length).toInt()
         val searchStart = maxOf(0, estimatedPos - searchWindow)
         val searchEnd = minOf(originalText.length, estimatedPos + searchWindow)
         
-        // Search within the estimated window
-        foundPos = originalText.indexOf(surface, searchStart)
+        // Search for the surface text within the estimated window (not from beginning)
+        var foundPos = originalText.indexOf(surface, searchStart)
         if (foundPos != -1 && foundPos < searchEnd) {
             return foundPos
         }
