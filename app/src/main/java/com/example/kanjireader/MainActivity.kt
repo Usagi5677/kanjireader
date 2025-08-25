@@ -85,11 +85,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var isCapturing = false
+    private var isGalleryProcessing = false  // Track if we're processing from gallery
 
     // Gallery selection launcher
     private val galleryLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        uri?.let { selectedUri ->
-            processSelectedImage(selectedUri)
+        if (uri != null) {
+            Log.d(TAG, "[GALLERY] Gallery image selected - processing: $uri")
+            processSelectedImage(uri)
+        } else {
+            Log.d(TAG, "[GALLERY] Gallery cancelled")
+            // User cancelled gallery picker - no overlay to hide since we don't show it early
         }
     }
 
@@ -120,9 +125,11 @@ class MainActivity : AppCompatActivity() {
         // Handle intent actions
         when (intent.getStringExtra("action")) {
             "open_gallery" -> {
+                Log.d(TAG, "Intent open_gallery")
                 // Reset any processing state first
                 isCapturing = false
                 resetUIState()
+                
                 galleryLauncher.launch("image/*")
                 
                 // Clear the action so it doesn't interfere with normal camera usage
@@ -157,9 +164,11 @@ class MainActivity : AppCompatActivity() {
         // Handle intent actions when activity is reused
         when (intent?.getStringExtra("action")) {
             "open_gallery" -> {
+                Log.d(TAG, "Intent open_gallery")
                 // Reset any processing state first
                 isCapturing = false
                 resetUIState()
+                
                 galleryLauncher.launch("image/*")
                 
                 // Clear the action so it doesn't interfere with normal camera usage
@@ -276,6 +285,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 R.id.nav_gallery -> {
+                    Log.d(TAG, "Sidebar gallery clicked")
                     galleryLauncher.launch("image/*")
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 }
@@ -438,6 +448,8 @@ class MainActivity : AppCompatActivity() {
             intent.putExtra("bitmap_path", tempFile.absolutePath)
             intent.putExtra("ocr_data_path", jsonFile.absolutePath)
             startActivity(intent)
+            
+            // Don't reset capture state here - let it be handled by the capture completion/error callbacks
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch ImageAnnotationActivity", e)
@@ -697,11 +709,15 @@ class MainActivity : AppCompatActivity() {
 
         val imageCapture = imageCapture ?: return
 
-        // Set capturing flag and disable UI
+        // Set capturing flag and show processing UI immediately
         isCapturing = true
-
-        // Disable capture button during operation
+        
+        // Show processing overlay
+        binding.processingOverlay.visibility = View.VISIBLE
+        
+        // Disable button to prevent multiple clicks
         binding.btnCapture.isEnabled = false
+        binding.btnCapture.alpha = 0.5f  // Visual feedback
 
         // Start the capture process immediately
         performImageCapture()
@@ -747,8 +763,18 @@ class MainActivity : AppCompatActivity() {
             try {
                 Log.d(TAG, "Processing selected image: $uri")
                 
+                // Set processing state
+                isCapturing = true
+                isGalleryProcessing = true  // Flag this as gallery processing
+                
+                // Show processing overlay
+                Log.d(TAG, "[GALLERY] Setting processing overlay to VISIBLE in processSelectedImage")
+                binding.processingOverlay.visibility = View.VISIBLE
+                Log.d(TAG, "[GALLERY] Processing overlay visibility is now: ${binding.processingOverlay.visibility}")
+                
                 // Disable UI during processing
                 binding.btnCapture.isEnabled = false
+                binding.btnCapture.alpha = 0.5f
 
                 // Convert URI to Bitmap
                 val inputStream = contentResolver.openInputStream(uri)
@@ -757,6 +783,9 @@ class MainActivity : AppCompatActivity() {
 
                 if (originalBitmap == null) {
                     Log.e(TAG, "Failed to decode image from URI")
+                    binding.processingOverlay.visibility = View.GONE
+                    isCapturing = false
+                    isGalleryProcessing = false
                     resetUIState()
                     showUserFriendlyError("Failed to load image", "Please try selecting a different image")
                     return@launch
@@ -769,10 +798,14 @@ class MainActivity : AppCompatActivity() {
                 val inputImage = InputImage.fromBitmap(enhancedBitmap, 0)
 
                 // Process with OCR (reuse existing method)
+                Log.d(TAG, "[GALLERY] Starting OCR processing")
                 processImageWithOCR(inputImage, enhancedBitmap, null)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing selected image", e)
+                binding.processingOverlay.visibility = View.GONE
+                isCapturing = false
+                isGalleryProcessing = false
                 resetUIState()
                 showUserFriendlyError("Error processing image", "Please try selecting a different image")
             }
@@ -849,10 +882,14 @@ class MainActivity : AppCompatActivity() {
         recognizer.process(image)
             .addOnSuccessListener { visionText ->
                 val text = visionText.text
-                Log.d(TAG, "Extracted text: '$text'")
+                Log.d(TAG, "[OCR] Extracted text: '$text'")
+                Log.d(TAG, "[OCR] Processing overlay visibility before ViewModel call: ${binding.processingOverlay.visibility}")
 
                 // Pass the OCR result to ViewModel for processing
                 viewModel.handleOcrSuccess(bitmap, visionText)
+                
+                Log.d(TAG, "[OCR] Called viewModel.handleOcrSuccess - overlay should stay visible")
+                Log.d(TAG, "[OCR] Processing overlay visibility after ViewModel call: ${binding.processingOverlay.visibility}")
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Text recognition failed", e)
@@ -869,11 +906,26 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
-        // Reset capture state when returning to main activity
-        if (isCapturing) {
-            Log.d(TAG, "Resetting capture state on resume")
-            isCapturing = false
-            resetUIState()
+        Log.d(TAG, "[RESUME] onResume called - isCapturing=$isCapturing, isGalleryProcessing=$isGalleryProcessing, overlay visibility=${binding.processingOverlay.visibility}")
+        
+        // Only apply delay for gallery processing, not camera captures
+        if (isCapturing || binding.processingOverlay.visibility == View.VISIBLE) {
+            if (isGalleryProcessing) {
+                // Gallery processing needs delay to show overlay properly
+                Log.d(TAG, "[RESUME] Delaying state reset for gallery processing")
+                binding.root.postDelayed({
+                    Log.d(TAG, "[RESUME] Delayed reset - resetting gallery processing state")
+                    isCapturing = false
+                    isGalleryProcessing = false
+                    resetUIState()
+                }, 1000) // 1 second delay for gallery
+            } else {
+                // Camera capture - reset immediately
+                Log.d(TAG, "[RESUME] Immediate reset for camera capture")
+                isCapturing = false
+                isGalleryProcessing = false
+                resetUIState()
+            }
         }
 
         // Dictionary status is now managed by ViewModel
@@ -935,6 +987,7 @@ class MainActivity : AppCompatActivity() {
         // Hide any overlays and restore button states
         binding.processingOverlay.visibility = View.GONE
         binding.btnCapture.isEnabled = true
+        binding.btnCapture.alpha = 1.0f  // Restore full opacity
         binding.btnFlash.isEnabled = true
         binding.btnReadingsList.isEnabled = true
     }

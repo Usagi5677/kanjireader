@@ -56,6 +56,7 @@ class GallerySelectionActivity : AppCompatActivity() {
     private lateinit var japaneseOnlyToggle: MaterialButton
     private lateinit var btnToggleWordList: FloatingActionButton
     private lateinit var selectPhotoButton: MaterialButton
+    private lateinit var processingOverlay: View
 
     // Top popup components
     private lateinit var topPopup: LinearLayout
@@ -186,6 +187,7 @@ class GallerySelectionActivity : AppCompatActivity() {
         japaneseOnlyToggle = findViewById(R.id.japaneseOnlyToggle)
         btnToggleWordList = findViewById(R.id.btnToggleWordList)
         selectPhotoButton = findViewById(R.id.selectPhotoButton)
+        processingOverlay = findViewById(R.id.processingOverlay)
 
         // Top popup components
         topPopup = findViewById<LinearLayout>(R.id.topPopup)
@@ -246,7 +248,8 @@ class GallerySelectionActivity : AppCompatActivity() {
             try {
                 Log.d(TAG, "Processing selected image: $uri")
 
-                // Processing image (no overlay needed with SQLite FTS5)
+                // Show processing overlay
+                processingOverlay.visibility = View.VISIBLE
 
                 // Convert URI to Bitmap
                 val inputStream = contentResolver.openInputStream(uri)
@@ -255,6 +258,7 @@ class GallerySelectionActivity : AppCompatActivity() {
 
                 if (bitmap == null) {
                     Log.e(TAG, "Failed to decode image from URI")
+                    processingOverlay.visibility = View.GONE
                     Toast.makeText(this@GallerySelectionActivity, "Failed to load image", Toast.LENGTH_SHORT).show()
                     return@launch
                 }
@@ -270,6 +274,7 @@ class GallerySelectionActivity : AppCompatActivity() {
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing selected image", e)
+                processingOverlay.visibility = View.GONE
                 Toast.makeText(this@GallerySelectionActivity, "Error processing image", Toast.LENGTH_SHORT).show()
             }
         }
@@ -285,7 +290,8 @@ class GallerySelectionActivity : AppCompatActivity() {
                 val text = visionText.text
                 Log.d(TAG, "Extracted text: '$text'")
                 
-                // Processing complete
+                // Hide processing overlay
+                processingOverlay.visibility = View.GONE
                 
                 if (text.isBlank()) {
                     Toast.makeText(this, "No text found in image", Toast.LENGTH_SHORT).show()
@@ -297,6 +303,8 @@ class GallerySelectionActivity : AppCompatActivity() {
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Text recognition failed", e)
+                // Hide processing overlay on error
+                processingOverlay.visibility = View.GONE
                 Toast.makeText(this, "Text recognition failed", Toast.LENGTH_SHORT).show()
             }
     }

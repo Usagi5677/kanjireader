@@ -355,6 +355,12 @@ class JapaneseWordExtractor {
     private fun groupRelatedTokens(tokens: List<WordPosition>, text: String): List<WordPosition> {
         if (tokens.isEmpty()) return tokens
         
+        // Debug: Check if we have the problematic tokens
+        val hasProblematicTokens = tokens.any { it.word == "考え" || it.word == "思い" }
+        if (hasProblematicTokens) {
+            Log.d("TokenGroup", "Found tokens to debug: ${tokens.map { "${it.word}(${it.startPosition}-${it.endPosition})" }}")
+        }
+        
         // Token grouping process
         
         val grouped = mutableListOf<WordPosition>()
@@ -426,6 +432,12 @@ class JapaneseWordExtractor {
                 
                 // Group the tokens into a single word
                 
+                // Debug logging for merged tokens containing our problematic cases
+                if (groupCandidates.any { it.first.word == "考え" || it.first.word == "思い" }) {
+                    val tokenWords = groupCandidates.map { it.first.word }.joinToString("+")
+                    Log.d("TokenGroup", "Created merged token: $tokenWords → $groupedWord")
+                }
+                
                 grouped.add(WordPosition(
                     word = groupedWord,
                     startPosition = firstToken.startPosition,
@@ -437,6 +449,10 @@ class JapaneseWordExtractor {
                 i = j // Skip all grouped tokens
             } else {
                 // Single token, add as-is
+                // Debug for ungrouped problematic tokens
+                if (currentToken.word == "考え" || currentToken.word == "思い") {
+                    Log.d("TokenGroup", "Token ${currentToken.word} was NOT grouped")
+                }
                 grouped.add(currentToken)
                 i++
             }
@@ -463,6 +479,11 @@ class JapaneseWordExtractor {
         val pos2_2 = token2.partOfSpeechLevel2
         val pos2_3 = token2.partOfSpeechLevel3
         
+        // Debug logging for specific cases
+        if (wordPos1.word == "考え" || wordPos1.word == "思い") {
+            Log.d("TokenGroup", "Checking grouping: ${wordPos1.word}(${pos1_1},${pos1_2}) + ${wordPos2.word}(${pos2_1},${pos2_2})")
+        }
+        
         // Pattern 1: Verb with タ接続 + て + auxiliary verb (like 吊っ-て-いる)
         if (pos1_1 == "動詞" && pos1_6 == "連用タ接続" && 
             wordPos2.word == "て" && pos2_1 == "助詞") {
@@ -483,6 +504,9 @@ class JapaneseWordExtractor {
         
         // Pattern 3: Verb stem + でしょう/ます/だ/た etc. (polite forms)
         if (pos1_1 == "動詞" && (wordPos2.word in setOf("ます", "だ", "です", "でしょう", "た"))) {
+            if (wordPos1.word == "考え" || wordPos1.word == "思い") {
+                Log.d("TokenGroup", "Pattern 3 matched: ${wordPos1.word} + ${wordPos2.word}")
+            }
             return true
         }
         
@@ -496,6 +520,11 @@ class JapaneseWordExtractor {
         if (pos1_1 == "形容詞" && pos1_2 == "自立" && 
             (wordPos2.word.endsWith("ない") || wordPos2.word.endsWith("なかっ"))) {
             return true
+        }
+        
+        // Debug logging for specific cases when no pattern matches
+        if (wordPos1.word == "考え" || wordPos1.word == "思い") {
+            Log.d("TokenGroup", "No pattern matched for: ${wordPos1.word} + ${wordPos2.word}")
         }
         
         return false
