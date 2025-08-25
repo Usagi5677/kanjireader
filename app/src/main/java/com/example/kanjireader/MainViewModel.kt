@@ -23,8 +23,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // LiveData for UI state
-    private val _loadingState = MutableLiveData<LoadingState>()
-    val loadingState: LiveData<LoadingState> = _loadingState
 
     private val _cameraState = MutableLiveData<CameraState>()
     val cameraState: LiveData<CameraState> = _cameraState
@@ -51,7 +49,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var morphologyAnalyzer: MorphologicalAnalyzer? = null
 
     init {
-        _loadingState.value = LoadingState.Loading("", "")
         _cameraState.value = CameraState.Initializing
         _isDictionaryReady.value = false
         _readingsButtonEnabled.value = false
@@ -131,7 +128,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         Log.e(TAG, "Image processing failed", error)
         val errorState = when (error) {
             is OutOfMemoryError -> ErrorState.OutOfMemory("Out of memory")
-            is SecurityException -> ErrorState.CameraPermissionDenied("Camera access denied")
+            is SecurityException -> ErrorState.ImageProcessingFailed("Security exception occurred")
             else -> ErrorState.ImageProcessingFailed("Image processing failed")
         }
         _errorState.value = errorState
@@ -157,11 +154,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Data classes for state management
-    sealed class LoadingState {
-        data class Loading(val title: String, val subtitle: String) : LoadingState()
-        object Complete : LoadingState()
-        data class Error(val message: String) : LoadingState()
-    }
 
     sealed class CameraState {
         object Initializing : CameraState()
@@ -174,7 +166,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         data class ImageProcessingFailed(val message: String) : ErrorState()
         data class OcrFailed(val message: String) : ErrorState()
         data class OutOfMemory(val message: String) : ErrorState()
-        data class CameraPermissionDenied(val message: String) : ErrorState()
         data class NetworkError(val message: String) : ErrorState()
     }
 

@@ -111,12 +111,10 @@ class DictionaryActivity : AppCompatActivity() {
                     binding.searchPromptText.text = getString(R.string.search_hint)
                 }
                 
-                // Show DAT status for debugging
-                val datStatus = viewModel.getDATSystemStatus()
-                Log.d(TAG, "Dictionary ready! DAT Status: $datStatus")
+                Log.d(TAG, "Dictionary ready! FTS5 search system active")
                 
-                // Optional: Show toast if DAT is active
-                if (datStatus.contains("DAT")) {
+                // FTS5 is now always active
+                if (false) {
                     Toast.makeText(this, "Ultra-fast DAT search active!", Toast.LENGTH_SHORT).show()
                 }
             } else {

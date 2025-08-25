@@ -140,7 +140,6 @@ class MainActivity : AppCompatActivity() {
                 
                 // Ensure camera preview is visible
                 binding.previewView.visibility = View.VISIBLE
-                binding.loadingOverlay.visibility = View.GONE
                 
                 // Clear the action
                 intent.removeExtra("action")
@@ -178,7 +177,6 @@ class MainActivity : AppCompatActivity() {
                 
                 // Ensure camera preview is visible
                 binding.previewView.visibility = View.VISIBLE
-                binding.loadingOverlay.visibility = View.GONE
                 
                 // Clear the action
                 intent.removeExtra("action")
@@ -187,27 +185,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupViewModelObservers() {
-        // Observe loading state
-        viewModel.loadingState.observe(this) { loadingState ->
-            when (loadingState) {
-                is MainViewModel.LoadingState.Loading -> {
-                    showLoadingScreen()
-                    updateLoadingText(loadingState.title, loadingState.subtitle)
-                }
-                is MainViewModel.LoadingState.Complete -> {
-                    // Loading complete will be handled by camera state
-                }
-                is MainViewModel.LoadingState.Error -> {
-                    showLoadingError(loadingState.message)
-                }
-            }
-        }
-
         // Observe camera state
         viewModel.cameraState.observe(this) { cameraState ->
             when (cameraState) {
                 is MainViewModel.CameraState.Initializing -> {
-                    showLoadingScreen()
+                    // Camera initializing - just wait
                 }
                 is MainViewModel.CameraState.Ready -> {
                     setupCameraUI()
@@ -246,9 +228,6 @@ class MainActivity : AppCompatActivity() {
                     is MainViewModel.ErrorState.OutOfMemory -> {
                         showUserFriendlyError(getString(R.string.error_out_of_memory), getString(R.string.error_close_other_apps))
                     }
-                    is MainViewModel.ErrorState.CameraPermissionDenied -> {
-                        showUserFriendlyError(getString(R.string.error_camera_access_denied), getString(R.string.error_check_camera_permissions))
-                    }
                     is MainViewModel.ErrorState.NetworkError -> {
                         showUserFriendlyError(getString(R.string.error_network), getString(R.string.error_check_internet_connection))
                     }
@@ -267,8 +246,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupNavigationDrawer() {
-        // Initially lock the drawer during loading
-        binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
+        // Drawer is unlocked from the start since SQLite is ready immediately
+        binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED)
 
         // Set navigation item listener
         binding.navigationView.setNavigationItemSelectedListener { menuItem ->
@@ -287,7 +266,6 @@ class MainActivity : AppCompatActivity() {
                     if (allPermissionsGranted()) {
                         // Ensure camera is started and preview is visible
                         binding.previewView.visibility = View.VISIBLE
-                        binding.loadingOverlay.visibility = View.GONE
                         startCamera()
                         binding.drawerLayout.closeDrawer(GravityCompat.START)
                     } else {
@@ -386,17 +364,13 @@ class MainActivity : AppCompatActivity() {
     private fun setupCameraUI() {
         Log.d(TAG, "Setting up camera UI...")
 
-        // Hide loading screen
-        binding.loadingOverlay.visibility = View.GONE
-
         // Show camera UI
         binding.previewView.visibility = View.VISIBLE
         binding.btnCapture.visibility = View.VISIBLE
         binding.btnFlash.visibility = View.VISIBLE
         binding.btnMenu.visibility = View.VISIBLE
 
-        // UNLOCK THE DRAWER NOW THAT CAMERA IS READY
-        binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED)
+        // Drawer is already unlocked from the start
 
         // Show readings button but keep it disabled initially
         binding.btnReadingsList.visibility = View.VISIBLE
@@ -833,7 +807,7 @@ class MainActivity : AppCompatActivity() {
             
             when (e) {
                 is OutOfMemoryError -> showUserFriendlyError(getString(R.string.error_out_of_memory), getString(R.string.error_close_other_apps))
-                is SecurityException -> showUserFriendlyError(getString(R.string.error_camera_access_denied), getString(R.string.error_check_camera_permissions))
+                is SecurityException -> showUserFriendlyError("Security error", "Please try again")
                 else -> showUserFriendlyError(getString(R.string.error_image_processing_failed), getString(R.string.error_please_try_again))
             }
         } finally {
@@ -977,33 +951,15 @@ class MainActivity : AppCompatActivity() {
         activityResultLauncher.launch(REQUIRED_PERMISSIONS)
     }
 
-    private fun showCameraPermissionDeniedState() {
-        // Hide camera preview and show permission denied message
-        binding.previewView.visibility = View.GONE
-        binding.loadingOverlay.visibility = View.VISIBLE
-        
-        updateLoadingText(
-            "Camera Permission Required", 
-            "Camera access is needed to capture photos. You can still use gallery to select existing photos, or grant camera permission via the sidebar menu."
-        )
-        
-        // Show options: Try again or use gallery
-        Toast.makeText(this, 
-            "Camera permission denied. Tap 'Camera' in the sidebar to try again, or use 'Gallery' to select photos.", 
-            Toast.LENGTH_LONG
-        ).show()
-        
-        // Keep the app running - user can still access dictionary, saved words, and gallery
-        Log.d(TAG, "Camera permission denied - showing alternative options")
-    }
-
     private val activityResultLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions[Manifest.permission.CAMERA] == true) {
             startCamera()
         } else {
-            showCameraPermissionDeniedState()
+            // Camera permission denied - user can still use gallery or request again later
+            Log.d(TAG, "Camera permission denied")
+            Toast.makeText(this, "Camera permission denied", Toast.LENGTH_SHORT).show()
         }
     }
 }

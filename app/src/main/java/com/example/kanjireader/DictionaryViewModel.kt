@@ -17,7 +17,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DictionaryViewModel(application: Application) : AndroidViewModel(application), DictionaryStateObserver {
 
     companion object {
@@ -130,10 +132,6 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         // Update StateFlow value - this will trigger debounced search automatically
         _searchQuery.value = trimmedQuery
     }
-
-    // In DictionaryViewModel.kt
-
-    // In DictionaryViewModel.kt
 
     private suspend fun performSearch(query: String) {
         val trimmedQuery = query.trim()
@@ -396,12 +394,6 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         DictionaryStateManager.removeObserver(this)
     }
 
-    /**
-     * Get DAT system status for debugging
-     */
-    fun getDATSystemStatus(): String {
-        return "FTS5 | FTS5 search system active"
-    }
 
     // UI States
     sealed class UiState {
