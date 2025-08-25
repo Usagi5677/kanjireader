@@ -246,8 +246,7 @@ class GallerySelectionActivity : AppCompatActivity() {
             try {
                 Log.d(TAG, "Processing selected image: $uri")
 
-                // Show processing state
-                showProcessing(true)
+                // Processing image (no overlay needed with SQLite FTS5)
 
                 // Convert URI to Bitmap
                 val inputStream = contentResolver.openInputStream(uri)
@@ -256,7 +255,6 @@ class GallerySelectionActivity : AppCompatActivity() {
 
                 if (bitmap == null) {
                     Log.e(TAG, "Failed to decode image from URI")
-                    showProcessing(false)
                     Toast.makeText(this@GallerySelectionActivity, "Failed to load image", Toast.LENGTH_SHORT).show()
                     return@launch
                 }
@@ -272,7 +270,6 @@ class GallerySelectionActivity : AppCompatActivity() {
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing selected image", e)
-                showProcessing(false)
                 Toast.makeText(this@GallerySelectionActivity, "Error processing image", Toast.LENGTH_SHORT).show()
             }
         }
@@ -288,7 +285,7 @@ class GallerySelectionActivity : AppCompatActivity() {
                 val text = visionText.text
                 Log.d(TAG, "Extracted text: '$text'")
                 
-                showProcessing(false)
+                // Processing complete
                 
                 if (text.isBlank()) {
                     Toast.makeText(this, "No text found in image", Toast.LENGTH_SHORT).show()
@@ -300,7 +297,6 @@ class GallerySelectionActivity : AppCompatActivity() {
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Text recognition failed", e)
-                showProcessing(false)
                 Toast.makeText(this, "Text recognition failed", Toast.LENGTH_SHORT).show()
             }
     }
@@ -367,12 +363,6 @@ class GallerySelectionActivity : AppCompatActivity() {
         ocrTextTitle.text = getString(R.string.select_photo_from_gallery)
     }
 
-    private fun showProcessing(show: Boolean) {
-        if (show) {
-            ocrTextTitle.text = getString(R.string.processing_image)
-        }
-        // You could add a progress indicator here if needed
-    }
 
     // Include the other necessary methods from ImageAnnotationActivity
     // (toggleJapaneseOnlyMode, toggleFuriganaMode, copyOcrTextToClipboard, etc.)

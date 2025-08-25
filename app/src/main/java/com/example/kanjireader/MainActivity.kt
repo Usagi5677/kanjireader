@@ -122,7 +122,7 @@ class MainActivity : AppCompatActivity() {
             "open_gallery" -> {
                 // Reset any processing state first
                 isCapturing = false
-                showProcessing(false)
+                resetUIState()
                 galleryLauncher.launch("image/*")
                 
                 // Clear the action so it doesn't interfere with normal camera usage
@@ -131,7 +131,7 @@ class MainActivity : AppCompatActivity() {
             "reset_camera" -> {
                 // Reset any lingering state and ensure camera is ready
                 isCapturing = false
-                showProcessing(false)
+                resetUIState()
                 viewModel.resetCameraState()
                 viewModel.clearError()
                 
@@ -159,7 +159,7 @@ class MainActivity : AppCompatActivity() {
             "open_gallery" -> {
                 // Reset any processing state first
                 isCapturing = false
-                showProcessing(false)
+                resetUIState()
                 galleryLauncher.launch("image/*")
                 
                 // Clear the action so it doesn't interfere with normal camera usage
@@ -168,7 +168,7 @@ class MainActivity : AppCompatActivity() {
             "reset_camera" -> {
                 // Reset any lingering state and ensure camera is ready
                 isCapturing = false
-                showProcessing(false)
+                resetUIState()
                 viewModel.resetCameraState()
                 viewModel.clearError()
                 
@@ -195,7 +195,8 @@ class MainActivity : AppCompatActivity() {
                     setupCameraUI()
                 }
                 is MainViewModel.CameraState.Processing -> {
-                    showProcessing(true)
+                    binding.processingOverlay.visibility = View.VISIBLE
+                    binding.btnCapture.isEnabled = false
                 }
             }
         }
@@ -255,7 +256,7 @@ class MainActivity : AppCompatActivity() {
                 R.id.nav_camera -> {
                     // Reset any lingering state and ensure camera is ready
                     isCapturing = false
-                    showProcessing(false)
+                    resetUIState()
                     viewModel.resetCameraState()
                     viewModel.clearError()
                     
@@ -699,8 +700,8 @@ class MainActivity : AppCompatActivity() {
         // Set capturing flag and disable UI
         isCapturing = true
 
-        // Always show processing message and disable button
-        showProcessing(true)
+        // Disable capture button during operation
+        binding.btnCapture.isEnabled = false
 
         // Start the capture process immediately
         performImageCapture()
@@ -711,7 +712,7 @@ class MainActivity : AppCompatActivity() {
         val imageCapture = imageCapture ?: run {
             // Reset state on error
             isCapturing = false
-            showProcessing(false)
+            resetUIState()
             return
         }
 
@@ -733,7 +734,7 @@ class MainActivity : AppCompatActivity() {
 
                     // Reset state on capture error
                     isCapturing = false
-                    showProcessing(false)
+                    resetUIState()
 
                     Toast.makeText(this@MainActivity, "Capture failed: ${exception.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -746,8 +747,8 @@ class MainActivity : AppCompatActivity() {
             try {
                 Log.d(TAG, "Processing selected image: $uri")
                 
-                // Show processing state
-                showProcessing(true)
+                // Disable UI during processing
+                binding.btnCapture.isEnabled = false
 
                 // Convert URI to Bitmap
                 val inputStream = contentResolver.openInputStream(uri)
@@ -756,7 +757,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (originalBitmap == null) {
                     Log.e(TAG, "Failed to decode image from URI")
-                    showProcessing(false)
+                    resetUIState()
                     showUserFriendlyError("Failed to load image", "Please try selecting a different image")
                     return@launch
                 }
@@ -772,7 +773,7 @@ class MainActivity : AppCompatActivity() {
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing selected image", e)
-                showProcessing(false)
+                resetUIState()
                 showUserFriendlyError("Error processing image", "Please try selecting a different image")
             }
         }
@@ -795,7 +796,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 // Reset state on processing error
                 isCapturing = false
-                showProcessing(false)
+                resetUIState()
                 showUserFriendlyError(getString(R.string.error_image_process_failed), getString(R.string.error_try_another_photo))
             }
         } catch (e: Exception) {
@@ -803,7 +804,7 @@ class MainActivity : AppCompatActivity() {
 
             // Reset state on processing error
             isCapturing = false
-            showProcessing(false)
+            resetUIState()
             
             when (e) {
                 is OutOfMemoryError -> showUserFriendlyError(getString(R.string.error_out_of_memory), getString(R.string.error_close_other_apps))
@@ -858,7 +859,7 @@ class MainActivity : AppCompatActivity() {
 
                 // Reset state on OCR error
                 isCapturing = false
-                showProcessing(false)
+                resetUIState()
                 showUserFriendlyError(getString(R.string.error_text_recognition_failed), getString(R.string.error_no_japanese_text_detected))
             }
     }
@@ -872,7 +873,7 @@ class MainActivity : AppCompatActivity() {
         if (isCapturing) {
             Log.d(TAG, "Resetting capture state on resume")
             isCapturing = false
-            showProcessing(false)
+            resetUIState()
         }
 
         // Dictionary status is now managed by ViewModel
@@ -930,17 +931,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showProcessing(show: Boolean) {
-        binding.processingOverlay.visibility = if (show) View.VISIBLE else View.GONE
-
-        // Disable capture button during processing
-        binding.btnCapture.isEnabled = !show
-
-        // Also disable other buttons to prevent UI issues
-        binding.btnFlash.isEnabled = !show
-        binding.btnReadingsList.isEnabled = !show  // Only enable if dictionaries ready
-
-        Log.d(TAG, "Processing overlay: ${if (show) "SHOWN" else "HIDDEN"}, buttons enabled: ${!show}")
+    private fun resetUIState() {
+        // Hide any overlays and restore button states
+        binding.processingOverlay.visibility = View.GONE
+        binding.btnCapture.isEnabled = true
+        binding.btnFlash.isEnabled = true
+        binding.btnReadingsList.isEnabled = true
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
