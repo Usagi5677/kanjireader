@@ -167,8 +167,9 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
     }
 
     private fun loadTextAndWords() {
-        // Set up text selection view
-        binding.textSelectionView.setText(paragraphText, null)
+        // Stitch Japanese words that are broken across lines and set up text selection view
+        val stitchedText = stitchBrokenJapaneseWords(paragraphText)
+        binding.textSelectionView.setText(stitchedText, null)
         
         // Set up text selection callback to highlight corresponding word card and open detail
         binding.textSelectionView.onTextSelected = { selectedText ->
@@ -182,7 +183,7 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                 Log.d(TAG, "Extracting words from paragraph...")
                 
                 val repository = DictionaryRepository.getInstance(this@DictionaryTextReaderActivity)
-                val wordPositions = wordExtractor.extractWordsWithKuromoji(paragraphText, repository)
+                val wordPositions = wordExtractor.extractWordsWithKuromoji(stitchedText, repository)
                 
                 Log.d(TAG, "Extracted ${wordPositions.size} words")
                 
@@ -639,5 +640,77 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                 super.onBackPressed()
             }
         }
+    }
+    
+    /**
+     * Stitch Japanese words that are broken across lines due to OCR line breaks
+     * Example: "輝か しい" -> "輝かしい"
+     */
+    private fun stitchBrokenJapaneseWords(text: String): String {
+        if (text.isBlank()) return text
+        
+        val result = StringBuilder()
+        var i = 0
+        
+        while (i < text.length) {
+            val char = text[i]
+            
+            // Add current character
+            result.append(char)
+            
+            // If current char is Japanese, check if we should remove following whitespace
+            if (isJapaneseChar(char.toString())) {
+                i++
+                
+                // Skip any whitespace/line breaks if the next non-whitespace char is also Japanese
+                while (i < text.length && isWhitespaceOrLineBreak(text[i])) {
+                    val nextNonWhitespace = findNextNonWhitespace(text, i)
+                    if (nextNonWhitespace != -1 && isJapaneseChar(text[nextNonWhitespace].toString())) {
+                        // Skip whitespace - it's between Japanese characters
+                        i = nextNonWhitespace
+                        break
+                    } else {
+                        // Keep whitespace - it's between Japanese and non-Japanese
+                        result.append(' ') // Normalize to single space
+                        i++
+                        break
+                    }
+                }
+            } else {
+                i++
+            }
+        }
+        
+        return result.toString()
+    }
+    
+    /**
+     * Check if character is Japanese (kanji, hiragana, or katakana)
+     */
+    private fun isJapaneseChar(char: String): Boolean {
+        if (char.isEmpty()) return false
+        val codePoint = char.codePointAt(0)
+        return (codePoint in 0x3040..0x309F) || // Hiragana
+                (codePoint in 0x30A0..0x30FF) || // Katakana
+                (codePoint in 0x4E00..0x9FAF)    // Kanji
+    }
+    
+    /**
+     * Check if character is whitespace or line break
+     */
+    private fun isWhitespaceOrLineBreak(char: Char): Boolean {
+        return char.isWhitespace() || char == '\n' || char == '\r' || char == '\u3000'
+    }
+    
+    /**
+     * Find next non-whitespace character position
+     */
+    private fun findNextNonWhitespace(text: String, startPos: Int): Int {
+        for (i in startPos until text.length) {
+            if (!isWhitespaceOrLineBreak(text[i])) {
+                return i
+            }
+        }
+        return -1
     }
 }

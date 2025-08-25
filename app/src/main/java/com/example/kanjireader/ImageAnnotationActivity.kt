@@ -538,10 +538,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
                 // Clean up temporary file
                 File(filePath).delete()
 
-                // Auto-save extracted words after OCR text is displayed
-                lifecycleScope.launch {
-                    saveExtractedWords()
-                }
+                // Word extraction complete - no auto-save needed
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load OCR data from file", e)
                 showImageError(getString(R.string.error_failed_to_process_text_data), getString(R.string.error_image_no_readable_text))
@@ -555,11 +552,14 @@ class ImageAnnotationActivity : AppCompatActivity() {
             return
         }
         
-        val textToShow = if (isJapaneseOnlyMode) {
+        val rawText = if (isJapaneseOnlyMode) {
             getFilteredJapaneseText()
         } else {
             originalOcrText.replace(Regex("\\s+"), " ").trim()
         }
+        
+        // Stitch Japanese words that are broken across lines
+        val textToShow = stitchBrokenJapaneseWords(rawText)
 
         if (textToShow.isBlank()) {
             textSelectionView.setText("No text was detected in this image.", null)
@@ -572,7 +572,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
             textSelectionView.setShowFurigana(true)
         }
 
-        // Extract words and update word cards
+        // Extract words and update word cards using the SAME text as display
         extractAndDisplayWords(textToShow)
 
         Log.d(TAG, "Displayed text (Japanese only: $isJapaneseOnlyMode, Furigana: $isFuriganaMode)")
@@ -591,7 +591,8 @@ class ImageAnnotationActivity : AppCompatActivity() {
                 // Get dictionary repository
                 val repository = DictionaryRepository.getInstance(this@ImageAnnotationActivity)
                 
-                // Extract words using Kuromoji for proper segmentation
+                // CRITICAL FIX: Use the SAME text that was passed in (already calculated in updateOcrTextDisplay)
+                // This ensures perfect alignment between display and extraction
                 val wordPositions = wordExtractor?.extractWordsWithKuromoji(text, repository) ?: emptyList()
                 Log.d(TAG, "Extracted ${wordPositions.size} words using Kuromoji")
                 
@@ -1532,101 +1533,8 @@ class ImageAnnotationActivity : AppCompatActivity() {
         Log.d(TAG, "Top popup, bottom half, and OCR text container hidden")
     }
 
-    private suspend fun saveExtractedWords() {
-        Log.d(TAG, "Starting to save extracted words...")
 
-        val wordsToSave = mutableListOf<WordResult>()
-        val savedKeys = mutableSetOf<String>() // Track what we've already saved
 
-        // Get the text to process
-        val textToProcess = if (isJapaneseOnlyMode) {
-            getFilteredJapaneseText()
-        } else {
-            originalOcrText.replace(Regex("\\s+"), " ").trim()
-        }
-
-        // Remove all whitespace between Japanese characters
-        val cleanedText = removeWhitespaceBetweenJapanese(textToProcess)
-
-        if (cleanedText.isBlank()) {
-            Log.d(TAG, "No text to process for saving")
-            return
-        }
-
-        val repository = DictionaryRepository.getInstance(this)
-        if (repository == null) {
-            Log.w(TAG, "Dictionary repository not available, cannot save words")
-            return
-        }
-
-        // Process text character by character
-        var currentPos = 0
-
-        while (currentPos < cleanedText.length) {
-            // Skip non-Japanese characters
-            if (!isJapaneseChar(cleanedText[currentPos].toString())) {
-                currentPos++
-                continue
-            }
-
-            // Find the longest word starting at this position
-            val result = findLongestValidWord(cleanedText, currentPos)
-
-            if (result != null) {
-                // Create a unique key to avoid duplicates
-                val key = "${result.wordResult.kanji ?: ""}|${result.wordResult.reading}"
-
-                if (key !in savedKeys) {
-                    wordsToSave.add(result.wordResult)
-                    savedKeys.add(key)
-                }
-
-                currentPos += result.length
-            } else {
-                currentPos++
-            }
-        }
-
-        // Save all found words WITHOUT showing toast
-        if (wordsToSave.isNotEmpty()) {
-            ReadingsListManager.addWords(wordsToSave)
-        }
-    }
-
-    // Add this helper method
-    private fun removeWhitespaceBetweenJapanese(text: String): String {
-        val result = StringBuilder()
-        var i = 0
-
-        while (i < text.length) {
-            val char = text[i]
-
-            // Always add non-whitespace characters
-            if (!char.isWhitespace()) {
-                result.append(char)
-            } else {
-                // For whitespace, only add if it's NOT between two Japanese characters
-                val prevIsJapanese = i > 0 && isJapaneseChar(text[i - 1].toString())
-                val nextIsJapanese = i < text.length - 1 && isJapaneseChar(text[i + 1].toString())
-
-                if (!prevIsJapanese || !nextIsJapanese) {
-                    result.append(char)
-                }
-                // Skip whitespace between Japanese characters
-            }
-
-            i++
-        }
-
-        return result.toString()
-    }
-
-    private suspend fun findLongestValidWord(text: String, startPos: Int): AutoSaveWordResult? {
-        // Auto-save functionality simplified for SQLite mode
-        // For now, disable complex auto-save word detection to focus on main functionality
-        // TODO: Implement SQLite-based auto-save word detection if needed
-        return null
-    }
 
     // Also update showUnifiedWordDisplay to remove logging:
     private fun showUnifiedWordDisplay(
@@ -1677,9 +1585,6 @@ class ImageAnnotationActivity : AppCompatActivity() {
     }
 
 
-    private fun isJapaneseChar(char: String): Boolean {
-        return isKanji(char) || isHiragana(char) || isKatakana(char)
-    }
     // Find the longest VALID word (strict matching)
 
 
@@ -1864,6 +1769,78 @@ class ImageAnnotationActivity : AppCompatActivity() {
         KANJI, HIRAGANA, KATAKANA, OTHER
     }
 
+
+    /**
+     * Stitch Japanese words that are broken across lines due to OCR line breaks
+     * Example: "輝か しい" -> "輝かしい"
+     */
+    private fun stitchBrokenJapaneseWords(text: String): String {
+        if (text.isBlank()) return text
+        
+        val result = StringBuilder()
+        var i = 0
+        
+        while (i < text.length) {
+            val char = text[i]
+            
+            // Add current character
+            result.append(char)
+            
+            // If current char is Japanese, check if we should remove following whitespace
+            if (isJapaneseChar(char.toString())) {
+                i++
+                
+                // Skip any whitespace/line breaks if the next non-whitespace char is also Japanese
+                while (i < text.length && isWhitespaceOrLineBreak(text[i])) {
+                    val nextNonWhitespace = findNextNonWhitespace(text, i)
+                    if (nextNonWhitespace != -1 && isJapaneseChar(text[nextNonWhitespace].toString())) {
+                        // Skip whitespace - it's between Japanese characters
+                        i = nextNonWhitespace
+                        break
+                    } else {
+                        // Keep whitespace - it's between Japanese and non-Japanese
+                        result.append(' ') // Normalize to single space
+                        i++
+                        break
+                    }
+                }
+            } else {
+                i++
+            }
+        }
+        
+        return result.toString()
+    }
+    
+    /**
+     * Check if character is Japanese (kanji, hiragana, or katakana)
+     */
+    private fun isJapaneseChar(char: String): Boolean {
+        if (char.isEmpty()) return false
+        val codePoint = char.codePointAt(0)
+        return (codePoint in 0x3040..0x309F) || // Hiragana
+                (codePoint in 0x30A0..0x30FF) || // Katakana
+                (codePoint in 0x4E00..0x9FAF)    // Kanji
+    }
+    
+    /**
+     * Check if character is whitespace or line break
+     */
+    private fun isWhitespaceOrLineBreak(char: Char): Boolean {
+        return char.isWhitespace() || char == '\n' || char == '\r' || char == '\u3000'
+    }
+    
+    /**
+     * Find next non-whitespace character position
+     */
+    private fun findNextNonWhitespace(text: String, startPos: Int): Int {
+        for (i in startPos until text.length) {
+            if (!isWhitespaceOrLineBreak(text[i])) {
+                return i
+            }
+        }
+        return -1
+    }
 
     private fun showImageError(title: String, message: String) {
         runOnUiThread {

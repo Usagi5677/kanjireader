@@ -53,7 +53,6 @@ class JapaneseWordExtractor {
             }
         }
 
-        Log.d(TAG, "Extracted ${words.size} word candidates")
         return words
     }
 
@@ -74,7 +73,6 @@ class JapaneseWordExtractor {
             word.any { char -> KANJI_RANGE.matches(char.toString()) }
         }.toSet()
 
-        Log.d(TAG, "Filtered to ${kanjiWords.size} kanji-containing words")
         return kanjiWords
     }
 
@@ -117,7 +115,6 @@ class JapaneseWordExtractor {
             }
         }
 
-        Log.d(TAG, "Extracted ${words.size} word positions")
         return words
     }
 
@@ -127,7 +124,9 @@ class JapaneseWordExtractor {
     data class WordPosition(
         val word: String,
         val startPosition: Int,
-        val endPosition: Int
+        val endPosition: Int,
+        val sequenceId: Int = 0,  // Unique identifier for this word instance
+        val kuromojiToken: com.atilika.kuromoji.ipadic.Token? = null  // Store original Kuromoji token
     )
 
     /**
@@ -158,7 +157,6 @@ class JapaneseWordExtractor {
             .replace(Regex("\\s+"), " ")
             .trim()
 
-        Log.d(TAG, "Cleaned OCR text: '$cleaned'")
         return cleaned
     }
 
@@ -183,7 +181,6 @@ class JapaneseWordExtractor {
     fun extractMixedScriptWords(text: String): Set<String> {
         val words = mutableSetOf<String>()
         
-        Log.d(TAG, "Extracting mixed script words from: '$text'")
         
         // First, extract pure Japanese words
         val japaneseMatches = JAPANESE_WORD_PATTERN.findAll(text)
@@ -211,11 +208,9 @@ class JapaneseWordExtractor {
             val hiraganaWord = romajiConverter.toHiraganaWithParticles(romajiWord)
             if (hiraganaWord != romajiWord) {
                 words.add(hiraganaWord)
-                Log.d(TAG, "Converted romaji: '$romajiWord' -> '$hiraganaWord'")
             }
         }
         
-        Log.d(TAG, "Extracted ${words.size} mixed script words")
         return words
     }
     
@@ -227,26 +222,7 @@ class JapaneseWordExtractor {
         return romajiConverter.convertMixedScript(text)
     }
     
-    /**
-     * Extract and convert romaji words to their hiragana equivalents
-     * Useful for dictionary lookup
-     */
-    fun extractAndConvertRomajiWords(text: String): List<Pair<String, String>> {
-        val results = mutableListOf<Pair<String, String>>()
-        
-        val romajiMatches = ROMAJI_WORD_PATTERN.findAll(text)
-        for (match in romajiMatches) {
-            val romajiWord = match.value
-            val hiraganaWord = romajiConverter.toHiraganaWithParticles(romajiWord)
-            
-            if (hiraganaWord != romajiWord) {
-                results.add(Pair(romajiWord, hiraganaWord))
-            }
-        }
-        
-        return results
-    }
-    
+
     /**
      * Check if text contains romaji characters
      */
@@ -286,19 +262,18 @@ class JapaneseWordExtractor {
         // Preprocess text to remove spaces within Japanese words
         val processedText = reconnectJapaneseWords(textWithSplitCompounds)
         
-        // Track word occurrences to find correct instance
-        val wordOccurrenceCount = mutableMapOf<String, Int>()
         
-        Log.d(TAG, "Original text: '$text'")
-        Log.d(TAG, "Split compounds: '$textWithSplitCompounds'")
-        Log.d(TAG, "Processed text: '$processedText'")
+        
+        // Declare tokens outside try block so it's available for grouping
+        val tokens: List<com.atilika.kuromoji.ipadic.Token>
         
         try {
             // Use Kuromoji tokenizer to segment the processed text
             val tokenizer = com.atilika.kuromoji.ipadic.Tokenizer()
-            val tokens = tokenizer.tokenize(processedText)
+            tokens = tokenizer.tokenize(processedText)
             
             var currentPosition = 0
+            var sequenceId = 0  // Unique identifier for each word
             
             for (token in tokens) {
                 val surface = token.surface
@@ -306,22 +281,15 @@ class JapaneseWordExtractor {
                 val pos2 = token.partOfSpeechLevel2
                 val baseForm = token.baseForm ?: surface
                 
-                // Find the actual position of this token in the ORIGINAL text
-                // We need to map from processed text position to original text position
+                // Find position in processed text
                 val tokenStartInProcessed = processedText.indexOf(surface, currentPosition)
                 if (tokenStartInProcessed == -1) {
-                    Log.w(TAG, "Could not find token '$surface' in processed text starting from position $currentPosition")
                     continue
                 }
                 
-                // Track occurrence count for this word to find the correct instance
-                val currentOccurrence = wordOccurrenceCount.getOrDefault(surface, 0)
-                wordOccurrenceCount[surface] = currentOccurrence + 1
-                
-                // Find the correct occurrence of this word in original text
-                val tokenStart = findNthOccurrence(text, surface, currentOccurrence)
+                // Map the processed text position back to original text position
+                val tokenStart = mapProcessedPositionToOriginal(text, processedText, tokenStartInProcessed, surface)
                 if (tokenStart == -1) {
-                    Log.w(TAG, "Could not find occurrence #$currentOccurrence of '$surface' in original text")
                     currentPosition = tokenStartInProcessed + surface.length
                     continue
                 }
@@ -332,58 +300,40 @@ class JapaneseWordExtractor {
                 
                 // Skip punctuation and symbols
                 if (pos1 == "記号" || surface.all { it.isWhitespace() }) {
-                    Log.d(TAG, "Skipping punctuation/symbol: '$surface'")
                     continue
                 }
                 
                 // Skip numbers and numeric expressions
                 if (surface.all { it.isDigit() || it == '.' || it == ',' } || pos1 == "名詞" && pos2 == "数") {
-                    Log.d(TAG, "Skipping number: '$surface'")
                     continue
                 }
                 
                 // Skip single hyphens, dashes, and other connecting symbols
                 if (surface in setOf("-", "－", "—", "–", "_", "/", "\\", "|")) {
-                    Log.d(TAG, "Skipping connector symbol: '$surface'")
                     continue
                 }
                 
                 // Skip particles unless they're part of compound words
                 if (pos1 == "助詞" && surface in particles) {
-                    Log.d(TAG, "Skipping particle: '$surface'")
                     continue
                 }
                 
-                // Skip auxiliary verbs that are just conjugation helpers
-                if (pos1 == "助動詞" && surface in setOf("だ", "です", "ます", "た", "ない")) {
-                    Log.d(TAG, "Skipping auxiliary: '$surface'")
+                // Skip auxiliary verbs that are just conjugation helpers (but keep た for past tense grouping)
+                if (pos1 == "助動詞" && surface in setOf("だ", "です", "ます", "ない")) {
                     continue
                 }
                 
                 // Skip non-Japanese text (like English letters or symbols)
                 if (!surface.any { JAPANESE_CHAR.matches(it.toString()) }) {
-                    Log.d(TAG, "Skipping non-Japanese text: '$surface'")
                     continue
                 }
                 
-                // For verbs and adjectives, try to use the base form if available
-                val wordToAdd = when {
-                    pos1 == "動詞" && baseForm != surface -> {
-                        // For verbs, use base form but keep surface position
-                        Log.d(TAG, "Verb: '$surface' -> base form: '$baseForm'")
-                        baseForm
-                    }
-                    pos1 == "形容詞" && baseForm != surface -> {
-                        // For adjectives, use base form but keep surface position
-                        Log.d(TAG, "Adjective: '$surface' -> base form: '$baseForm'")
-                        baseForm
-                    }
-                    else -> surface
-                }
+                // Keep surface form for grouping, don't convert to base form yet
+                val wordToAdd = surface
                 
-                // Add the word with its position
-                results.add(WordPosition(wordToAdd, tokenStart, tokenEnd))
-                Log.d(TAG, "Added word: '$wordToAdd' at position $tokenStart-$tokenEnd (POS: $pos1/$pos2)")
+                // Add the word with its position, unique sequence ID, and original Kuromoji token
+                results.add(WordPosition(wordToAdd, tokenStart, tokenEnd, sequenceId, token))
+                sequenceId++
             }
             
         } catch (e: Exception) {
@@ -392,10 +342,165 @@ class JapaneseWordExtractor {
             return extractJapaneseWordsWithPositions(text)
         }
         
-        Log.d(TAG, "Extracted ${results.size} words using Kuromoji")
-        return results
+        // Group related tokens that form logical units (like verb conjugations)
+        val groupedResults = groupRelatedTokens(results, processedText)
+        
+        return groupedResults
     }
     
+    /**
+     * Group adjacent tokens that form logical units (like verb conjugations)
+     * This prevents fragmenting words like "吊っている" into separate highlight regions
+     */
+    private fun groupRelatedTokens(tokens: List<WordPosition>, text: String): List<WordPosition> {
+        if (tokens.isEmpty()) return tokens
+        
+        // Token grouping process
+        
+        val grouped = mutableListOf<WordPosition>()
+        var i = 0
+        
+        while (i < tokens.size) {
+            val currentToken = tokens[i]
+            val currentKuromojiToken = currentToken.kuromojiToken
+            if (currentKuromojiToken == null) {
+                grouped.add(currentToken)
+                i++
+                continue
+            }
+            
+            val groupCandidates = mutableListOf(Pair(currentToken, currentKuromojiToken))
+            var j = i + 1
+            
+            // Look ahead for tokens that should be grouped with current token
+            while (j < tokens.size) {
+                val nextToken = tokens[j]
+                val nextKuromojiToken = nextToken.kuromojiToken ?: break
+                
+                // Check if tokens are adjacent
+                val isAdjacent = nextToken.startPosition <= groupCandidates.last().first.endPosition + 2
+                
+                if (!isAdjacent) break
+                
+                // Check if current group + next token should be grouped
+                val shouldGroup = shouldGroupTokens(
+                    groupCandidates.last().second, 
+                    nextKuromojiToken,
+                    groupCandidates.last().first,
+                    nextToken
+                )
+                
+                if (shouldGroup) {
+                    groupCandidates.add(Pair(nextToken, nextKuromojiToken))
+                    j++
+                } else {
+                    break
+                }
+            }
+            
+            // Handle special three-token pattern: verb タ接続 + て + auxiliary (like 吊っ-て-いる)
+            if (groupCandidates.size == 2 && j < tokens.size) {
+                val thirdToken = tokens[j]
+                val thirdKuromojiToken = thirdToken.kuromojiToken
+                
+                // Check if we have: verb タ接続 + て + auxiliary verb
+                if (groupCandidates.size == 2 && thirdKuromojiToken != null &&
+                    groupCandidates[0].second.partOfSpeechLevel1 == "動詞" &&
+                    groupCandidates[0].second.conjugationForm == "連用タ接続" &&
+                    groupCandidates[1].first.word == "て" &&
+                    thirdToken.startPosition <= groupCandidates[1].first.endPosition + 2 &&
+                    thirdKuromojiToken.partOfSpeechLevel1 == "動詞" &&
+                    thirdKuromojiToken.partOfSpeechLevel2 == "非自立") {
+                    
+                    groupCandidates.add(Pair(thirdToken, thirdKuromojiToken))
+                    j++
+                    Log.d(TAG, "Added third token for verb+て+auxiliary pattern: ${thirdToken.word}")
+                }
+            }
+            
+            // Create grouped token
+            if (groupCandidates.size > 1) {
+                val firstToken = groupCandidates.first().first
+                val lastToken = groupCandidates.last().first
+                val groupedWord = groupCandidates.joinToString("") { it.first.word }
+                
+                // Group the tokens into a single word
+                
+                grouped.add(WordPosition(
+                    word = groupedWord,
+                    startPosition = firstToken.startPosition,
+                    endPosition = lastToken.endPosition,
+                    sequenceId = firstToken.sequenceId, // Use first token's sequence ID
+                    kuromojiToken = null // Grouped tokens don't have a single kuromoji token
+                ))
+                
+                i = j // Skip all grouped tokens
+            } else {
+                // Single token, add as-is
+                grouped.add(currentToken)
+                i++
+            }
+        }
+        
+        return grouped
+    }
+    
+    /**
+     * Determine if two adjacent tokens should be grouped together using Kuromoji POS data
+     */
+    private fun shouldGroupTokens(
+        token1: com.atilika.kuromoji.ipadic.Token,
+        token2: com.atilika.kuromoji.ipadic.Token,
+        wordPos1: WordPosition,
+        wordPos2: WordPosition
+    ): Boolean {
+        val pos1_1 = token1.partOfSpeechLevel1
+        val pos1_2 = token1.partOfSpeechLevel2
+        val pos1_3 = token1.partOfSpeechLevel3
+        val pos1_6 = token1.conjugationForm // Conjugation form (like 連用タ接続)
+        
+        val pos2_1 = token2.partOfSpeechLevel1
+        val pos2_2 = token2.partOfSpeechLevel2
+        val pos2_3 = token2.partOfSpeechLevel3
+        
+        // Pattern 1: Verb with タ接続 + て + auxiliary verb (like 吊っ-て-いる)
+        if (pos1_1 == "動詞" && pos1_6 == "連用タ接続" && 
+            wordPos2.word == "て" && pos2_1 == "助詞") {
+            return true
+        }
+        
+        // Pattern 2: て + auxiliary verb いる/ある/いく etc. (like て-いる)
+        if (wordPos1.word == "て" && pos1_1 == "助詞" &&
+            pos2_1 == "動詞" && pos2_2 == "非自立") {
+            return true
+        }
+        
+        // Pattern 2.5: て + ます polite form (like て-ます/まし/ました)
+        if (wordPos1.word == "て" && pos1_1 == "助詞" &&
+            pos2_1 == "助動詞" && (wordPos2.word.startsWith("ま") || wordPos2.word == "です")) {
+            return true
+        }
+        
+        // Pattern 3: Verb stem + でしょう/ます/だ/た etc. (polite forms)
+        if (pos1_1 == "動詞" && (wordPos2.word in setOf("ます", "だ", "です", "でしょう", "た"))) {
+            return true
+        }
+        
+        // Pattern 3.5: ます stem + past tense (like まし-た for ました)
+        if (pos1_1 == "助動詞" && wordPos1.word.startsWith("ま") && 
+            wordPos2.word == "た") {
+            return true
+        }
+        
+        // Pattern 4: い-adjectives + ない/くない etc.
+        if (pos1_1 == "形容詞" && pos1_2 == "自立" && 
+            (wordPos2.word.endsWith("ない") || wordPos2.word.endsWith("なかっ"))) {
+            return true
+        }
+        
+        return false
+    }
+
     /**
      * Split compound words separated by middle dot (・) into individual words
      * Example: "エレクトロニック・テキスト・センター" -> "エレクトロニック|テキスト|センター"
@@ -417,9 +522,9 @@ class JapaneseWordExtractor {
         while (i < text.length) {
             val char = text[i]
             
-            // If current char is a pipe marker (word boundary), keep as-is
+            // If current char is a pipe marker (word boundary), convert to space
             if (char == '|') {
-                result.append(char)
+                result.append(' ')
                 i++
             }
             // If current char is Japanese
@@ -427,15 +532,15 @@ class JapaneseWordExtractor {
                 result.append(char)
                 i++
                 
-                // Look ahead and skip any spaces between Japanese characters
-                while (i < text.length && text[i].isWhitespace()) {
+                // Look ahead and skip any whitespace (including line breaks) between Japanese characters
+                while (i < text.length && isWhitespaceOrLineBreak(text[i])) {
                     val nextNonSpace = findNextNonSpace(text, i)
                     if (nextNonSpace != -1 && JAPANESE_CHAR.matches(text[nextNonSpace].toString())) {
-                        // Skip the space(s) - they're within a Japanese word
+                        // Skip the whitespace/line break - they're within a Japanese word
                         i = nextNonSpace
                     } else {
                         // Keep the space - it's between Japanese and non-Japanese
-                        result.append(text[i])
+                        result.append(' ') // Normalize to regular space
                         i++
                         break
                     }
@@ -447,16 +552,22 @@ class JapaneseWordExtractor {
             }
         }
         
-        // Replace pipe markers with spaces for word separation
-        return result.toString().replace("|", " ")
+        return result.toString()
     }
     
     /**
-     * Find the next non-whitespace character position
+     * Check if character is whitespace or line break (including full-width spaces)
+     */
+    private fun isWhitespaceOrLineBreak(char: Char): Boolean {
+        return char.isWhitespace() || char == '\u3000' || char == '\n' || char == '\r'
+    }
+    
+    /**
+     * Find the next non-whitespace character position (including full-width spaces and line breaks)
      */
     private fun findNextNonSpace(text: String, startPos: Int): Int {
         for (i in startPos until text.length) {
-            if (!text[i].isWhitespace()) {
+            if (!isWhitespaceOrLineBreak(text[i])) {
                 return i
             }
         }
@@ -464,124 +575,68 @@ class JapaneseWordExtractor {
     }
     
     /**
-     * Find the Nth occurrence of a word in text (0-based indexing)
-     * Returns -1 if the occurrence doesn't exist
+     * Map a position from processed text back to original text
+     * Build a character-by-character mapping to ensure accuracy
      */
-    private fun findNthOccurrence(text: String, word: String, occurrence: Int): Int {
-        var currentOccurrence = 0
-        var searchStart = 0
-        
-        while (searchStart < text.length) {
-            val foundPos = text.indexOf(word, searchStart)
-            if (foundPos == -1) {
-                // No more occurrences found
-                return -1
-            }
-            
-            if (currentOccurrence == occurrence) {
-                // Found the desired occurrence
-                return foundPos
-            }
-            
-            // Continue searching after this occurrence
-            currentOccurrence++
-            searchStart = foundPos + 1
+    private fun mapProcessedPositionToOriginal(originalText: String, processedText: String, processedPos: Int, surface: String): Int {
+        // If texts are identical, positions map directly
+        if (originalText == processedText) {
+            return processedPos
         }
         
-        return -1
-    }
-
-    /**
-     * Map a position in the processed text back to the original text
-     * This accounts for compound word splitting and spaces that were removed during processing
-     */
-    private fun findOriginalPosition(
-        originalText: String, 
-        splitCompoundsText: String,
-        processedText: String, 
-        processedPos: Int,
-        surface: String
-    ): Int {
-        // Estimate the position in original text based on processed text position
-        val searchWindow = 50 // characters
-        val estimatedPos = (processedPos.toFloat() / processedText.length * originalText.length).toInt()
-        val searchStart = maxOf(0, estimatedPos - searchWindow)
-        val searchEnd = minOf(originalText.length, estimatedPos + searchWindow)
+        // Build character mapping between processed and original text
+        val mapping = buildPositionMapping(originalText, processedText)
         
-        // Search for the surface text within the estimated window (not from beginning)
-        var foundPos = originalText.indexOf(surface, searchStart)
-        if (foundPos != -1 && foundPos < searchEnd) {
-            return foundPos
+        // Map the processed position to original position
+        val originalPos = if (processedPos < mapping.size) {
+            mapping[processedPos]
+        } else {
+            -1
         }
         
-        // If still not found, try searching for the word spanning a middle dot
-        // For compound word parts, they might appear after removing the middle dot
-        val surfaceNoSpaces = surface.replace(" ", "")
-        for (i in searchStart until searchEnd - surfaceNoSpaces.length) {
-            if (matchesIgnoringMiddleDot(originalText, i, surfaceNoSpaces)) {
-                return i
+        // Verify the mapping is correct by checking if surface text matches
+        if (originalPos >= 0 && originalPos + surface.length <= originalText.length) {
+            val originalSurface = originalText.substring(originalPos, originalPos + surface.length)
+            if (originalSurface == surface) {
+                return originalPos
             }
         }
         
-        return -1
+        // If mapping failed, fall back to search
+        return originalText.indexOf(surface)
     }
     
     /**
-     * Check if text at position matches the target string, ignoring middle dots
+     * Build a mapping array from processed text positions to original text positions
      */
-    private fun matchesIgnoringMiddleDot(text: String, startPos: Int, target: String): Boolean {
-        var textPos = startPos
-        var targetPos = 0
+    private fun buildPositionMapping(originalText: String, processedText: String): IntArray {
+        val mapping = IntArray(processedText.length) { -1 }
+        var originalPos = 0
+        var processedPos = 0
         
-        while (targetPos < target.length && textPos < text.length) {
-            // Skip middle dots in original text
-            if (text[textPos] == '・') {
-                textPos++
-                continue
+        while (originalPos < originalText.length && processedPos < processedText.length) {
+            val originalChar = originalText[originalPos]
+            val processedChar = processedText[processedPos]
+            
+            if (originalChar == processedChar) {
+                // Characters match - direct mapping
+                mapping[processedPos] = originalPos
+                originalPos++
+                processedPos++
+            } else if (isWhitespaceOrLineBreak(originalChar)) {
+                // Original has whitespace/line break that was removed in processed text
+                originalPos++
+            } else if (processedChar.isWhitespace()) {
+                // Processed has whitespace that wasn't in original (shouldn't happen with our logic)
+                processedPos++
+            } else {
+                // Characters don't match - try to align
+                mapping[processedPos] = originalPos
+                originalPos++
+                processedPos++
             }
-            
-            // Skip spaces in original text
-            while (textPos < text.length && text[textPos].isWhitespace()) {
-                textPos++
-            }
-            
-            if (textPos >= text.length) return false
-            
-            if (text[textPos] != target[targetPos]) {
-                return false
-            }
-            
-            textPos++
-            targetPos++
         }
         
-        return targetPos == target.length
+        return mapping
     }
-    
-    /**
-     * Check if text at position matches the target string, ignoring spaces
-     */
-    private fun matchesWithSpaces(text: String, startPos: Int, target: String): Boolean {
-        var textPos = startPos
-        var targetPos = 0
-        
-        while (targetPos < target.length && textPos < text.length) {
-            // Skip spaces in original text
-            while (textPos < text.length && text[textPos].isWhitespace()) {
-                textPos++
-            }
-            
-            if (textPos >= text.length) return false
-            
-            if (text[textPos] != target[targetPos]) {
-                return false
-            }
-            
-            textPos++
-            targetPos++
-        }
-        
-        return targetPos == target.length
-    }
-
 }
