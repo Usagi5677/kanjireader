@@ -235,6 +235,7 @@ class TextSelectionView @JvmOverloads constructor(
         isAntiAlias = true
         isFakeBoldText = true
     }
+    
 
     // Debounce mechanism to prevent duplicate callbacks
     private var lastCallbackText = ""
@@ -313,8 +314,38 @@ class TextSelectionView @JvmOverloads constructor(
      * Highlight a word at the specified position range
      */
     fun highlightWord(startPosition: Int, endPosition: Int) {
+        // Validate positions before setting highlight
+        if (startPosition < 0 || endPosition < 0 || startPosition >= endPosition) {
+            Log.w("TextSelectionView", "Invalid highlight range: $startPosition-$endPosition, clearing highlight")
+            clearWordHighlight()
+            return
+        }
+        
+        // Validate positions are within display text bounds
+        if (startPosition >= displayText.length || endPosition > displayText.length) {
+            Log.w("TextSelectionView", "Highlight range $startPosition-$endPosition exceeds text length ${displayText.length}, clearing highlight")
+            clearWordHighlight()
+            return
+        }
+        
         highlightedWordRange = Pair(startPosition, endPosition)
-        // Recreate layout with highlighting
+        
+        // If furigana processing is in progress, wait for it to complete before highlighting
+        if (showFurigana && furiganaText == null) {
+            Log.d(TAG, "Waiting for furigana processing to complete before highlighting")
+            // Schedule highlighting to retry after a short delay
+            postDelayed({
+                highlightWordInternal(startPosition, endPosition)
+            }, 100)
+            return
+        }
+        
+        // Highlight immediately without debouncing
+        highlightWordInternal(startPosition, endPosition)
+    }
+    
+    private fun highlightWordInternal(startPosition: Int, endPosition: Int) {
+        // Always recreate layout when highlighting a word (especially important in furigana mode)
         val width = width
         if (width > 0) {
             createTextLayout(width)
@@ -336,6 +367,13 @@ class TextSelectionView @JvmOverloads constructor(
             createTextLayout(width)
         }
         invalidate()
+    }
+    
+    /**
+     * Get the length of the display text for debugging
+     */
+    fun getDisplayTextLength(): Int {
+        return displayText.length
     }
 
     private fun processFurigana() {
@@ -364,6 +402,12 @@ class TextSelectionView @JvmOverloads constructor(
                     // Trigger redraw
                     requestLayout()
                     invalidate()
+                    
+                    // If there's a pending highlight, apply it now that furigana is ready
+                    highlightedWordRange?.let { range ->
+                        Log.d(TAG, "Applying delayed highlight after furigana processing: ${range.first}-${range.second}")
+                        highlightWordInternal(range.first, range.second)
+                    }
 
                 } catch (e: Exception) {
                     if (e !is CancellationException) {
@@ -412,10 +456,11 @@ class TextSelectionView @JvmOverloads constructor(
             .setIncludePad(true)
             .build()
 
-        Log.d(TAG, "Created text layout with width: $textWidth, lines: ${staticLayout?.lineCount}")
-
-        // Build character bounds for selection
-        buildCharacterBounds(width)
+        // Build character bounds for selection (only if needed for text selection)
+        val shouldBuildBounds = characterBounds.isEmpty() || isDragging
+        if (shouldBuildBounds) {
+            buildCharacterBounds(width)
+        }
     }
 
     /**
@@ -448,7 +493,7 @@ class TextSelectionView @JvmOverloads constructor(
                 val span = FuriganaReplacementSpan(
                     fullText = segment.text,
                     furiganaText = segment.furigana,
-                    textPaint = getTextPaintForPosition(currentPos),
+                    textPaint = getTextPaintForSegment(currentPos, segment.text.length),
                     furiganaPaint = furiganaPaint
                 )
                 
@@ -459,8 +504,25 @@ class TextSelectionView @JvmOverloads constructor(
                     SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             } else {
-                // Add plain text without furigana
+                // Add plain text without furigana, but check if it needs highlighting
+                val segmentStart = spannable.length
                 spannable.append(segment.text)
+                
+                // Apply highlighting to non-furigana segments if they overlap with highlight range
+                val paintToUse = getTextPaintForSegment(currentPos, segment.text.length)
+                if (paintToUse == highlightedTextPaint) {
+                    val highlightSpan = object : ReplacementSpan() {
+                        override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
+                            return highlightedTextPaint.measureText(text, start, end).toInt()
+                        }
+                        override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+                            if (text != null) {
+                                canvas.drawText(text, start, end, x, y.toFloat(), highlightedTextPaint)
+                            }
+                        }
+                    }
+                    spannable.setSpan(highlightSpan, segmentStart, spannable.length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
             }
             
             currentPos += segment.text.length
@@ -476,8 +538,15 @@ class TextSelectionView @JvmOverloads constructor(
     private fun applyWordHighlighting(spannable: SpannableStringBuilder) {
         val highlightRange = highlightedWordRange ?: return
         if (highlightRange.first < 0 || highlightRange.second > spannable.length) return
+        if (highlightRange.first >= highlightRange.second) return // Invalid range: start >= end
         
-        // Create a custom span for highlighting
+        // In furigana mode, highlighting is handled by the furigana spans themselves
+        // using getTextPaintForPosition() - no additional span needed
+        if (showFurigana && furiganaText != null) {
+            return
+        }
+        
+        // For non-furigana mode, create a custom highlighting span
         val highlightSpan = object : ReplacementSpan() {
             override fun getSize(
                 paint: Paint,
@@ -506,21 +575,12 @@ class TextSelectionView @JvmOverloads constructor(
             }
         }
         
-        // Apply highlighting span only if it doesn't conflict with furigana spans
-        val existingSpans = spannable.getSpans(
-            highlightRange.first, 
-            highlightRange.second, 
-            ReplacementSpan::class.java
+        spannable.setSpan(
+            highlightSpan,
+            highlightRange.first,
+            highlightRange.second,
+            SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE
         )
-        
-        if (existingSpans.isEmpty()) {
-            spannable.setSpan(
-                highlightSpan,
-                highlightRange.first,
-                highlightRange.second,
-                SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-        }
     }
 
     /**
@@ -529,6 +589,24 @@ class TextSelectionView @JvmOverloads constructor(
     private fun getTextPaintForPosition(position: Int): TextPaint {
         val highlightRange = highlightedWordRange
         return if (highlightRange != null && position >= highlightRange.first && position < highlightRange.second) {
+            highlightedTextPaint
+        } else {
+            textPaint
+        }
+    }
+    
+    /**
+     * Get the appropriate text paint for a segment (checks if any part of segment overlaps with highlight)
+     */
+    private fun getTextPaintForSegment(startPos: Int, length: Int): TextPaint {
+        val highlightRange = highlightedWordRange
+        if (highlightRange == null) return textPaint
+        
+        val segmentEnd = startPos + length
+        // Check if segment overlaps with highlight range
+        val overlaps = startPos < highlightRange.second && segmentEnd > highlightRange.first
+        
+        return if (overlaps) {
             highlightedTextPaint
         } else {
             textPaint
@@ -852,7 +930,7 @@ class TextSelectionView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        // Cancel any ongoing furigana processing
+        // Cancel any ongoing processing
         furiganaJob?.cancel()
     }
 

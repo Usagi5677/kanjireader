@@ -82,5 +82,6 @@ data class WordCardInfo(
     val meanings: String, // First 3 meanings, comma-separated
     val startPosition: Int, // Start index in the original text
     val endPosition: Int,   // End index in the original text
-    val isHighlighted: Boolean = false
+    val isHighlighted: Boolean = false,
+    val baseForm: String? = null // Base form for dictionary lookup
 )

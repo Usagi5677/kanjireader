@@ -259,6 +259,17 @@ class DictionaryRepository(private val context: Context) {
             val finalSortedResults = convertedResults.sortedWith(
                 compareBy<WordResult> { !it.isDeinflectedValidConjugation }
                     .thenBy { !(it.kanji == query || it.reading == query) }
+                    // Special handling: When searching hiragana, prefer hiragana-only forms over kanji forms
+                    .thenBy { result ->
+                        if (isHiraganaOnly(query) && result.reading == query) {
+                            when (query) {
+                                "やる" -> if (result.kanji == null) 0 else 1  // Prefer hiragana やる over 姦る
+                                else -> if (result.kanji == null) 0 else 1     // General: prefer hiragana forms
+                            }
+                        } else {
+                            0 // No special preference
+                        }
+                    }
                     .thenByDescending { it.isCommon }
                     .thenByDescending { it.frequency ?: 0 }
                     .thenBy { it.reading.length }
@@ -275,7 +286,7 @@ class DictionaryRepository(private val context: Context) {
                 finalSortedResults
             }
 
-            val filteredResults = filterKatakanaDuplicatesSimple(finalResultsWithKanji).distinctBy { "${it.kanji}|${it.reading}" }.take(limit)
+            val filteredResults = filterKatakanaDuplicatesSimple(finalResultsWithKanji, query).distinctBy { "${it.kanji}|${it.reading}" }.take(limit)
 
             val totalTime = System.currentTimeMillis() - startTime
             return@withContext filteredResults
@@ -1077,37 +1088,32 @@ class DictionaryRepository(private val context: Context) {
     /**
      * Simple filter to remove katakana duplicates based on kanji+reading combination
      * This works on raw results before any grouping
+     * Preserves the version that matches the original query format (katakana vs hiragana)
      */
-    private fun filterKatakanaDuplicatesSimple(results: List<WordResult>): List<WordResult> {
-        // Create a map to track hiragana versions
-        val hiraganaVersions = mutableMapOf<String, WordResult>()
-        val toFilter = mutableListOf<WordResult>()
-
-        // First pass: collect all hiragana readings
-        results.forEach { result ->
+    private fun filterKatakanaDuplicatesSimple(results: List<WordResult>, originalQuery: String): List<WordResult> {
+        // If user searched for katakana, prefer katakana versions; otherwise prefer hiragana
+        val queryIsKatakana = containsKatakana(originalQuery)
+        
+        // Group results by kanji+reading+meanings combination (converted to hiragana for comparison)
+        val groupedByEntry = results.groupBy { result ->
             val key = result.kanji ?: ""
-            if (!containsKatakana(result.reading)) {
-                // Pure hiragana reading
-                hiraganaVersions["$key|${result.reading}"] = result
-            }
-            toFilter.add(result)
+            val normalizedReading = convertKatakanaToHiragana(result.reading)
+            val meaningKey = result.meanings.sorted().joinToString("|") // Sort for consistent grouping
+            val tagsKey = result.tags.sorted().joinToString("|") // Include tags too
+            "$key|$normalizedReading|$meaningKey|$tagsKey"
         }
 
-        // Second pass: filter out katakana versions if hiragana exists
-        val filtered = toFilter.filter { result ->
-            if (containsKatakana(result.reading)) {
-                val key = result.kanji ?: ""
-                val hiraganaReading = convertKatakanaToHiragana(result.reading)
-                val hiraganaKey = "$key|$hiraganaReading"
-
-                if (hiraganaVersions.containsKey(hiraganaKey)) {
-                    Log.d(TAG, "Filtering out katakana duplicate: ${result.kanji}/${result.reading} → $hiraganaReading")
-                    false // Filter out this katakana version
-                } else {
-                    true // Keep it - no hiragana version exists
+        // For each group, pick the version that matches user's query format
+        val filtered = groupedByEntry.values.map { group ->
+            when {
+                // If user searched katakana, prefer katakana versions
+                queryIsKatakana -> {
+                    group.find { containsKatakana(it.reading) } ?: group.first()
                 }
-            } else {
-                true // Keep all hiragana entries
+                // Otherwise prefer hiragana versions  
+                else -> {
+                    group.find { !containsKatakana(it.reading) } ?: group.first()
+                }
             }
         }
 
@@ -1384,5 +1390,14 @@ class DictionaryRepository(private val context: Context) {
     
     fun convertRomajiToHiragana(query: String): String {
         return romajiConverter.toHiragana(query)
+    }
+    
+    /**
+     * Check if a string contains only hiragana characters
+     */
+    private fun isHiraganaOnly(text: String): Boolean {
+        return text.isNotEmpty() && text.all { char ->
+            char.code in 0x3041..0x3096  // Hiragana Unicode range
+        }
     }
 }

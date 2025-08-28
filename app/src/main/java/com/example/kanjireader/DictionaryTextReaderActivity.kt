@@ -193,36 +193,185 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                 for (wordPos in wordPositions) {
                     try {
                         Log.d(TAG, "Looking up word details: '${wordPos.word}' at position ${wordPos.startPosition}-${wordPos.endPosition}")
-                        val searchResults = repository?.search(wordPos.word, limit = 10) ?: emptyList() // Get more results to find best match
+                        
+                        // Special handling for common する conjugations
+                        // Also check the explicit baseForm field for artificially split tokens like したら
+                        val isConjugatedSuru = (wordPos.kuromojiToken?.baseForm == "する" || wordPos.baseForm == "する") && 
+                                              wordPos.word in listOf("した", "しない", "します", "しました", "して", "したり", "したら", "させる", "される", "しよう")
+                        
+                        val baseFormForSearch = wordPos.getBaseFormForLookup()
+                        val isKiWoTsukeyouCompound = baseFormForSearch == "気をつける" || wordPos.word == "気をつけよう"
+                        val isAriConjugation = baseFormForSearch == "ある" && wordPos.word == "あり"
+                        
+                        val searchResults = if (isConjugatedSuru) {
+                            // For する conjugations, search for the base form to get correct meanings
+                            Log.d(TAG, "Detected する conjugation '${wordPos.word}', searching for base form 'する'")
+                            repository?.search("する", limit = 10) ?: emptyList()
+                        } else if (isKiWoTsukeyouCompound) {
+                            // For 気をつけよう, search using base form to get correct meanings
+                            Log.d(TAG, "Detected 気をつけよう compound '${wordPos.word}', searching for base form '$baseFormForSearch'")
+                            repository?.search(baseFormForSearch, limit = 10) ?: emptyList()
+                        } else if (isAriConjugation) {
+                            // For あり, search using base form ある to get correct existence meanings instead of ant meanings
+                            Log.d(TAG, "Detected あり conjugation '${wordPos.word}', searching for base form '$baseFormForSearch'")
+                            repository?.search(baseFormForSearch, limit = 10) ?: emptyList()
+                        } else {
+                            repository?.search(wordPos.word, limit = 10) ?: emptyList()
+                        }
                         
                         if (searchResults.isNotEmpty()) {
+                            // Debug logging for 気をつけよう
+                            if (wordPos.word == "気をつけよう") {
+                                Log.d(TAG, "🔍 Debug 気をつけよう search results (${searchResults.size} total):")
+                                searchResults.forEachIndexed { index, result ->
+                                    Log.d(TAG, "  [$index] kanji='${result.kanji}', reading='${result.reading}', meanings='${result.meanings.take(2).joinToString(", ")}'")
+                                }
+                            }
                             // Find the best matching result - prioritize exact matches (same logic as OCR view)
-                            val bestResult = searchResults.find { result ->
-                                // Exact match on kanji or reading
-                                result.kanji == wordPos.word || result.reading == wordPos.word
-                            } ?: searchResults.find { result ->
-                                // For katakana words, also check if reading matches without conversion
-                                isAllKatakana(wordPos.word) && result.reading == wordPos.word
-                            } ?: searchResults.first() // Fallback to first result
-                            
-                            val meanings = bestResult.meanings.take(3).joinToString(", ")
-                            
-                            // For katakana words, use the word itself as reading to preserve original form
-                            val reading = if (isAllKatakana(wordPos.word)) {
-                                wordPos.word // Keep original katakana (e.g., プロ stays プロ, not ぷろ)
+                            val bestResult = if (isConjugatedSuru || isKiWoTsukeyouCompound || isAriConjugation) {
+                                // For する conjugations, 気をつけよう compound, and あり conjugation, use the first result (which should be the base form)
+                                searchResults.firstOrNull()
                             } else {
-                                bestResult.reading // Use dictionary reading for other words
+                                // Check for special hiragana preference cases first
+                                val baseFormForSearch = wordPos.getBaseFormForLookup()
+                                val isHouRelated = baseFormForSearch == "ほう" || wordPos.word == "ほう"
+                                val isYaruRelated = baseFormForSearch == "やる" || wordPos.word == "やる"
+                                
+                                if (isHouRelated) {
+                                    // Find 方 with "direction, way, method" meaning instead of 法 with "law, act"
+                                    searchResults.find { result ->
+                                        result.reading == "ほう" && result.kanji == "方"
+                                    } ?: searchResults.find { result ->
+                                        result.reading == "ほう" && result.meanings.any { meaning ->
+                                            meaning.contains("direction", ignoreCase = true) ||
+                                            meaning.contains("way", ignoreCase = true) ||
+                                            meaning.contains("method", ignoreCase = true) ||
+                                            meaning.contains("side", ignoreCase = true) ||
+                                            meaning.contains("person", ignoreCase = true)
+                                        }
+                                    } ?: searchResults.first()
+                                } else if (isYaruRelated) {
+                                    // Find 行る with "to do, to undertake" meaning
+                                    searchResults.find { it.reading == "やる" && it.kanji == "行る" }
+                                        ?: searchResults.find { result ->
+                                            result.reading == "やる" && result.meanings.any { meaning ->
+                                                (meaning.startsWith("to do", ignoreCase = true) && 
+                                                 !meaning.contains("someone", ignoreCase = true)) ||
+                                                meaning.contains("to undertake", ignoreCase = true) ||
+                                                meaning.contains("to perform", ignoreCase = true) ||
+                                                meaning.contains("to play", ignoreCase = true)
+                                            }
+                                        } ?: searchResults.first()
+                                } else {
+                                    // Standard exact match logic
+                                    searchResults.find { result ->
+                                        // Exact match on kanji or reading
+                                        result.kanji == wordPos.word || result.reading == wordPos.word
+                                    } ?: searchResults.find { result ->
+                                        // For katakana words, also check if reading matches without conversion
+                                        isAllKatakana(wordPos.word) && result.reading == wordPos.word
+                                    }
+                                }
+                            } ?: run {
+                                // More conservative fallback - only use first result if it's actually reasonable
+                                // Special handling for やる - prefer hiragana-only forms over kanji forms
+                                val baseFormForSearch = wordPos.getBaseFormForLookup()
+                                val isYaruRelated = baseFormForSearch == "やる" || wordPos.word == "やる"
+                                val isHouRelated = baseFormForSearch == "ほう" || wordPos.word == "ほう"
+                                
+                                val firstResult = if (isYaruRelated) {
+                                    // Find hiragana-only やる if it exists in results
+                                    val hiraganaYaru = searchResults.find { it.reading == "やる" && it.kanji == null }
+                                    
+                                    // If no hiragana-only やる, try to find one with meanings containing "to do" instead of inappropriate content
+                                    if (hiraganaYaru != null) {
+                                        hiraganaYaru
+                                    } else {
+                                        // Look for やる with appropriate meanings - prefer 行る with "to do, to undertake"
+                                        searchResults.find { result ->
+                                            result.reading == "やる" && result.kanji == "行る"
+                                        } ?: searchResults.find { result ->
+                                            result.reading == "やる" && result.meanings.any { meaning ->
+                                                (meaning.startsWith("to do", ignoreCase = true) && 
+                                                 !meaning.contains("someone", ignoreCase = true)) ||
+                                                meaning.contains("to undertake", ignoreCase = true) ||
+                                                meaning.contains("to perform", ignoreCase = true) ||
+                                                meaning.contains("to play", ignoreCase = true)
+                                            }
+                                        } ?: searchResults.first()
+                                    }
+                                } else if (isHouRelated) {
+                                    // Find 方 with "direction, way, method" meaning instead of 法 with "law, act"
+                                    searchResults.find { result ->
+                                        result.reading == "ほう" && result.kanji == "方"
+                                    } ?: searchResults.find { result ->
+                                        result.reading == "ほう" && result.meanings.any { meaning ->
+                                            meaning.contains("direction", ignoreCase = true) ||
+                                            meaning.contains("way", ignoreCase = true) ||
+                                            meaning.contains("method", ignoreCase = true) ||
+                                            meaning.contains("side", ignoreCase = true) ||
+                                            meaning.contains("person", ignoreCase = true)
+                                        }
+                                    } ?: searchResults.first()
+                                } else {
+                                    searchResults.first()
+                                }
+                                Log.d(TAG, "No exact match for '${wordPos.word}', considering first result: kanji='${firstResult.kanji}', reading='${firstResult.reading}'")
+                                
+                                // For conjugated verbs, accept any valid deinflection result
+                                val isConjugatedVerb = wordPos.word.length > 1 && 
+                                                       firstResult.isDeinflectedValidConjugation
+                                
+                                when {
+                                    // Exact match on kanji field
+                                    firstResult.kanji == wordPos.word -> {
+                                        Log.d(TAG, "Using first result as kanji exactly matches our word")
+                                        firstResult
+                                    }
+                                    // Accept conjugated verb forms of common verbs
+                                    isConjugatedVerb -> {
+                                        Log.d(TAG, "Using first result as valid conjugated verb: '${wordPos.word}' → '${firstResult.reading}'")
+                                        firstResult
+                                    }
+                                    else -> {
+                                        Log.d(TAG, "First result kanji '${firstResult.kanji}' doesn't exactly match '${wordPos.word}', skipping fallback")
+                                        null
+                                    }
+                                }
                             }
                             
-                            val wordCard = WordCardInfo(
-                                word = wordPos.word,
-                                reading = reading,
-                                meanings = meanings,
-                                startPosition = wordPos.startPosition,
-                                endPosition = wordPos.endPosition
-                            )
-                            extractedWordCards.add(wordCard)
-                            Log.d(TAG, "Added word card: ${wordCard.word} - ${wordCard.reading}")
+                            if (bestResult != null) {
+                                // Debug logging for 気をつけよう result selection
+                                if (wordPos.word == "気をつけよう") {
+                                    Log.d(TAG, "🔍 Debug 気をつけよう: Selected result - kanji='${bestResult.kanji}', reading='${bestResult.reading}', meanings='${bestResult.meanings.take(3).joinToString(", ")}'")
+                                }
+                                val meanings = bestResult.meanings.take(3).joinToString(", ")
+                                
+                                // For katakana words, use the word itself as reading to preserve original form
+                                val reading = if (isAllKatakana(wordPos.word)) {
+                                    wordPos.word // Keep original katakana (e.g., プロ stays プロ, not ぷろ)
+                                } else {
+                                    bestResult.reading // Use dictionary reading for other words
+                                }
+                                
+                                val baseFormForCard = wordPos.getBaseFormForLookup()
+                                Log.d(TAG, "📋 Creating WordCard: '${wordPos.word}' with baseForm: '$baseFormForCard' (kuromojiToken.baseForm: '${wordPos.kuromojiToken?.baseForm}', explicit.baseForm: '${wordPos.baseForm}')")
+                                
+                                val wordCard = WordCardInfo(
+                                    word = wordPos.word,
+                                    reading = reading,
+                                    meanings = meanings,
+                                    startPosition = wordPos.startPosition,
+                                    endPosition = wordPos.endPosition,
+                                    baseForm = baseFormForCard
+                                )
+                                extractedWordCards.add(wordCard)
+                                Log.d(TAG, "Added word card: ${wordCard.word} - ${wordCard.reading}")
+                            } else {
+                                // No good match found, try splitting into individual characters
+                                Log.d(TAG, "No exact match found for '${wordPos.word}', splitting into individual characters")
+                                splitIntoIndividualCharacters(wordPos, extractedWordCards, repository)
+                            }
                         } else {
                             // Even if not in dictionary (like single kanji), still add it (same as OCR view)
                             val wordCard = WordCardInfo(
@@ -230,7 +379,8 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                                 reading = wordPos.word, // Use the word itself as reading for katakana
                                 meanings = "", // No meanings available
                                 startPosition = wordPos.startPosition,
-                                endPosition = wordPos.endPosition
+                                endPosition = wordPos.endPosition,
+                                baseForm = wordPos.getBaseFormForLookup()
                             )
                             extractedWordCards.add(wordCard)
                             Log.d(TAG, "Added word card without dictionary entry: ${wordCard.word}")
@@ -275,6 +425,19 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
         if (position >= 0 && position < wordCards.size) {
             val wordCard = wordCards[position]
             Log.d(TAG, "Highlighting word: '${wordCard.word}' at position ${wordCard.startPosition}-${wordCard.endPosition}")
+            
+            // Special debug logging for 名付けられた
+            if (wordCard.word.contains("名付け")) {
+                Log.d(TAG, "DEBUG 名付け: word='${wordCard.word}', start=${wordCard.startPosition}, end=${wordCard.endPosition}")
+                val textLength = binding.textSelectionView.getDisplayTextLength()
+                Log.d(TAG, "DEBUG 名付け: display text length=$textLength")
+                if (wordCard.startPosition >= 0 && wordCard.endPosition <= textLength && wordCard.startPosition < wordCard.endPosition) {
+                    Log.d(TAG, "DEBUG 名付け: Position range is valid, attempting highlight")
+                } else {
+                    Log.d(TAG, "DEBUG 名付け: Position range is INVALID")
+                }
+            }
+            
             binding.textSelectionView.highlightWord(wordCard.startPosition, wordCard.endPosition)
         } else {
             // Clear highlighting if position is invalid
@@ -317,7 +480,10 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val repository = DictionaryRepository.getInstance(this@DictionaryTextReaderActivity)
-                val searchResults = repository.search(wordCard.word, limit = 10)
+                // Use base form for search, fall back to surface form if no base form available
+                val searchTerm = wordCard.baseForm ?: wordCard.word
+                Log.d(TAG, "🔍 Searching with base form: '$searchTerm' (original: '${wordCard.word}', baseForm: '${wordCard.baseForm}')")
+                val searchResults = repository.search(searchTerm, limit = 10)
                 
                 if (searchResults.isNotEmpty()) {
                     // Find the best matching result
@@ -325,27 +491,61 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                         result.kanji == wordCard.word || result.reading == wordCard.word
                     } ?: searchResults.find { result ->
                         isAllKatakana(wordCard.word) && result.reading == wordCard.word
-                    } ?: searchResults.first()
+                    } ?: run {
+                        // Apply same preference logic for word detail activity
+                        val baseFormForSearch = wordCard.baseForm ?: wordCard.word
+                        if (baseFormForSearch == "やる" || wordCard.word == "やる") {
+                            // Find 行る with "to do, to undertake" meaning
+                            searchResults.find { it.reading == "やる" && it.kanji == "行る" }
+                                ?: searchResults.find { result ->
+                                    result.reading == "やる" && result.meanings.any { meaning ->
+                                        (meaning.startsWith("to do", ignoreCase = true) && 
+                                         !meaning.contains("someone", ignoreCase = true)) ||
+                                        meaning.contains("to undertake", ignoreCase = true) ||
+                                        meaning.contains("to perform", ignoreCase = true) ||
+                                        meaning.contains("to play", ignoreCase = true)
+                                    }
+                                } ?: searchResults.first()
+                        } else if (baseFormForSearch == "ほう" || wordCard.word == "ほう") {
+                            // Find 方 with "direction, way, method" meaning instead of 法 with "law, act"
+                            searchResults.find { it.reading == "ほう" && it.kanji == "方" }
+                                ?: searchResults.find { result ->
+                                    result.reading == "ほう" && result.meanings.any { meaning ->
+                                        meaning.contains("direction", ignoreCase = true) ||
+                                        meaning.contains("way", ignoreCase = true) ||
+                                        meaning.contains("method", ignoreCase = true) ||
+                                        meaning.contains("side", ignoreCase = true) ||
+                                        meaning.contains("person", ignoreCase = true)
+                                    }
+                                } ?: searchResults.first()
+                        } else {
+                            searchResults.first()
+                        }
+                    }
                     
                     // Launch WordDetailActivity with complete word information
+                    // Use the base form (kanji or reading) from the dictionary result for the title
+                    val displayWord = bestResult.kanji ?: bestResult.reading
                     val intent = Intent(this@DictionaryTextReaderActivity, WordDetailActivity::class.java).apply {
-                        putExtra("word", wordCard.word)
+                        putExtra("word", displayWord)  // Use base form from dictionary
                         putExtra("reading", bestResult.reading)
                         putExtra("meanings", ArrayList(bestResult.meanings))
                         putExtra("frequency", bestResult.frequency)
-                        putExtra("selectedText", wordCard.word)
+                        putExtra("selectedText", wordCard.word)  // Keep original form for context
                     }
                     
                     startActivity(intent)
                 } else {
                     // Fallback to basic information if no dictionary entry found
+                    // Use base form if available, otherwise use the original word
+                    val displayWord = wordCard.baseForm ?: wordCard.word
                     val intent = Intent(this@DictionaryTextReaderActivity, WordDetailActivity::class.java).apply {
-                        putExtra("word", wordCard.word)
+                        putExtra("word", displayWord)  // Use base form for title
                         putExtra("reading", wordCard.reading)
                         putExtra("meanings", ArrayList(wordCard.meanings.split(", ").filter { it.isNotBlank() }))
                         putExtra("frequency", 0)
                         putExtra("isJMNEDict", false)
-                        putExtra("selectedText", wordCard.word)
+                        putExtra("selectedText", wordCard.word)  // Keep original form for context
                     }
                     
                     startActivity(intent)
@@ -353,13 +553,15 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error looking up word details for: ${wordCard.word}", e)
                 // Fallback to basic information on error
+                // Use base form if available, otherwise use the original word
+                val displayWord = wordCard.baseForm ?: wordCard.word
                 val intent = Intent(this@DictionaryTextReaderActivity, WordDetailActivity::class.java).apply {
-                    putExtra("word", wordCard.word)
+                    putExtra("word", displayWord)  // Use base form for title
                     putExtra("reading", wordCard.reading)
                     putExtra("meanings", ArrayList(wordCard.meanings.split(", ").filter { it.isNotBlank() }))
                     putExtra("frequency", 0)
                     putExtra("isJMNEDict", false)
-                    putExtra("selectedText", wordCard.word)
+                    putExtra("selectedText", wordCard.word)  // Keep original form for context
                 }
                 
                 startActivity(intent)
@@ -713,4 +915,70 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
         }
         return -1
     }
+    
+    /**
+     * Split a word into individual characters and look each one up in the dictionary
+     */
+    private suspend fun splitIntoIndividualCharacters(wordPos: JapaneseWordExtractor.WordPosition, extractedWordCards: MutableList<WordCardInfo>, repository: DictionaryRepository?) {
+        // Only split kanji words, not hiragana/katakana
+        if (!wordPos.word.any { Character.UnicodeBlock.of(it) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS }) {
+            Log.d(TAG, "Skipping character splitting for '${wordPos.word}' - contains no kanji")
+            return
+        }
+        
+        Log.d(TAG, "Splitting kanji word '${wordPos.word}' into individual characters")
+        
+        var currentPos = wordPos.startPosition
+        for (char in wordPos.word) {
+            val charString = char.toString()
+            
+            // Try to look up each character in the dictionary
+            try {
+                val charResults = repository?.search(charString, limit = 5) ?: emptyList()
+                val exactMatch = charResults.find { it.kanji == charString || it.reading == charString }
+                
+                val wordCard = if (exactMatch != null) {
+                    // Found dictionary entry for this character
+                    val meanings = exactMatch.meanings.take(2).joinToString(", ") // Fewer meanings for individual chars
+                    WordCardInfo(
+                        word = charString,
+                        reading = exactMatch.reading,
+                        meanings = meanings,
+                        startPosition = currentPos,
+                        endPosition = currentPos + 1,
+                        baseForm = charString // For individual characters, word and base form are the same
+                    )
+                } else {
+                    // No dictionary entry, use character as-is
+                    WordCardInfo(
+                        word = charString,
+                        reading = charString,
+                        meanings = "",
+                        startPosition = currentPos,
+                        endPosition = currentPos + 1,
+                        baseForm = charString // For individual characters, word and base form are the same
+                    )
+                }
+                
+                extractedWordCards.add(wordCard)
+                Log.d(TAG, "Added individual character: $charString → ${wordCard.reading}")
+                
+            } catch (e: Exception) {
+                Log.w(TAG, "Error looking up character '$charString': ${e.message}")
+                // Fallback: add character as-is
+                val wordCard = WordCardInfo(
+                    word = charString,
+                    reading = charString,
+                    meanings = "",
+                    startPosition = currentPos,
+                    endPosition = currentPos + 1,
+                    baseForm = charString // For individual characters, word and base form are the same
+                )
+                extractedWordCards.add(wordCard)
+            }
+            
+            currentPos++
+        }
+    }
+    
 }

@@ -82,16 +82,26 @@ class FormsTabFragment : Fragment() {
             }
 
             val wordResult = searchResults.first()
-            val tagEntry = tagLoader.lookupTags(word)
+            // Use the base form (kanji or reading) for tag lookup instead of conjugated form
+            val baseForm = wordResult.kanji ?: wordResult.reading
+            val tagEntry = tagLoader.lookupTags(baseForm)
 
-            // Get part of speech tags
-            val posTags = mutableListOf<String>()
-            tagEntry?.senses?.forEach { sense ->
-                sense.pos?.let { posTags.addAll(it) }
+            // Get part of speech tags from the tag entry or WordResult
+            val posTagsSet = mutableSetOf<String>()
+            // First try from WordResult (already parsed)
+            posTagsSet.addAll(wordResult.partsOfSpeech)
+            // Then supplement with tag entry if needed (only if no tags found in WordResult)
+            if (posTagsSet.isEmpty()) {
+                tagEntry?.senses?.forEach { sense ->
+                    sense.pos?.let { posTagsSet.addAll(it) }
+                }
             }
+            
+            // Convert to list to avoid duplicates
+            val posTags = posTagsSet.toList()
 
-            // Debug: Let's see what tags 満足 has
-            android.util.Log.d("FormsTab", "Word: $word, POS tags: $posTags")
+            // Debug: Let's see what tags we found
+            android.util.Log.d("FormsTab", "Word: $word (base: $baseForm), POS tags: $posTags")
 
             // Determine word type and generate conjugations
             // For words that can be multiple types (like 満足), show all applicable forms

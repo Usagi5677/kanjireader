@@ -312,7 +312,7 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
     }
 
     private fun displayEnhancedWordData(enhanced: EnhancedWordResult, originalResult: WordResult? = null) {
-        // Display the main word
+        // Display the main word (base form)
         wordText.text = enhanced.kanji ?: enhanced.reading
         readingText.text = if (enhanced.kanji != null) enhanced.reading else ""
         readingText.visibility = if (enhanced.kanji != null) View.VISIBLE else View.GONE

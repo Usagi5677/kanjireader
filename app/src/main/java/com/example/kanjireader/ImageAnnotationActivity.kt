@@ -259,8 +259,8 @@ class ImageAnnotationActivity : AppCompatActivity() {
                 override fun onScrolled(recyclerView: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
                     super.onScrolled(recyclerView, dx, dy)
                     
-                    val totalItems = extractedWordCards.size
-                    if (totalItems <= 0) return
+                    val totalRealItems = extractedWordCards.size  // Only count real word cards
+                    if (totalRealItems <= 0) return
                     
                     val layoutManager = recyclerView.layoutManager as LinearLayoutManager
                     
@@ -269,18 +269,18 @@ class ImageAnnotationActivity : AppCompatActivity() {
                     val scrollRange = recyclerView.computeVerticalScrollRange() - recyclerView.height
                     
                     val highlightPosition = if (scrollRange > 0) {
-                        // Map scroll position to item index
+                        // Map scroll position to real item index (excluding fake cards)
                         val scrollProgress = scrollY.toFloat() / scrollRange.toFloat()
-                        val calculatedPosition = (scrollProgress * (totalItems - 1)).toInt()
+                        val calculatedPosition = (scrollProgress * (totalRealItems - 1)).toInt()
                         
-                        // Clamp to valid range
-                        maxOf(0, minOf(calculatedPosition, totalItems - 1))
+                        // Clamp to valid range of real items only
+                        maxOf(0, minOf(calculatedPosition, totalRealItems - 1))
                     } else {
                         // No scroll possible, highlight first item
                         0
                     }
                     
-                    Log.d(TAG, "Scroll: dy=$dy, scrollY=$scrollY, scrollRange=$scrollRange, totalItems=$totalItems, calculated=$highlightPosition, currentHighlight=$currentHighlightedCardIndex")
+                    Log.d(TAG, "Scroll: dy=$dy, scrollY=$scrollY, scrollRange=$scrollRange, totalRealItems=$totalRealItems, calculated=$highlightPosition, currentHighlight=$currentHighlightedCardIndex")
                     
                     // Update highlighting if the position changed
                     if (highlightPosition != currentHighlightedCardIndex) {
@@ -307,7 +307,10 @@ class ImageAnnotationActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val repository = DictionaryRepository.getInstance(this@ImageAnnotationActivity)
-                val searchResults = repository.search(wordCard.word, limit = 10)
+                // Use base form for search, fall back to surface form if no base form available
+                val searchTerm = wordCard.baseForm ?: wordCard.word
+                Log.d(TAG, "🔍 ImageAnnotation - Searching with base form: '$searchTerm' (original: '${wordCard.word}', baseForm: '${wordCard.baseForm}')")
+                val searchResults = repository.search(searchTerm, limit = 10)
                 
                 if (searchResults.isNotEmpty()) {
                     // Find the best matching result (same logic as in word extraction)
@@ -317,13 +320,13 @@ class ImageAnnotationActivity : AppCompatActivity() {
                         isAllKatakana(wordCard.word) && result.reading == wordCard.word
                     } ?: searchResults.first()
                     
-                    // Launch WordDetailActivity with complete word information
+                    // Launch WordDetailActivity with base form for proper grammar tags
                     val intent = Intent(this@ImageAnnotationActivity, WordDetailActivity::class.java).apply {
-                        putExtra("word", wordCard.word)
+                        putExtra("word", bestResult.kanji ?: bestResult.reading) // Use base form
                         putExtra("reading", bestResult.reading)
                         putExtra("meanings", ArrayList(bestResult.meanings))
                         putExtra("frequency", bestResult.frequency)
-                        putExtra("selectedText", wordCard.word) // For phrase searching
+                        putExtra("selectedText", wordCard.word) // Keep original for phrase searching
                     }
                     
                     startActivity(intent)
@@ -611,29 +614,78 @@ class ImageAnnotationActivity : AppCompatActivity() {
                 for (wordPos in wordPositions) {
                     try {
                         Log.d(TAG, "Looking up word details: '${wordPos.word}' at position ${wordPos.startPosition}-${wordPos.endPosition}")
-                        val searchResults = repository.search(wordPos.word, limit = 10) // Get more results to find best match
+                        
+                        // Special handling for common する conjugations
+                        // Also check the explicit baseForm field for artificially split tokens like したら
+                        val isConjugatedSuru = (wordPos.kuromojiToken?.baseForm == "する" || wordPos.baseForm == "する") && 
+                                              wordPos.word in listOf("した", "しない", "します", "しました", "して", "したり", "したら", "させる", "される", "しよう")
+                        
+                        val searchResults = if (isConjugatedSuru) {
+                            // For する conjugations, search for the base form to get correct meanings
+                            Log.d(TAG, "Detected する conjugation '${wordPos.word}', searching for base form 'する'")
+                            repository.search("する", limit = 10)
+                        } else {
+                            repository.search(wordPos.word, limit = 10)
+                        }
                         
                         if (searchResults.isNotEmpty()) {
                             // Find the best matching result - prioritize exact matches
-                            val bestResult = searchResults.find { result ->
-                                // Exact match on kanji or reading
-                                result.kanji == wordPos.word || result.reading == wordPos.word
-                            } ?: searchResults.find { result ->
-                                // For katakana words, also check if reading matches without conversion
-                                isAllKatakana(wordPos.word) && result.reading == wordPos.word
-                            } ?: searchResults.first() // Fallback to first result
+                            val bestResult = if (isConjugatedSuru) {
+                                // For する conjugations, use the first result (which should be する)
+                                searchResults.firstOrNull()
+                            } else {
+                                searchResults.find { result ->
+                                    // Exact match on kanji or reading
+                                    result.kanji == wordPos.word || result.reading == wordPos.word
+                                } ?: searchResults.find { result ->
+                                    // For katakana words, also check if reading matches without conversion
+                                    isAllKatakana(wordPos.word) && result.reading == wordPos.word
+                                }
+                            } ?: run {
+                                // More conservative fallback - only use first result if it's actually reasonable
+                                val firstResult = searchResults.first()
+                                Log.d(TAG, "No exact match for '${wordPos.word}', considering first result: kanji='${firstResult.kanji}', reading='${firstResult.reading}'")
+                                
+                                // For conjugated verbs, accept any valid deinflection result
+                                val isConjugatedVerb = wordPos.word.length > 1 && 
+                                                       firstResult.isDeinflectedValidConjugation
+                                
+                                when {
+                                    // Exact match on kanji field
+                                    firstResult.kanji == wordPos.word -> {
+                                        Log.d(TAG, "Using first result as kanji exactly matches our word")
+                                        firstResult
+                                    }
+                                    // Accept conjugated verb forms of common verbs
+                                    isConjugatedVerb -> {
+                                        Log.d(TAG, "Using first result as valid conjugated verb: '${wordPos.word}' → '${firstResult.reading}'")
+                                        firstResult
+                                    }
+                                    else -> {
+                                        Log.d(TAG, "First result kanji '${firstResult.kanji}' doesn't exactly match '${wordPos.word}', skipping fallback")
+                                        null
+                                    }
+                                }
+                            }
                             
-                            val meanings = bestResult.meanings.take(3).joinToString(", ")
-                            
-                            val wordCard = WordCardInfo(
-                                word = wordPos.word,
-                                reading = bestResult.reading,
-                                meanings = meanings,
-                                startPosition = wordPos.startPosition,
-                                endPosition = wordPos.endPosition
-                            )
-                            wordCards.add(wordCard)
-                            Log.d(TAG, "Added word card: ${wordCard.word} - ${wordCard.reading}")
+                            if (bestResult != null) {
+                                val meanings = bestResult.meanings.take(3).joinToString(", ")
+                                
+                                val wordCard = WordCardInfo(
+                                    word = wordPos.word,
+                                    reading = bestResult.reading,
+                                    meanings = meanings,
+                                    startPosition = wordPos.startPosition,
+                                    endPosition = wordPos.endPosition,
+                                    baseForm = wordPos.getBaseFormForLookup()
+                                )
+                                wordCards.add(wordCard)
+                                Log.d(TAG, "Added word card: ${wordCard.word} - ${wordCard.reading}")
+                            } else {
+                                // No good match found, try splitting into individual characters
+                                Log.d(TAG, "No exact match found for '${wordPos.word}', splitting into individual characters")
+                                splitIntoIndividualCharacters(wordPos, wordCards, repository)
+                            }
                         } else {
                             // Even if not in dictionary (like single kanji), still add it
                             val wordCard = WordCardInfo(
@@ -641,7 +693,8 @@ class ImageAnnotationActivity : AppCompatActivity() {
                                 reading = wordPos.word, // Use the word itself as reading
                                 meanings = "", // No meanings available
                                 startPosition = wordPos.startPosition,
-                                endPosition = wordPos.endPosition
+                                endPosition = wordPos.endPosition,
+                                baseForm = wordPos.getBaseFormForLookup()
                             )
                             wordCards.add(wordCard)
                             Log.d(TAG, "Added word card without dictionary entry: ${wordCard.word}")
@@ -1848,4 +1901,70 @@ class ImageAnnotationActivity : AppCompatActivity() {
             Log.w(TAG, "Image error: $title - $message")
         }
     }
+    
+    /**
+     * Split a word into individual characters and look each one up in the dictionary
+     */
+    private suspend fun splitIntoIndividualCharacters(wordPos: JapaneseWordExtractor.WordPosition, wordCards: MutableList<WordCardInfo>, repository: DictionaryRepository) {
+        // Only split kanji words, not hiragana/katakana
+        if (!wordPos.word.any { Character.UnicodeBlock.of(it) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS }) {
+            Log.d(TAG, "Skipping character splitting for '${wordPos.word}' - contains no kanji")
+            return
+        }
+        
+        Log.d(TAG, "Splitting kanji word '${wordPos.word}' into individual characters")
+        
+        var currentPos = wordPos.startPosition
+        for (char in wordPos.word) {
+            val charString = char.toString()
+            
+            // Try to look up each character in the dictionary
+            try {
+                val charResults = repository.search(charString, limit = 5)
+                val exactMatch = charResults.find { it.kanji == charString || it.reading == charString }
+                
+                val wordCard = if (exactMatch != null) {
+                    // Found dictionary entry for this character
+                    val meanings = exactMatch.meanings.take(2).joinToString(", ") // Fewer meanings for individual chars
+                    WordCardInfo(
+                        word = charString,
+                        reading = exactMatch.reading,
+                        meanings = meanings,
+                        startPosition = currentPos,
+                        endPosition = currentPos + 1,
+                        baseForm = charString // For individual characters, word and base form are the same
+                    )
+                } else {
+                    // No dictionary entry, use character as-is
+                    WordCardInfo(
+                        word = charString,
+                        reading = charString,
+                        meanings = "",
+                        startPosition = currentPos,
+                        endPosition = currentPos + 1,
+                        baseForm = charString // For individual characters, word and base form are the same
+                    )
+                }
+                
+                wordCards.add(wordCard)
+                Log.d(TAG, "Added individual character: $charString → ${wordCard.reading}")
+                
+            } catch (e: Exception) {
+                Log.w(TAG, "Error looking up character '$charString': ${e.message}")
+                // Fallback: add character as-is
+                val wordCard = WordCardInfo(
+                    word = charString,
+                    reading = charString,
+                    meanings = "",
+                    startPosition = currentPos,
+                    endPosition = currentPos + 1,
+                    baseForm = charString // For individual characters, word and base form are the same
+                )
+                wordCards.add(wordCard)
+            }
+            
+            currentPos++
+        }
+    }
+    
 }
