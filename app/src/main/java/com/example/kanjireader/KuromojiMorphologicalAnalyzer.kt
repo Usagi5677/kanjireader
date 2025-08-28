@@ -31,7 +31,17 @@ class KuromojiMorphologicalAnalyzer {
 
             val token = tokens[0]
 
-            val baseForm = token.baseForm ?: token.surface
+            // Filter out Kuromoji's "*" placeholder which means "no base form available"
+            val baseForm = token.baseForm?.takeIf { it != "*" && it.isNotBlank() } ?: token.surface
+            
+            // Debug logging for problematic base forms
+            if (baseForm == "*" || baseForm.isBlank()) {
+                Log.w(TAG, "=== PROBLEMATIC BASE FORM DETECTED ===")
+                Log.w(TAG, "Input word: '$word'")
+                Log.w(TAG, "token.surface: '${token.surface}'")
+                Log.w(TAG, "token.baseForm: '${token.baseForm}'")
+                Log.w(TAG, "Final baseForm: '$baseForm'")
+            }
 
             val partOfSpeech = token.partOfSpeechLevel1 ?: "unknown"
 
@@ -70,7 +80,17 @@ class KuromojiMorphologicalAnalyzer {
 
             for (token in tokens) {
                 val surface = token.surface
-                val baseForm = token.baseForm ?: surface
+                // Filter out Kuromoji's "*" placeholder which means "no base form available"
+                val baseForm = token.baseForm?.takeIf { it != "*" && it.isNotBlank() } ?: surface
+                
+                // Debug logging for problematic base forms in deinflection
+                if (baseForm == "*" || baseForm.isBlank()) {
+                    Log.w(TAG, "=== PROBLEMATIC BASE FORM IN DEINFLECTION ===")
+                    Log.w(TAG, "Input word: '$word'")
+                    Log.w(TAG, "token.surface: '$surface'")
+                    Log.w(TAG, "token.baseForm: '${token.baseForm}'")
+                    Log.w(TAG, "Final baseForm: '$baseForm'")
+                }
 
                 if (baseForm != word && baseForm != surface && baseForm.length > 1) {
                     val verbType = mapToVerbType(token)
@@ -161,7 +181,8 @@ class KuromojiMorphologicalAnalyzer {
 
     private fun buildTransformations(token: Token): List<DeinflectionStep> {
         val transformations = mutableListOf<DeinflectionStep>()
-        val baseForm = token.baseForm ?: token.surface
+        // Filter out Kuromoji's "*" placeholder which means "no base form available"
+        val baseForm = token.baseForm?.takeIf { it != "*" && it.isNotBlank() } ?: token.surface
 
         if (baseForm != token.surface) {
             transformations.add(

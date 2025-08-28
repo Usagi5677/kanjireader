@@ -149,6 +149,12 @@ class DictionaryRepository(private val context: Context) {
         Log.d(TAG, "Query: '$query'")
         Log.d(TAG, "Search mode: FTS5")
 
+        // Filter out problematic queries that could cause FTS5 errors
+        if (query.isBlank() || query == "*" || query == "**") {
+            Log.d(TAG, "Skipping problematic query: '$query'")
+            return@withContext emptyList()
+        }
+
         // Use FTS5 for all searches with pagination
         val results = searchFTS5(query, limit, offset)
 

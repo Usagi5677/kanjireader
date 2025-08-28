@@ -269,7 +269,8 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                             val resultWord = result.kanji ?: result.reading
                             val isInText = actualWordsInText.contains(resultWord)
                             if (!isInText) {
-                                Log.d(TAG, "Filtering out '$resultWord' - not found in paragraph text")
+                                Log.d(TAG, "Filtering out '$resultWord' (kanji='${result.kanji}', reading='${result.reading}') - not found in paragraph text")
+                                Log.d(TAG, "actualWordsInText contains: ${actualWordsInText.joinToString(", ")}")
                             }
                             isInText
                         }

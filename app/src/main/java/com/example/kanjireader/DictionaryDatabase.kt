@@ -1170,14 +1170,41 @@ class DictionaryDatabase private constructor(context: Context) : SQLiteOpenHelpe
 
         return when {
             words.size == 1 -> {
-                val word = words[0]
+                val word = escapeFts5SpecialChars(words[0])
                 // Include both exact matches and prefix matches for comprehensive results
-                "\"$word\" OR $word*"
+                if (word.isEmpty()) {
+                    // If word becomes empty after escaping, return a safe query
+                    "\"\""
+                } else {
+                    "\"$word\" OR $word*"
+                }
             }
             else -> {
-                words.joinToString(" AND ") { word -> "\"$word\"*" }
+                words.mapNotNull { word ->
+                    val escaped = escapeFts5SpecialChars(word)
+                    if (escaped.isNotEmpty()) "\"$escaped\"*" else null
+                }.joinToString(" AND ")
             }
         }
+    }
+
+    /**
+     * Escape FTS5 special characters to prevent syntax errors
+     */
+    private fun escapeFts5SpecialChars(input: String): String {
+        if (input.isBlank()) return ""
+        
+        // Handle special cases that are problematic in FTS5
+        return input
+            .replace("\"", "\"\"")  // Escape quotes by doubling them
+            .let { escaped ->
+                // Remove standalone * characters as they cause syntax errors
+                if (escaped == "*" || escaped == "**") {
+                    ""
+                } else {
+                    escaped
+                }
+            }
     }
 
 
