@@ -197,11 +197,40 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                         val searchResults = repository?.search(searchTerm, limit = 10) ?: emptyList()
                         
                         if (searchResults.isNotEmpty()) {
-                            // Simple result selection - prefer exact matches or use first result
+                            // Apply same preference logic as word detail activity
                             val bestResult = searchResults.find { result ->
                                 // Exact match on kanji or reading
                                 result.kanji == wordPos.word || result.reading == wordPos.word
-                            } ?: searchResults.first()
+                            } ?: run {
+                                // Apply preference logic for common words
+                                if (baseFormForSearch == "やる" || wordPos.word == "やる") {
+                                    // Find 行る with "to do, to undertake" meaning
+                                    searchResults.find { it.reading == "やる" && it.kanji == "行る" }
+                                        ?: searchResults.find { result ->
+                                            result.reading == "やる" && result.meanings.any { meaning ->
+                                                (meaning.startsWith("to do", ignoreCase = true) && 
+                                                 !meaning.contains("someone", ignoreCase = true)) ||
+                                                meaning.contains("to undertake", ignoreCase = true) ||
+                                                meaning.contains("to perform", ignoreCase = true) ||
+                                                meaning.contains("to play", ignoreCase = true)
+                                            }
+                                        } ?: searchResults.first()
+                                } else if (baseFormForSearch == "ほう" || wordPos.word == "ほう") {
+                                    // Find 方 with "direction, way, method" meaning instead of 法 with "law, act"
+                                    searchResults.find { it.reading == "ほう" && it.kanji == "方" }
+                                        ?: searchResults.find { result ->
+                                            result.reading == "ほう" && result.meanings.any { meaning ->
+                                                meaning.contains("direction", ignoreCase = true) ||
+                                                meaning.contains("way", ignoreCase = true) ||
+                                                meaning.contains("method", ignoreCase = true) ||
+                                                meaning.contains("side", ignoreCase = true) ||
+                                                meaning.contains("person", ignoreCase = true)
+                                            }
+                                        } ?: searchResults.first()
+                                } else {
+                                    searchResults.first()
+                                }
+                            }
                             
                             if (bestResult != null) {
                                 val meanings = bestResult.meanings.take(3).joinToString(", ")
