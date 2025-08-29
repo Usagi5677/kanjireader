@@ -21,7 +21,6 @@ class DictionaryRepository(private val context: Context) {
 
         // Using SQLite FTS5 exclusively for all searches
 
-
         @Volatile
         private var INSTANCE: DictionaryRepository? = null
 
@@ -32,6 +31,66 @@ class DictionaryRepository(private val context: Context) {
                     // FTS5 database is automatically initialized via DictionaryDatabase
                     Log.d(TAG, "Repository created in FTS5 mode")
                 }
+            }
+        }
+        
+        /**
+         * Apply preference logic to select the best result from search results
+         * This centralizes word selection logic used across the app
+         */
+        fun selectBestResult(searchResults: List<WordResult>, originalWord: String, baseForm: String?): WordResult? {
+            if (searchResults.isEmpty()) return null
+            
+            // First try exact matches
+            val exactMatch = searchResults.find { result ->
+                result.kanji == originalWord || result.reading == originalWord
+            }
+            if (exactMatch != null) return exactMatch
+            
+            // For katakana words, check reading matches
+            if (isAllKatakana(originalWord)) {
+                val katakanaMatch = searchResults.find { result ->
+                    result.reading == originalWord
+                }
+                if (katakanaMatch != null) return katakanaMatch
+            }
+            
+            // Apply preference logic for common words
+            val baseFormForSearch = baseForm ?: originalWord
+            return when {
+                baseFormForSearch == "やる" || originalWord == "やる" -> {
+                    // Find 行る with "to do, to undertake" meaning
+                    searchResults.find { it.reading == "やる" && it.kanji == "行る" }
+                        ?: searchResults.find { result ->
+                            result.reading == "やる" && result.meanings.any { meaning ->
+                                (meaning.startsWith("to do", ignoreCase = true) && 
+                                 !meaning.contains("someone", ignoreCase = true)) ||
+                                meaning.contains("to undertake", ignoreCase = true) ||
+                                meaning.contains("to perform", ignoreCase = true) ||
+                                meaning.contains("to play", ignoreCase = true)
+                            }
+                        } ?: searchResults.first()
+                }
+                baseFormForSearch == "ほう" || originalWord == "ほう" -> {
+                    // Find 方 with "direction, way, method" meaning instead of 法 with "law, act"
+                    searchResults.find { it.reading == "ほう" && it.kanji == "方" }
+                        ?: searchResults.find { result ->
+                            result.reading == "ほう" && result.meanings.any { meaning ->
+                                meaning.contains("direction", ignoreCase = true) ||
+                                meaning.contains("way", ignoreCase = true) ||
+                                meaning.contains("method", ignoreCase = true) ||
+                                meaning.contains("side", ignoreCase = true) ||
+                                meaning.contains("person", ignoreCase = true)
+                            }
+                        } ?: searchResults.first()
+                }
+                else -> searchResults.first()
+            }
+        }
+        
+        private fun isAllKatakana(text: String): Boolean {
+            return text.all { char ->
+                char in '\u30A0'..'\u30FF' // Katakana range
             }
         }
     }

@@ -313,23 +313,24 @@ class ImageAnnotationActivity : AppCompatActivity() {
                 val searchResults = repository.search(searchTerm, limit = 10)
                 
                 if (searchResults.isNotEmpty()) {
-                    // Find the best matching result (same logic as in word extraction)
-                    val bestResult = searchResults.find { result ->
-                        result.kanji == wordCard.word || result.reading == wordCard.word
-                    } ?: searchResults.find { result ->
-                        isAllKatakana(wordCard.word) && result.reading == wordCard.word
-                    } ?: searchResults.first()
+                    // Use centralized word selection logic
+                    val bestResult = DictionaryRepository.selectBestResult(searchResults, wordCard.word, wordCard.baseForm)
                     
-                    // Launch WordDetailActivity with base form for proper grammar tags
-                    val intent = Intent(this@ImageAnnotationActivity, WordDetailActivity::class.java).apply {
-                        putExtra("word", bestResult.kanji ?: bestResult.reading) // Use base form
-                        putExtra("reading", bestResult.reading)
-                        putExtra("meanings", ArrayList(bestResult.meanings))
-                        putExtra("frequency", bestResult.frequency)
-                        putExtra("selectedText", wordCard.word) // Keep original for phrase searching
+                    if (bestResult != null) {
+                        // Launch WordDetailActivity with base form for proper grammar tags
+                        val intent = Intent(this@ImageAnnotationActivity, WordDetailActivity::class.java).apply {
+                            putExtra("word", bestResult.kanji ?: bestResult.reading) // Use base form
+                            putExtra("reading", bestResult.reading)
+                            putExtra("meanings", ArrayList(bestResult.meanings))
+                            putExtra("frequency", bestResult.frequency)
+                            putExtra("selectedText", wordCard.word) // Keep original for phrase searching
+                        }
+                        
+                        startActivity(intent)
+                    } else {
+                        // Handle case where centralized logic returned null
+                        handleFallbackWordDetail(wordCard)
                     }
-                    
-                    startActivity(intent)
                 } else {
                     // Fallback to basic information if no dictionary entry found
                     val intent = Intent(this@ImageAnnotationActivity, WordDetailActivity::class.java).apply {
@@ -629,7 +630,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
                         }
                         
                         if (searchResults.isNotEmpty()) {
-                            // Find the best matching result - prioritize exact matches
+                            // Apply same preference logic as text reader
                             val bestResult = if (isConjugatedSuru) {
                                 // For する conjugations, use the first result (which should be する)
                                 searchResults.firstOrNull()
@@ -642,28 +643,32 @@ class ImageAnnotationActivity : AppCompatActivity() {
                                     isAllKatakana(wordPos.word) && result.reading == wordPos.word
                                 }
                             } ?: run {
-                                // More conservative fallback - only use first result if it's actually reasonable
-                                val firstResult = searchResults.first()
-                                Log.d(TAG, "No exact match for '${wordPos.word}', considering first result: kanji='${firstResult.kanji}', reading='${firstResult.reading}'")
-                                
-                                // For conjugated verbs, accept any valid deinflection result
-                                val isConjugatedVerb = wordPos.word.length > 1 && 
-                                                       firstResult.isDeinflectedValidConjugation
-                                
-                                when {
-                                    // Exact match on kanji field
-                                    firstResult.kanji == wordPos.word -> {
-                                        Log.d(TAG, "Using first result as kanji exactly matches our word")
-                                        firstResult
-                                    }
-                                    // Accept conjugated verb forms of common verbs
-                                    isConjugatedVerb -> {
-                                        Log.d(TAG, "Using first result as valid conjugated verb: '${wordPos.word}' → '${firstResult.reading}'")
-                                        firstResult
-                                    }
-                                    else -> {
-                                        Log.d(TAG, "First result kanji '${firstResult.kanji}' doesn't exactly match '${wordPos.word}', skipping fallback")
-                                        null
+                                // Use centralized word selection logic, fallback to conservative logic if null
+                                val baseFormForSearch = wordPos.getBaseFormForLookup()
+                                DictionaryRepository.selectBestResult(searchResults, wordPos.word, baseFormForSearch) ?: run {
+                                    // More conservative fallback if centralized logic returns null
+                                    val firstResult = searchResults.first()
+                                    Log.d(TAG, "Centralized logic returned null for '${wordPos.word}', using conservative fallback")
+                                    
+                                    // For conjugated verbs, accept any valid deinflection result
+                                    val isConjugatedVerb = wordPos.word.length > 1 && 
+                                                           firstResult.isDeinflectedValidConjugation
+                                    
+                                    when {
+                                        // Exact match on kanji field
+                                        firstResult.kanji == wordPos.word -> {
+                                            Log.d(TAG, "Using first result as kanji exactly matches our word")
+                                            firstResult
+                                        }
+                                        // Accept conjugated verb forms of common verbs
+                                        isConjugatedVerb -> {
+                                            Log.d(TAG, "Using first result as valid conjugated verb: '${wordPos.word}' → '${firstResult.reading}'")
+                                            firstResult
+                                        }
+                                        else -> {
+                                            Log.d(TAG, "First result kanji '${firstResult.kanji}' doesn't exactly match '${wordPos.word}', skipping fallback")
+                                            null
+                                        }
                                     }
                                 }
                             }
@@ -709,6 +714,10 @@ class ImageAnnotationActivity : AppCompatActivity() {
                 // Update UI on main thread
                 extractedWordCards = wordCards
                 wordCardAdapter.updateData(wordCards)
+                
+                // Set word positions for grey styling
+                val wordCardPositions = wordCards.map { Pair(it.startPosition, it.endPosition) }
+                textSelectionView.setWordPositions(wordCardPositions)
                 
                 // Set first card as highlighted and update text highlighting
                 if (wordCards.isNotEmpty()) {
@@ -1965,6 +1974,20 @@ class ImageAnnotationActivity : AppCompatActivity() {
             
             currentPos++
         }
+    }
+    
+    private fun handleFallbackWordDetail(wordCard: WordCardInfo) {
+        // Fallback to basic information if centralized logic fails
+        val intent = Intent(this@ImageAnnotationActivity, WordDetailActivity::class.java).apply {
+            putExtra("word", wordCard.word)
+            putExtra("reading", wordCard.reading)
+            putExtra("meanings", ArrayList(wordCard.meanings.split(", ").filter { it.isNotBlank() }))
+            putExtra("frequency", 0)
+            putExtra("isJMNEDict", false)
+            putExtra("selectedText", wordCard.word)
+        }
+        
+        startActivity(intent)
     }
     
 }

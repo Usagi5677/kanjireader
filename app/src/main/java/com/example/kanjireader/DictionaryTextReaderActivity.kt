@@ -197,40 +197,8 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                         val searchResults = repository?.search(searchTerm, limit = 10) ?: emptyList()
                         
                         if (searchResults.isNotEmpty()) {
-                            // Apply same preference logic as word detail activity
-                            val bestResult = searchResults.find { result ->
-                                // Exact match on kanji or reading
-                                result.kanji == wordPos.word || result.reading == wordPos.word
-                            } ?: run {
-                                // Apply preference logic for common words
-                                if (baseFormForSearch == "やる" || wordPos.word == "やる") {
-                                    // Find 行る with "to do, to undertake" meaning
-                                    searchResults.find { it.reading == "やる" && it.kanji == "行る" }
-                                        ?: searchResults.find { result ->
-                                            result.reading == "やる" && result.meanings.any { meaning ->
-                                                (meaning.startsWith("to do", ignoreCase = true) && 
-                                                 !meaning.contains("someone", ignoreCase = true)) ||
-                                                meaning.contains("to undertake", ignoreCase = true) ||
-                                                meaning.contains("to perform", ignoreCase = true) ||
-                                                meaning.contains("to play", ignoreCase = true)
-                                            }
-                                        } ?: searchResults.first()
-                                } else if (baseFormForSearch == "ほう" || wordPos.word == "ほう") {
-                                    // Find 方 with "direction, way, method" meaning instead of 法 with "law, act"
-                                    searchResults.find { it.reading == "ほう" && it.kanji == "方" }
-                                        ?: searchResults.find { result ->
-                                            result.reading == "ほう" && result.meanings.any { meaning ->
-                                                meaning.contains("direction", ignoreCase = true) ||
-                                                meaning.contains("way", ignoreCase = true) ||
-                                                meaning.contains("method", ignoreCase = true) ||
-                                                meaning.contains("side", ignoreCase = true) ||
-                                                meaning.contains("person", ignoreCase = true)
-                                            }
-                                        } ?: searchResults.first()
-                                } else {
-                                    searchResults.first()
-                                }
-                            }
+                            // Use centralized word selection logic
+                            val bestResult = DictionaryRepository.selectBestResult(searchResults, wordPos.word, baseFormForSearch)
                             
                             if (bestResult != null) {
                                 val meanings = bestResult.meanings.take(3).joinToString(", ")
@@ -294,6 +262,10 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                 runOnUiThread {
                     wordCards = extractedWordCards
                     wordCardAdapter.updateData(wordCards)
+                    
+                    // Set word positions for grey styling
+                    val wordCardPositions = extractedWordCards.map { Pair(it.startPosition, it.endPosition) }
+                    binding.textSelectionView.setWordPositions(wordCardPositions)
                     
                     // Initialize highlighting for first word card
                     if (wordCards.isNotEmpty()) {
@@ -403,55 +375,26 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
     
     private fun handleSearchResults(searchResults: List<WordResult>, wordCard: WordCardInfo, searchTerm: String) {
         if (searchResults.isNotEmpty()) {
-            // Find the best matching result
-            val bestResult = searchResults.find { result ->
-                result.kanji == wordCard.word || result.reading == wordCard.word
-            } ?: searchResults.find { result ->
-                isAllKatakana(wordCard.word) && result.reading == wordCard.word
-            } ?: run {
-                // Apply same preference logic for word detail activity
-                val baseFormForSearch = wordCard.baseForm ?: wordCard.word
-                if (baseFormForSearch == "やる" || wordCard.word == "やる") {
-                    // Find 行る with "to do, to undertake" meaning
-                    searchResults.find { it.reading == "やる" && it.kanji == "行る" }
-                        ?: searchResults.find { result ->
-                            result.reading == "やる" && result.meanings.any { meaning ->
-                                (meaning.startsWith("to do", ignoreCase = true) && 
-                                 !meaning.contains("someone", ignoreCase = true)) ||
-                                meaning.contains("to undertake", ignoreCase = true) ||
-                                meaning.contains("to perform", ignoreCase = true) ||
-                                meaning.contains("to play", ignoreCase = true)
-                            }
-                        } ?: searchResults.first()
-                } else if (baseFormForSearch == "ほう" || wordCard.word == "ほう") {
-                    // Find 方 with "direction, way, method" meaning instead of 法 with "law, act"
-                    searchResults.find { it.reading == "ほう" && it.kanji == "方" }
-                        ?: searchResults.find { result ->
-                            result.reading == "ほう" && result.meanings.any { meaning ->
-                                meaning.contains("direction", ignoreCase = true) ||
-                                meaning.contains("way", ignoreCase = true) ||
-                                meaning.contains("method", ignoreCase = true) ||
-                                meaning.contains("side", ignoreCase = true) ||
-                                meaning.contains("person", ignoreCase = true)
-                            }
-                        } ?: searchResults.first()
-                } else {
-                    searchResults.first()
+            // Use centralized word selection logic
+            val bestResult = DictionaryRepository.selectBestResult(searchResults, wordCard.word, wordCard.baseForm)
+            
+            if (bestResult != null) {
+                // Launch WordDetailActivity with complete word information
+                // Use the base form (kanji or reading) from the dictionary result for the title
+                val displayWord = bestResult.kanji ?: bestResult.reading
+                val intent = Intent(this@DictionaryTextReaderActivity, WordDetailActivity::class.java).apply {
+                    putExtra("word", displayWord)  // Use base form from dictionary
+                    putExtra("reading", bestResult.reading)
+                    putExtra("meanings", ArrayList(bestResult.meanings))
+                    putExtra("frequency", bestResult.frequency)
+                    putExtra("selectedText", wordCard.word)  // Keep original form for context
                 }
+                
+                startActivity(intent)
+            } else {
+                // Handle case where centralized logic returned null (shouldn't happen but safety first)
+                handleFallbackWordDetail(wordCard)
             }
-            
-            // Launch WordDetailActivity with complete word information
-            // Use the base form (kanji or reading) from the dictionary result for the title
-            val displayWord = bestResult.kanji ?: bestResult.reading
-            val intent = Intent(this@DictionaryTextReaderActivity, WordDetailActivity::class.java).apply {
-                putExtra("word", displayWord)  // Use base form from dictionary
-                putExtra("reading", bestResult.reading)
-                putExtra("meanings", ArrayList(bestResult.meanings))
-                putExtra("frequency", bestResult.frequency)
-                putExtra("selectedText", wordCard.word)  // Keep original form for context
-            }
-            
-            startActivity(intent)
         } else {
             // Fallback to basic information if no dictionary entry found
             // Use base form if available, otherwise use the original word
@@ -467,6 +410,21 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
             
             startActivity(intent)
         }
+    }
+    
+    private fun handleFallbackWordDetail(wordCard: WordCardInfo) {
+        // Fallback to basic information if centralized logic fails
+        val displayWord = wordCard.baseForm ?: wordCard.word
+        val intent = Intent(this@DictionaryTextReaderActivity, WordDetailActivity::class.java).apply {
+            putExtra("word", displayWord)  // Use base form for title
+            putExtra("reading", wordCard.reading)
+            putExtra("meanings", ArrayList(wordCard.meanings.split(", ").filter { it.isNotBlank() }))
+            putExtra("frequency", 0)
+            putExtra("isJMNEDict", false)
+            putExtra("selectedText", wordCard.word)  // Keep original form for context
+        }
+        
+        startActivity(intent)
     }
     
     private fun openWordDetailForSelectedText(selectedText: String) {

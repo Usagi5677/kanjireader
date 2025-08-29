@@ -4,8 +4,10 @@ import android.content.Context
 import android.graphics.*
 import android.text.Layout
 import android.text.SpannableStringBuilder
+import android.text.Spannable
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.style.ForegroundColorSpan
 import android.text.style.ReplacementSpan
 import android.util.AttributeSet
 import android.util.Log
@@ -24,7 +26,10 @@ class FuriganaReplacementSpan(
     private val fullText: String,          // Full segment text (e.g., "出くわし")
     private val furiganaText: String,      // Furigana for kanji only (e.g., "で")
     private val textPaint: TextPaint,
-    private val furiganaPaint: TextPaint
+    private val furiganaPaint: TextPaint,
+    private val greyTextPaint: TextPaint? = null,
+    private val startPosition: Int = 0,    // Start position in the full text
+    private val wordPositions: List<Pair<Int, Int>> = emptyList()
 ) : ReplacementSpan() {
     
     companion object {
@@ -132,8 +137,15 @@ class FuriganaReplacementSpan(
         bottom: Int,
         paint: Paint
     ) {
-        // Draw the full text
-        canvas.drawText(fullText, x, y.toFloat(), textPaint)
+        // Determine which paint to use based on word positions
+        val paintToUse = if (greyTextPaint != null && !isPositionCoveredByWordCard(startPosition)) {
+            greyTextPaint
+        } else {
+            textPaint
+        }
+        
+        // Draw the full text with appropriate paint
+        canvas.drawText(fullText, x, y.toFloat(), paintToUse)
         
         // Find kanji portion and draw furigana over it
         val kanjiInfo = findKanjiPortion()
@@ -154,6 +166,12 @@ class FuriganaReplacementSpan(
             val furiganaY = y - textPaint.textSize - FURIGANA_SPACING
             
             canvas.drawText(furiganaText, furiganaX, furiganaY, furiganaPaint)
+        }
+    }
+    
+    private fun isPositionCoveredByWordCard(position: Int): Boolean {
+        return wordPositions.any { (start, end) -> 
+            position >= start && position < end
         }
     }
 }
@@ -182,12 +200,19 @@ class TextSelectionView @JvmOverloads constructor(
     private var furiganaPaint: TextPaint
     private var staticLayout: StaticLayout? = null
     private var spannableText: SpannableStringBuilder? = null
+    private var lastLayoutWidth: Int = -1
+    private var lastLayoutHash: Int = -1
+    private var cachedSpannableForHighlight: SpannableStringBuilder? = null
+    private var lastHighlightRange: Pair<Int, Int>? = null
 
     // Furigana properties
     private var showFurigana = false
     private var furiganaText: FuriganaText? = null
     private var furiganaProcessor: FuriganaProcessor? = null
     private var furiganaJob: Job? = null
+    
+    // Word position tracking for grey styling
+    private var wordPositions: List<Pair<Int, Int>> = emptyList() // List of (startPos, endPos)
 
     // Selection properties
     private var isDragging = false
@@ -231,9 +256,16 @@ class TextSelectionView @JvmOverloads constructor(
     private var highlightedWordRange: Pair<Int, Int>? = null
     private val highlightedTextPaint = TextPaint().apply {
         textSize = 48f
-        color = ContextCompat.getColor(context, R.color.blue_700)
+        color = ContextCompat.getColor(context, R.color.blue_600) // Same as forms tab
         isAntiAlias = true
         isFakeBoldText = true
+    }
+    
+    // Paint for non-word card text (grey)
+    private val greyTextPaint = TextPaint().apply {
+        textSize = 64f // Same as main text size
+        color = ContextCompat.getColor(context, android.R.color.darker_gray)
+        isAntiAlias = true
     }
     
 
@@ -244,7 +276,7 @@ class TextSelectionView @JvmOverloads constructor(
 
     init {
         textPaint = TextPaint().apply {
-            textSize = 48f
+            textSize = 64f // Increased from 48f to 64f
             color = ContextCompat.getColor(context, android.R.color.black)
             isAntiAlias = true
         }
@@ -257,10 +289,53 @@ class TextSelectionView @JvmOverloads constructor(
         
         // Update highlighted text paint to match
         highlightedTextPaint.textSize = textPaint.textSize
+        
+        // Update grey text paint to match
+        greyTextPaint.textSize = textPaint.textSize
     }
 
     fun setFuriganaProcessor(processor: FuriganaProcessor) {
         this.furiganaProcessor = processor
+    }
+    
+    /**
+     * Set word positions to apply grey styling to non-word card text
+     */
+    fun setWordPositions(positions: List<Pair<Int, Int>>) {
+        this.wordPositions = positions
+        // Invalidate layout cache since styling changed
+        lastLayoutHash = -1
+        cachedSpannableForHighlight = null
+        lastHighlightRange = null
+        // Rebuild layout to apply styling
+        rebuildLayoutWithStyling()
+        invalidate()
+    }
+    
+    /**
+     * Rebuild the layout with current styling (grey for non-word card text)
+     */
+    private fun rebuildLayoutWithStyling() {
+        if (displayText.isEmpty()) return
+        
+        // Invalidate layout cache since styling is changing
+        lastLayoutHash = -1
+        cachedSpannableForHighlight = null
+        lastHighlightRange = null
+        
+        val textWidth = (width - (VIEW_PADDING * 2).toInt()).takeIf { it > 0 } ?: 500
+        
+        // Build spannable text with styling (including highlighting)
+        val spannable = buildSpannableText()
+        spannableText = spannable
+
+        // Create StaticLayout
+        staticLayout = StaticLayout.Builder
+            .obtain(spannable, 0, spannable.length, textPaint, textWidth)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, 1.0f)
+            .setIncludePad(true)
+            .build()
     }
 
     fun setShowFurigana(show: Boolean) {
@@ -272,16 +347,22 @@ class TextSelectionView @JvmOverloads constructor(
             // Force complete layout recreation when furigana mode changes
             staticLayout = null
             characterBounds.clear()
+            lastLayoutWidth = -1
+            lastLayoutHash = -1
+            cachedSpannableForHighlight = null
+            lastHighlightRange = null
 
             if (show) {
                 processFurigana()
             } else {
-                // Clear furigana and recreate layout
-                requestLayout()
+                // Clear furigana and rebuild layout with grey styling
+                furiganaText = null
+                rebuildLayoutWithStyling()
                 invalidate()
             }
 
-            // Force parent to remeasure and relayout
+            // Force remeasure and relayout
+            requestLayout()
             parent?.let { parent ->
                 if (parent is View) {
                     parent.requestLayout()
@@ -294,6 +375,12 @@ class TextSelectionView @JvmOverloads constructor(
         this.displayText = text
         this.visionText = visionText
         this.furiganaText = null
+        
+        // Invalidate layout cache
+        lastLayoutWidth = -1
+        lastLayoutHash = -1
+        cachedSpannableForHighlight = null
+        lastHighlightRange = null
 
         Log.d(TAG, "setText called with text length: ${text.length}")
 
@@ -399,7 +486,9 @@ class TextSelectionView @JvmOverloads constructor(
                     furiganaText = result
                     Log.d(TAG, "Processed furigana with ${result.segments.size} segments")
 
-                    // Trigger redraw
+                    // Rebuild layout with grey styling preserved
+                    rebuildLayoutWithStyling()
+                    // Request layout since height may have changed with furigana
                     requestLayout()
                     invalidate()
                     
@@ -427,7 +516,20 @@ class TextSelectionView @JvmOverloads constructor(
         // Calculate height based on text layout
         val layout = staticLayout
         val height = if (layout != null) {
-            layout.height + (VIEW_PADDING * 2).toInt()
+            var totalHeight = layout.height + (VIEW_PADDING * 2).toInt()
+            
+            // Add extra height for furigana if enabled
+            if (showFurigana && furiganaText != null) {
+                // More generous height calculation for furigana
+                // Each line needs space for furigana above it
+                val lineCount = layout.lineCount
+                val furiganaHeight = furiganaPaint.textSize + 8f // Furigana size + more spacing
+                // Use 75% of lines having furigana for better coverage
+                val extraHeight = (furiganaHeight * lineCount * 0.75f).toInt()
+                totalHeight += extraHeight
+            }
+            
+            totalHeight
         } else {
             200 // Minimum height
         }
@@ -439,22 +541,70 @@ class TextSelectionView @JvmOverloads constructor(
         if (displayText.isEmpty() || width <= (VIEW_PADDING * 2).toInt()) {
             staticLayout = null
             characterBounds.clear()
+            lastLayoutWidth = -1
+            lastLayoutHash = -1
+            cachedSpannableForHighlight = null
+            lastHighlightRange = null
             return
         }
 
         val textWidth = width - (VIEW_PADDING * 2).toInt()
 
-        // Build spannable text with furigana spans
-        val spannable = buildSpannableText()
-        spannableText = spannable
+        // Create a hash of the current state to detect if we need to recreate the layout
+        // Exclude highlightedWordRange from cache hash - we'll handle highlighting separately
+        val currentHash = (displayText + showFurigana.toString() + 
+                          (furiganaText?.segments?.size ?: 0).toString() + 
+                          (wordPositions?.size ?: 0).toString()).hashCode()
+
+        // Check if we can reuse the existing layout (allow small width differences)
+        val widthDiff = kotlin.math.abs(lastLayoutWidth - textWidth)
+        val highlightChanged = lastHighlightRange != highlightedWordRange
+        
+        if (staticLayout != null && widthDiff <= 2 && lastLayoutHash == currentHash) {
+            // Layout structure is valid, check if only highlighting changed
+            if (highlightChanged && cachedSpannableForHighlight != null) {
+                // Fast path: only update highlighting without full layout recreation
+                val updatedSpannable = applyHighlightingToSpannable(cachedSpannableForHighlight!!)
+                spannableText = updatedSpannable
+                
+                // Recreate layout with updated highlighting
+                staticLayout = StaticLayout.Builder
+                    .obtain(updatedSpannable, 0, updatedSpannable.length, textPaint, textWidth)
+                    .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                    .setLineSpacing(0f, 1.0f)
+                    .setIncludePad(true)
+                    .build()
+                
+                lastHighlightRange = highlightedWordRange
+                return
+            } else if (!highlightChanged) {
+                // Complete cache hit - no changes needed
+                return
+            }
+        }
+
+        // Build spannable text with furigana spans (exclude highlighting for caching)
+        val baseSpannable = buildSpannableTextForLayout()
+        
+        // Cache the base spannable for highlighting
+        cachedSpannableForHighlight = SpannableStringBuilder(baseSpannable)
+        
+        // Apply current highlighting if needed
+        val finalSpannable = applyHighlightingToSpannable(baseSpannable)
+        spannableText = finalSpannable
 
         // Create StaticLayout with the spannable text
         staticLayout = StaticLayout.Builder
-            .obtain(spannable, 0, spannable.length, textPaint, textWidth)
+            .obtain(finalSpannable, 0, finalSpannable.length, textPaint, textWidth)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(0f, 1.0f) // Let spans handle spacing
             .setIncludePad(true)
             .build()
+
+        // Cache the current state
+        lastLayoutWidth = textWidth
+        lastLayoutHash = currentHash
+        lastHighlightRange = highlightedWordRange
 
         // Build character bounds for selection (only if needed for text selection)
         val shouldBuildBounds = characterBounds.isEmpty() || isDragging
@@ -464,15 +614,160 @@ class TextSelectionView @JvmOverloads constructor(
     }
 
     /**
+     * Build a SpannableStringBuilder for layout creation (excludes highlighting for better caching)
+     */
+    private fun buildSpannableTextForLayout(): SpannableStringBuilder {
+        val spannable = SpannableStringBuilder()
+        
+        // Grey text paint for non-word card text
+        val greyTextPaint = TextPaint().apply {
+            textSize = textPaint.textSize
+            color = ContextCompat.getColor(context, android.R.color.darker_gray)
+        }
+        
+        if (!showFurigana || furiganaText == null) {
+            // No furigana - build plain text with grey styling and highlighting
+            spannable.append(displayText)
+            applyGreyStylingToPlainText(spannable)
+            
+            // Apply highlighting if needed
+            val highlightRange = highlightedWordRange
+            if (highlightRange != null && 
+                highlightRange.first >= 0 && highlightRange.second <= spannable.length &&
+                highlightRange.first < highlightRange.second) {
+                    
+                // Use custom span to match the bold styling of furigana mode
+                val highlightSpan = object : ReplacementSpan() {
+                    override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
+                        return highlightedTextPaint.measureText(text, start, end).toInt()
+                    }
+                    
+                    override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+                        if (text != null) {
+                            canvas.drawText(text, start, end, x, y.toFloat(), highlightedTextPaint)
+                        }
+                    }
+                }
+                
+                spannable.setSpan(
+                    highlightSpan,
+                    highlightRange.first,
+                    highlightRange.second,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            
+            return spannable
+        }
+
+        // Build text with furigana spans
+        val segments = furiganaText?.segments ?: listOf(
+            FuriganaSegment(displayText, null, false, 0, displayText.length)
+        )
+
+        var currentPos = 0
+        
+        for (segment in segments) {
+            val segmentStart = spannable.length
+            spannable.append(segment.text)
+            val segmentEnd = spannable.length
+
+            if (segment.furigana != null && segment.isKanji) {
+                // Determine if this segment should be grey (not in word positions)
+                val isInWordCard = wordPositions?.any { (start, end) ->
+                    val segmentActualStart = currentPos
+                    val segmentActualEnd = currentPos + segment.text.length
+                    segmentActualStart < end && segmentActualEnd > start
+                } ?: true
+
+                // Check if this segment should be highlighted
+                val segmentHighlightRange = highlightedWordRange
+                val segmentTextStart = currentPos
+                val segmentTextEnd = currentPos + segment.text.length
+                val isHighlighted = segmentHighlightRange != null && 
+                                    segmentTextStart < segmentHighlightRange.second && 
+                                    segmentTextEnd > segmentHighlightRange.first
+                
+                val furiganaSpan = FuriganaReplacementSpan(
+                    segment.text,
+                    segment.furigana,
+                    if (isHighlighted) highlightedTextPaint else textPaint,
+                    furiganaPaint,
+                    if (!isInWordCard && !isHighlighted) greyTextPaint else null,
+                    currentPos,
+                    wordPositions ?: emptyList()
+                )
+
+                spannable.setSpan(
+                    furiganaSpan,
+                    segmentStart,
+                    segmentEnd,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            } else {
+                // Apply styling for non-kanji segments (highlighting takes priority over grey)
+                val isInWordCard = wordPositions?.any { (start, end) ->
+                    val segmentActualStart = currentPos
+                    val segmentActualEnd = currentPos + segment.text.length
+                    segmentActualStart < end && segmentActualEnd > start
+                } ?: true
+
+                // Check if this segment should be highlighted
+                val segmentHighlightRange = highlightedWordRange
+                val segmentTextStart = currentPos
+                val segmentTextEnd = currentPos + segment.text.length
+                val isHighlighted = segmentHighlightRange != null && 
+                                    segmentTextStart < segmentHighlightRange.second && 
+                                    segmentTextEnd > segmentHighlightRange.first
+
+                if (isHighlighted) {
+                    // Apply highlighting with bold styling to match furigana spans
+                    val highlightSpan = object : ReplacementSpan() {
+                        override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
+                            return highlightedTextPaint.measureText(text, start, end).toInt()
+                        }
+                        
+                        override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+                            if (text != null) {
+                                canvas.drawText(text, start, end, x, y.toFloat(), highlightedTextPaint)
+                            }
+                        }
+                    }
+                    spannable.setSpan(highlightSpan, segmentStart, segmentEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                } else if (!isInWordCard) {
+                    // Apply grey styling for non-word card text
+                    val greySpan = ForegroundColorSpan(ContextCompat.getColor(context, android.R.color.darker_gray))
+                    spannable.setSpan(greySpan, segmentStart, segmentEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+            }
+            
+            currentPos += segment.text.length
+        }
+        
+        return spannable
+    }
+
+    /**
      * Build a SpannableStringBuilder with FuriganaReplacementSpans for kanji segments
      */
     private fun buildSpannableText(): SpannableStringBuilder {
+        val startTime = System.currentTimeMillis()
         val spannable = SpannableStringBuilder()
         
         if (!showFurigana || furiganaText == null) {
-            // No furigana - build plain text with optional highlighting
+            // No furigana - build plain text with grey styling and highlighting
             spannable.append(displayText)
+            val greyStartTime = System.currentTimeMillis()
+            applyGreyStylingToPlainText(spannable)
+            val greyTime = System.currentTimeMillis() - greyStartTime
+            if (greyTime > 2) {
+                Log.d(TAG, "PERF: applyGreyStylingToPlainText took ${greyTime}ms")
+            }
             applyWordHighlighting(spannable)
+            val totalTime = System.currentTimeMillis() - startTime
+            if (totalTime > 5) {
+                Log.d(TAG, "PERF: buildSpannableText (no furigana) took ${totalTime}ms")
+            }
             return spannable
         }
 
@@ -494,7 +789,10 @@ class TextSelectionView @JvmOverloads constructor(
                     fullText = segment.text,
                     furiganaText = segment.furigana,
                     textPaint = getTextPaintForSegment(currentPos, segment.text.length),
-                    furiganaPaint = furiganaPaint
+                    furiganaPaint = furiganaPaint,
+                    greyTextPaint = greyTextPaint,
+                    startPosition = currentPos,
+                    wordPositions = wordPositions
                 )
                 
                 spannable.setSpan(
@@ -504,31 +802,44 @@ class TextSelectionView @JvmOverloads constructor(
                     SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             } else {
-                // Add plain text without furigana, but check if it needs highlighting
+                // Add plain text without furigana, but check if it needs highlighting or grey styling
                 val segmentStart = spannable.length
                 spannable.append(segment.text)
                 
-                // Apply highlighting to non-furigana segments if they overlap with highlight range
+                // Determine which paint to use
                 val paintToUse = getTextPaintForSegment(currentPos, segment.text.length)
-                if (paintToUse == highlightedTextPaint) {
-                    val highlightSpan = object : ReplacementSpan() {
+                
+                // Apply appropriate styling based on paint type
+                if (paintToUse == highlightedTextPaint || paintToUse == greyTextPaint) {
+                    val styledSpan = object : ReplacementSpan() {
                         override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
-                            return highlightedTextPaint.measureText(text, start, end).toInt()
+                            return paintToUse.measureText(text, start, end).toInt()
                         }
                         override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
                             if (text != null) {
-                                canvas.drawText(text, start, end, x, y.toFloat(), highlightedTextPaint)
+                                canvas.drawText(text, start, end, x, y.toFloat(), paintToUse)
                             }
                         }
                     }
-                    spannable.setSpan(highlightSpan, segmentStart, spannable.length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    spannable.setSpan(styledSpan, segmentStart, spannable.length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
             }
             
             currentPos += segment.text.length
         }
 
+        val highlightStartTime = System.currentTimeMillis()
         applyWordHighlighting(spannable)
+        val highlightTime = System.currentTimeMillis() - highlightStartTime
+        if (highlightTime > 2) {
+            Log.d(TAG, "PERF: applyWordHighlighting took ${highlightTime}ms")
+        }
+        
+        val totalTime = System.currentTimeMillis() - startTime
+        if (totalTime > 10) {
+            Log.d(TAG, "PERF: buildSpannableText (with furigana) took ${totalTime}ms for ${segments.size} segments")
+        }
+        
         return spannable
     }
 
@@ -584,32 +895,102 @@ class TextSelectionView @JvmOverloads constructor(
     }
 
     /**
-     * Get the appropriate text paint for a character position (for highlighting)
+     * Get the appropriate text paint for a character position (for highlighting and grey styling)
      */
     private fun getTextPaintForPosition(position: Int): TextPaint {
         val highlightRange = highlightedWordRange
-        return if (highlightRange != null && position >= highlightRange.first && position < highlightRange.second) {
-            highlightedTextPaint
+        
+        // Check if position is highlighted (takes priority)
+        if (highlightRange != null && position >= highlightRange.first && position < highlightRange.second) {
+            return highlightedTextPaint
+        }
+        
+        // Check if position is covered by word cards
+        if (isPositionCoveredByWordCard(position)) {
+            return textPaint // Normal black text
         } else {
-            textPaint
+            return greyTextPaint // Grey text for non-word card content
         }
     }
     
     /**
-     * Get the appropriate text paint for a segment (checks if any part of segment overlaps with highlight)
+     * Check if a text position is covered by any word card
+     */
+    private fun isPositionCoveredByWordCard(position: Int): Boolean {
+        return wordPositions.any { (start, end) -> 
+            position >= start && position < end
+        }
+    }
+    
+    /**
+     * Apply grey styling to plain text (non-furigana mode)
+     */
+    private fun applyGreyStylingToPlainText(spannable: SpannableStringBuilder) {
+        if (wordPositions.isEmpty()) return
+        
+        // Create spans for each character range
+        var currentPos = 0
+        val sortedPositions = wordPositions.sortedBy { it.first }
+        
+        for ((start, end) in sortedPositions) {
+            // Add grey span for text before this word card (if any)
+            if (currentPos < start) {
+                val greySpan = object : ReplacementSpan() {
+                    override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
+                        return greyTextPaint.measureText(text, start, end).toInt()
+                    }
+                    override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+                        if (text != null) {
+                            canvas.drawText(text, start, end, x, y.toFloat(), greyTextPaint)
+                        }
+                    }
+                }
+                spannable.setSpan(greySpan, currentPos, start, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            currentPos = maxOf(currentPos, end)
+        }
+        
+        // Add grey span for remaining text after last word card (if any)
+        if (currentPos < spannable.length) {
+            val greySpan = object : ReplacementSpan() {
+                override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
+                    return greyTextPaint.measureText(text, start, end).toInt()
+                }
+                override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+                    if (text != null) {
+                        canvas.drawText(text, start, end, x, y.toFloat(), greyTextPaint)
+                    }
+                }
+            }
+            spannable.setSpan(greySpan, currentPos, spannable.length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+    
+    /**
+     * Get the appropriate text paint for a segment (checks for highlighting and grey styling)
      */
     private fun getTextPaintForSegment(startPos: Int, length: Int): TextPaint {
         val highlightRange = highlightedWordRange
-        if (highlightRange == null) return textPaint
-        
         val segmentEnd = startPos + length
-        // Check if segment overlaps with highlight range
-        val overlaps = startPos < highlightRange.second && segmentEnd > highlightRange.first
         
-        return if (overlaps) {
-            highlightedTextPaint
+        // Check if segment overlaps with highlight range (takes priority)
+        if (highlightRange != null) {
+            val overlaps = startPos < highlightRange.second && segmentEnd > highlightRange.first
+            if (overlaps) {
+                return highlightedTextPaint
+            }
+        }
+        
+        // Check if segment is covered by word cards
+        val isCovered = wordPositions.any { (start, end) ->
+            // Check if segment overlaps with any word position
+            start < segmentEnd && end > startPos
+        }
+        
+        return if (isCovered) {
+            textPaint // Normal black text
         } else {
-            textPaint
+            greyTextPaint // Grey text for non-word card content
         }
     }
 
@@ -675,7 +1056,11 @@ class TextSelectionView @JvmOverloads constructor(
         // Draw the text layout with all spans
         canvas.save()
         canvas.translate(VIEW_PADDING, VIEW_PADDING)
+        
         layout.draw(canvas)
+        
+        // Word highlighting is now applied through spans when needed
+        
         canvas.restore()
 
         // Draw selection highlight (both during drag and after)
@@ -926,6 +1311,17 @@ class TextSelectionView @JvmOverloads constructor(
             parent = parent.parent
         }
         return null
+    }
+
+    /**
+     * Apply word highlighting to a spannable text using blue text color
+     * Note: buildSpannableTextForLayout now handles highlighting internally,
+     * so this method just rebuilds with highlighting included
+     */
+    private fun applyHighlightingToSpannable(baseSpannable: SpannableStringBuilder): SpannableStringBuilder {
+        // Since buildSpannableTextForLayout now includes highlighting,
+        // we need to rebuild from scratch with the current highlight range
+        return buildSpannableTextForLayout()
     }
 
     override fun onDetachedFromWindow() {
