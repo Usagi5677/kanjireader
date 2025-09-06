@@ -15,8 +15,8 @@ class DrawingView @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "DrawingView"
-        private const val STROKE_WIDTH = 12f
-        private const val EXPORT_SIZE = 224 // Size for model input
+        private const val STROKE_WIDTH = 32f
+        private const val EXPORT_SIZE = 64 // Size for model input
     }
 
     // Drawing state
@@ -250,57 +250,44 @@ class DrawingView @JvmOverloads constructor(
         }
 
         return try {
-            val originalBitmap = canvasBitmap ?: return null
-            
-            // Create a square bitmap centered on the drawing
-            val size = minOf(originalBitmap.width, originalBitmap.height)
-            val x = (originalBitmap.width - size) / 2
-            val y = (originalBitmap.height - size) / 2
-            
-            // Extract square region
-            val squareBitmap = Bitmap.createBitmap(originalBitmap, x, y, size, size)
-            
-            // Scale to model input size
-            val scaledBitmap = Bitmap.createScaledBitmap(squareBitmap, EXPORT_SIZE, EXPORT_SIZE, true)
-            
-            // Convert to grayscale if needed (model expects grayscale)
-            val grayscaleBitmap = convertToGrayscale(scaledBitmap)
-            
-            // Clean up intermediate bitmaps
-            if (scaledBitmap != grayscaleBitmap) {
-                scaledBitmap.recycle()
+            // 1) Find the tight bounding box of the drawing
+            val bounds = getDrawingBounds()
+            if (bounds.width() == 0f || bounds.height() == 0f) {
+                Log.w(TAG, "Drawing bounds are empty")
+                return null
             }
-            if (squareBitmap != originalBitmap) {
-                squareBitmap.recycle()
+
+            // 2) Create a new bitmap for the cropped area with a little padding
+            val pad = STROKE_WIDTH * 1.5f
+            val croppedBitmap = Bitmap.createBitmap(
+                (bounds.width() + pad * 2).toInt(),
+                (bounds.height() + pad * 2).toInt(),
+                Bitmap.Config.ARGB_8888
+            )
+            val canvas = Canvas(croppedBitmap)
+            canvas.drawColor(Color.WHITE) // Set background to white
+
+            // 3) Translate the canvas to center the cropped content and draw the paths
+            val matrix = Matrix()
+            matrix.postTranslate(-bounds.left + pad, -bounds.top + pad)
+            canvas.concat(matrix)
+
+            for (i in drawnPaths.indices) {
+                canvas.drawPath(drawnPaths[i], pathPaints[i])
             }
-            
-            Log.d(TAG, "Drawing bitmap exported as ${EXPORT_SIZE}x${EXPORT_SIZE}")
-            grayscaleBitmap
-            
+
+            // 4) Scale the cropped bitmap to the required input size
+            val scaled = Bitmap.createScaledBitmap(croppedBitmap, EXPORT_SIZE, EXPORT_SIZE, true)
+            croppedBitmap.recycle()
+
+            Log.d(TAG, "Exported cropped and scaled bitmap ${EXPORT_SIZE}x${EXPORT_SIZE}")
+            scaled
         } catch (e: Exception) {
             Log.e(TAG, "Failed to export drawing bitmap", e)
             null
         }
     }
 
-    private fun convertToGrayscale(bitmap: Bitmap): Bitmap {
-        val width = bitmap.width
-        val height = bitmap.height
-        
-        val grayscaleBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(grayscaleBitmap)
-        
-        val colorMatrix = ColorMatrix().apply {
-            setSaturation(0f) // Convert to grayscale
-        }
-        
-        val paint = Paint().apply {
-            colorFilter = ColorMatrixColorFilter(colorMatrix)
-        }
-        
-        canvas.drawBitmap(bitmap, 0f, 0f, paint)
-        return grayscaleBitmap
-    }
 
     /**
      * Get drawing bounds for centering

@@ -32,7 +32,7 @@ class KanjiDrawingActivity : AppCompatActivity() {
 
     // Components
     private lateinit var kanjiCardAdapter: KanjiCardAdapter
-    private var recognitionEngine: DaKanjiRecognitionEngine? = null
+    private var recognitionEngine: KanjiRecognition? = null
 
     // Data
     private var currentPredictions = listOf<KanjiPrediction>()
@@ -107,7 +107,7 @@ class KanjiDrawingActivity : AppCompatActivity() {
     private fun initializeRecognitionEngine() {
         lifecycleScope.launch {
             try {
-                recognitionEngine = DaKanjiRecognitionEngine(this@KanjiDrawingActivity)
+                recognitionEngine = KanjiRecognition(this@KanjiDrawingActivity)
                 
                 if (recognitionEngine?.isReady() == true) {
                     Log.d(TAG, "Recognition engine initialized successfully")

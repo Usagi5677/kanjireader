@@ -250,41 +250,61 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         try {
             val wordPositions = wordExtractor.extractWordsWithKuromoji(paragraph, repository)
             Log.d(TAG, "Kuromoji extracted ${wordPositions.size} words")
-            val processedWords = mutableSetOf<String>()
-            val actualWordsInText = wordPositions.map { it.word }.toSet()
-            Log.d(TAG, "Actual words extracted from paragraph: ${actualWordsInText.joinToString(", ")}")
+            
+            // Build sets of actual words in text for filtering (both surface and base forms)
+            val actualSurfaceForms = wordPositions.map { it.word }.toSet()
+            val actualBaseForms = wordPositions.map { it.getBaseFormForLookup() }.toSet()
+            val allActualWords = actualSurfaceForms + actualBaseForms
+            
+            // Use base form for lookup and deduplication
+            val processedBaseforms = mutableSetOf<String>()
+            
             for (wordPos in wordPositions) {
-                val word = wordPos.word
-                if (processedWords.contains(word)) {
-                    Log.d(TAG, "Skipping duplicate word: '$word'")
+                val baseFormForSearch = wordPos.getBaseFormForLookup()
+                
+                // Skip duplicates based on base form
+                if (processedBaseforms.contains(baseFormForSearch)) {
+                    Log.d(TAG, "Skipping duplicate base form: '$baseFormForSearch' (surface: '${wordPos.word}')")
                     continue
                 }
-                processedWords.add(word)
+                processedBaseforms.add(baseFormForSearch)
+                
                 try {
-                    Log.d(TAG, "Searching for extracted word: '$word' (${wordPos.startPosition}-${wordPos.endPosition})")
-                    val wordResults = repository.search(word, limit = 10)
+                    Log.d(TAG, "Searching for base form: '$baseFormForSearch' (from surface: '${wordPos.word}')")
+                    val wordResults = repository.search(baseFormForSearch, limit = 50)
                     if (wordResults.isNotEmpty()) {
-                        Log.d(TAG, "Found ${wordResults.size} dictionary results for word '$word'")
+                        Log.d(TAG, "Found ${wordResults.size} dictionary results for '$baseFormForSearch'")
+                        
+                        // Filter to show only exact matches to words actually in the paragraph
                         val filteredResults = wordResults.filter { result ->
-                            val resultWord = result.kanji ?: result.reading
-                            val isInText = actualWordsInText.contains(resultWord)
-                            if (!isInText) {
-                                Log.d(TAG, "Filtering out '$resultWord' (kanji='${result.kanji}', reading='${result.reading}') - not found in paragraph text")
-                                Log.d(TAG, "actualWordsInText contains: ${actualWordsInText.joinToString(", ")}")
+                            val kanji = result.kanji
+                            val reading = result.reading
+                            
+                            // Check if the dictionary entry matches any word actually in the text
+                            val matches = allActualWords.contains(kanji) || 
+                                         allActualWords.contains(reading) ||
+                                         (kanji != null && allActualWords.contains(kanji)) ||
+                                         allActualWords.contains(reading)
+                            
+                            if (matches) {
+                                Log.d(TAG, "Including result: kanji='$kanji' reading='$reading' - matches text")
+                            } else {
+                                Log.d(TAG, "Filtering out: kanji='$kanji' reading='$reading' - not in paragraph")
                             }
-                            isInText
+                            matches
                         }
-                        Log.d(TAG, "After filtering: ${filteredResults.size} results for word '$word'")
+                        
+                        Log.d(TAG, "After filtering: ${filteredResults.size} results for '$baseFormForSearch'")
                         allResults.addAll(filteredResults)
                     } else {
-                        Log.d(TAG, "No dictionary results for word '$word'")
+                        Log.d(TAG, "No dictionary results for '$baseFormForSearch'")
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error searching for word '$word': ${e.message}")
+                    Log.w(TAG, "Error searching for base form '$baseFormForSearch': ${e.message}")
                 }
             }
             Log.d(TAG, "=== KUROMOJI PARAGRAPH PROCESSING COMPLETE ===")
-            Log.d(TAG, "Total unique words processed: ${processedWords.size}")
+            Log.d(TAG, "Total unique base forms processed: ${processedBaseforms.size}")
             Log.d(TAG, "Total dictionary results found: ${allResults.size}")
         } catch (e: Exception) {
             Log.e(TAG, "Error in Kuromoji paragraph processing", e)

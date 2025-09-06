@@ -751,23 +751,13 @@ class TextSelectionView @JvmOverloads constructor(
      * Build a SpannableStringBuilder with FuriganaReplacementSpans for kanji segments
      */
     private fun buildSpannableText(): SpannableStringBuilder {
-        val startTime = System.currentTimeMillis()
         val spannable = SpannableStringBuilder()
         
         if (!showFurigana || furiganaText == null) {
             // No furigana - build plain text with grey styling and highlighting
             spannable.append(displayText)
-            val greyStartTime = System.currentTimeMillis()
             applyGreyStylingToPlainText(spannable)
-            val greyTime = System.currentTimeMillis() - greyStartTime
-            if (greyTime > 2) {
-                Log.d(TAG, "PERF: applyGreyStylingToPlainText took ${greyTime}ms")
-            }
             applyWordHighlighting(spannable)
-            val totalTime = System.currentTimeMillis() - startTime
-            if (totalTime > 5) {
-                Log.d(TAG, "PERF: buildSpannableText (no furigana) took ${totalTime}ms")
-            }
             return spannable
         }
 
@@ -828,17 +818,7 @@ class TextSelectionView @JvmOverloads constructor(
             currentPos += segment.text.length
         }
 
-        val highlightStartTime = System.currentTimeMillis()
         applyWordHighlighting(spannable)
-        val highlightTime = System.currentTimeMillis() - highlightStartTime
-        if (highlightTime > 2) {
-            Log.d(TAG, "PERF: applyWordHighlighting took ${highlightTime}ms")
-        }
-        
-        val totalTime = System.currentTimeMillis() - startTime
-        if (totalTime > 10) {
-            Log.d(TAG, "PERF: buildSpannableText (with furigana) took ${totalTime}ms for ${segments.size} segments")
-        }
         
         return spannable
     }

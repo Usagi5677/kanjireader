@@ -792,11 +792,60 @@ class DatabaseBuilder:
             if any(tag in pure_proper_noun_name_types for tag in parts_of_speech):
                 return 0 # Assign 0 frequency to avoid contaminating general word frequencies.
 
-        # Use exact matches from loaded frequency data.
-        if word in self.frequency_data:
-            return self.frequency_data[word]
+        # Use unique key lookup to match how frequency data was stored
+        if kana_reading and parts_of_speech:
+            # Convert reading to katakana for frequency lookup (frequency CSV uses katakana)
+            import unicodedata
+            katakana_reading = ''.join(
+                chr(ord(ch) + 96) if 'ぁ' <= ch <= 'ん' else ch 
+                for ch in kana_reading
+            )
+            
+            # Map JMDict POS tags to Japanese POS tags used in frequency CSV
+            pos_mapping = {
+                'pn': '名詞',      # pronoun -> noun
+                'n': '名詞',       # noun
+                'v1': '動詞',      # ichidan verb
+                'v5': '動詞',      # godan verb
+                'adj-i': '形容詞',  # i-adjective
+                'adj-na': '形容動詞', # na-adjective
+                'adv': '副詞',     # adverb
+                'prt': '助詞',     # particle
+                'conj': '接続詞',   # conjunction
+                'int': '感動詞',    # interjection
+                'pref': '接頭詞',   # prefix
+                'suf': '接尾詞',    # suffix
+                'aux-v': '助動詞',  # auxiliary verb
+            }
+            
+            # Try different POS tag combinations
+            primary_pos = parts_of_speech[0] if parts_of_speech else ""
+            mapped_pos = pos_mapping.get(primary_pos, primary_pos)
+            
+            # Try with mapped POS and katakana reading first
+            unique_key = f"{word}|{mapped_pos}|{katakana_reading}"
+            if unique_key in self.frequency_data:
+                return self.frequency_data[unique_key]
+            
+            # Try with original reading (some entries might use hiragana)
+            unique_key = f"{word}|{mapped_pos}|{kana_reading}"
+            if unique_key in self.frequency_data:
+                return self.frequency_data[unique_key]
+            
+            # For 私 specifically, try the known frequency data keys
+            if word == "私":
+                # Try ワタクシ for わたくし reading
+                if kana_reading in ["わたくし", "わたし"]:
+                    key = f"私|名詞|ワタクシ"
+                    if key in self.frequency_data:
+                        return self.frequency_data[key]
+                # Try シ for the prefix usage
+                elif kana_reading == "し":
+                    key = f"私|接頭詞|シ"
+                    if key in self.frequency_data:
+                        return self.frequency_data[key]
 
-        # No exact match found - return 0.
+        # No exact match found - return 0 (no fallback to avoid incorrect frequency inheritance)
         return 0
 
     def load_jmdict_data(self, file_path: str) -> List[Dict]:
