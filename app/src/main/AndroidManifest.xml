@@ -70,16 +70,19 @@
             android:name=".DictionaryActivity"
             android:label="Dictionary"
             android:theme="@style/Theme.KanjiReader"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".DatabaseBuilderActivity"
             android:label="Database Builder"
-            android:exported="false" />
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".WordDetailActivity"
             android:label="Word Detail"
+            android:screenOrientation="portrait"
             android:parentActivityName=".DictionaryActivity">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
@@ -89,6 +92,7 @@
         <activity
             android:name=".RadicalSearchActivity"
             android:label="Kanji search"
+            android:screenOrientation="portrait"
             android:parentActivityName=".DictionaryActivity">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
@@ -98,6 +102,7 @@
         <activity
             android:name=".KanjiDrawingActivity"
             android:label="Draw Kanji"
+            android:screenOrientation="portrait"
             android:parentActivityName=".DictionaryActivity">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
@@ -107,17 +112,12 @@
         <activity
             android:name=".DictionaryTextReaderActivity"
             android:label="Text Reader"
+            android:screenOrientation="portrait"
             android:parentActivityName=".DictionaryActivity">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value=".DictionaryActivity" />
         </activity>
-
-        <!-- xcdat Test Activity -->
-        <activity
-            android:name=".XcdatTestActivity"
-            android:label="xcdat Dictionary Test"
-            android:exported="true" />
 
     </application>
 
