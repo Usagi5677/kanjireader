@@ -82,6 +82,11 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
                     startActivity(intent)
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 }
+                R.id.nav_settings -> {
+                    val intent = Intent(this, SettingsActivity::class.java)
+                    startActivity(intent)
+                    binding.drawerLayout.closeDrawer(GravityCompat.START)
+                }
             }
             true
         }
@@ -621,22 +626,7 @@ class DictionaryTextReaderActivity : AppCompatActivity() {
     }
     
     private fun showTranslationDialog(originalText: String, translatedText: String) {
-        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Translation")
-            .setMessage(translatedText)
-            .setPositiveButton("Copy") { _, _ ->
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("Translation", translatedText)
-                clipboard.setPrimaryClip(clip)
-                Toast.makeText(this, "Translation copied to clipboard", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Close", null)
-            .create()
-        
-        // Set rounded corners background (same as OCR view)
-        dialog.window?.setBackgroundDrawableResource(R.drawable.dialog_rounded_background)
-        
-        dialog.show()
+        TranslationDialogHelper.showTranslationDialog(this, originalText, translatedText)
     }
     
     private fun copyToClipboard(label: String, text: String) {

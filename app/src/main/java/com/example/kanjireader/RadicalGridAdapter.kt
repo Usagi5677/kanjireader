@@ -1,6 +1,5 @@
 package com.example.kanjireader
 
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -104,7 +103,7 @@ class RadicalItemAdapter(
             when {
                 item.isSelected -> {
                     radicalButton.setBackgroundResource(R.drawable.radical_button_selected)
-                    radicalButton.setTextColor(Color.WHITE)
+                    radicalButton.setTextColor(ContextCompat.getColor(itemView.context, R.color.toolbar_icon_text_color))
                     radicalButton.alpha = 1.0f
                 }
                 item.isEnabled -> {
@@ -114,7 +113,7 @@ class RadicalItemAdapter(
                 }
                 else -> {
                     radicalButton.setBackgroundResource(R.drawable.radical_button_background)
-                    radicalButton.setTextColor(ContextCompat.getColor(itemView.context, android.R.color.darker_gray))
+                    radicalButton.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_secondary_color))
                     radicalButton.alpha = 0.4f
                 }
             }

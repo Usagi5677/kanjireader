@@ -12,7 +12,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/white"
+    android:background="@color/background_color"
     tools:context=".ReadingsListActivity">
 
     <!-- Toolbar -->
@@ -23,9 +23,9 @@
         android:background="@color/teal_500"
         android:elevation="4dp"
         app:title="Manage Lists"
-        app:titleTextColor="@android:color/white"
+        app:titleTextColor="@color/toolbar_icon_text_color"
         app:navigationIcon="@drawable/ic_arrow_back"
-        app:navigationIconTint="@android:color/white"
+        app:navigationIconTint="@color/toolbar_icon_text_color"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -114,7 +114,7 @@
             android:layout_height="wrap_content"
             android:text="No word lists yet"
             android:textSize="18sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="@color/text_secondary_color"
             android:gravity="center" />
 
         <TextView
@@ -122,7 +122,7 @@
             android:layout_height="wrap_content"
             android:text="Create your first list to organize your vocabulary!"
             android:textSize="14sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="@color/text_secondary_color"
             android:gravity="center"
             android:layout_marginTop="8dp" />
 

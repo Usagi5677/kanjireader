@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark mode colors -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    
+    <!-- Theme-aware colors for dark mode -->
+    <color name="surface_color">#1E1E1E</color>
+    <color name="background_color">#121212</color>
+    <color name="text_primary_color">#B0B0B0</color>
+    <color name="text_secondary_color">#B0B0B0</color>
+    <color name="subtitle_text_color">#000000</color>
+    <color name="button_icon_color">#B0B0B0</color>
+    <color name="toolbar_icon_text_color">#B0B0B0</color>
+    <color name="search_button_color">#B0B0B0</color>
+    <color name="stroke_order_background">#2A2A2A</color>
+    <color name="dialog_background">@color/background_color</color>
+
+    <!-- Dark mode primary colors - darker shades of existing purples -->
+    <color name="purple_100">#448E24AA</color>
+    <color name="purple_200">#6A1B9A</color>
+    <color name="purple_500">#7B1FA2</color>
+    <color name="purple_600">#8E24AA</color>
+    <color name="purple_700">#9C27B0</color>
+    <color name="purple_900">#CE93D8</color>
+
+    <!-- Dark mode teal colors - much darker shades for better dark mode appearance -->
+    <color name="teal_50">#33004D40</color>  <!-- Semi-transparent teal like common tag bg -->
+    <color name="teal_100">#003833</color>
+    <color name="teal_200">#004D40</color>
+    <color name="teal_300">#00574B</color>
+    <color name="teal_400">#00695C</color>
+    <color name="teal_500">#00574B</color>  <!-- Much darker for headers -->
+    <color name="teal_600">#004D40</color>
+    <color name="teal_700">#80CBC4</color>  <!-- Bright teal in dark mode for consistency -->
+    <color name="teal_800">#003833</color>
+    <color name="teal_900">#80CBC4</color>  <!-- Bright teal text like common tag text -->
+
+    <!-- Dark mode green colors - darker shades -->
+    <color name="green_100">#1B5E20</color>
+    <color name="green_500">#2E7D32</color>
+    <color name="green_700">#388E3C</color>
+
+    <!-- Dark mode orange colors - darker shades -->
+    <color name="orange_700">#E65100</color>
+    <color name="orange_100">#44FF9800</color>
+    
+    <!-- Dark mode pink colors - darker shades -->
+    <color name="pink_100">#AD1457</color>
+    
+    <!-- Dark mode blue colors - darker shades -->
+    <color name="blue_100">#0D47A1</color>
+    <color name="blue_600">#1565C0</color>
+    <color name="blue_700">#1976D2</color>
+    
+    <!-- Dark mode frequency counter colors - semi-transparent backgrounds -->
+    <color name="freq_very_high_bg">#331B5E20</color>
+    <color name="freq_very_high_text">#A5D6A7</color>
+    
+    <color name="freq_high_bg">#33BF360C</color>
+    <color name="freq_high_text">#FFAB91</color>
+    
+    <color name="freq_medium_bg">#330D47A1</color>
+    <color name="freq_medium_text">#90CAF9</color>
+    
+    <color name="freq_low_bg">#334A148C</color>
+    <color name="freq_low_text">#CE93D8</color>
+    
+    <color name="freq_very_low_bg">#33303030</color>
+    <color name="freq_very_low_text">#E0E0E0</color>
+
+    <!-- Dark mode grammar tag colors - semi-transparent backgrounds for subtle appearance -->
+    <color name="tag_verb_bg">#331B5E20</color>
+    <color name="tag_verb_text">#A5D6A7</color>
+    
+    <!-- Dark mode verb types -->
+    <color name="tag_verb_godan_bg">#331B5E20</color>
+    <color name="tag_verb_godan_text">#A5D6A7</color>
+    
+    <color name="tag_verb_ichidan_bg">#334A148C</color>
+    <color name="tag_verb_ichidan_text">#CE93D8</color>
+    
+    <color name="tag_verb_transitive_bg">#33E65100</color>
+    <color name="tag_verb_transitive_text">#FFAB91</color>
+    
+    <color name="tag_verb_intransitive_bg">#33BF360C</color>
+    <color name="tag_verb_intransitive_text">#FFAB91</color>
+    
+    <color name="tag_verb_auxiliary_bg">#332E7D32</color>
+    <color name="tag_verb_auxiliary_text">#A5D6A7</color>
+    
+    <!-- Dark mode other part of speech -->
+    <color name="tag_adjective_bg">#330D47A1</color>
+    <color name="tag_adjective_text">#90CAF9</color>
+    
+    <color name="tag_noun_bg">#33E65100</color>
+    <color name="tag_noun_text">#FFAB91</color>
+    
+    <color name="tag_particle_bg">#334A148C</color>
+    <color name="tag_particle_text">#CE93D8</color>
+    
+    <color name="tag_adverb_bg">#333E2723</color>
+    <color name="tag_adverb_text">#BCAAA4</color>
+    
+    <!-- Dark mode special tags -->
+    <color name="tag_common_bg">#33004D40</color>
+    <color name="tag_common_text">#80CBC4</color>
+    
+    <color name="tag_frequency_bg">#33303030</color>
+    <color name="tag_frequency_text">#E0E0E0</color>
+    
+    <color name="tag_other_bg">#33424242</color>
+    <color name="tag_other_text">#E0E0E0</color>
+
+    <!-- Dark mode JLPT colors - separate background and text colors -->
+    <color name="jlpt_n5">#81C784</color>  <!-- Bright green text -->
+    <color name="jlpt_n4">#AED581</color>  <!-- Bright light green text -->
+    <color name="jlpt_n3">#FFD54F</color>  <!-- Bright amber text -->
+    <color name="jlpt_n2">#FFB74D</color>  <!-- Bright orange text -->
+    <color name="jlpt_n1">#E57373</color>  <!-- Bright red text -->
+
+    <color name="jlpt_n5_light">#331B5E20</color>
+    <color name="jlpt_n4_light">#332E7D32</color>
+    <color name="jlpt_n3_light">#33F57F17</color>
+    <color name="jlpt_n2_light">#33E65100</color>
+    <color name="jlpt_n1_light">#33B71C1C</color>
+    <color name="tag_light_grey">#33303030</color>
+    <color name="text_light_black">#E0E0E0</color>
+
+    <!-- Dark mode search highlighting colors -->
+    <color name="search_highlight_text">#90CAF9</color>
+    
+    <!-- Heart icon colors - darker pink -->
+    <color name="heart_filled_color">#E91E63</color>
+</resources>

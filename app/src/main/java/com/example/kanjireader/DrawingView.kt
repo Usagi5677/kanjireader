@@ -6,6 +6,7 @@ import android.util.AttributeSet
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.content.ContextCompat
 
 class DrawingView @JvmOverloads constructor(
     context: Context,
@@ -30,8 +31,8 @@ class DrawingView @JvmOverloads constructor(
     private val drawnPaths = mutableListOf<Path>()
     private val pathPaints = mutableListOf<Paint>()
     
-    // Background color
-    private val backgroundColor = Color.WHITE
+    // Background color - use surface color for card-like appearance
+    private val backgroundColor = ContextCompat.getColor(context, R.color.surface_color)
     
     // Guide lines
     private var guidePaint = Paint()
@@ -55,14 +56,14 @@ class DrawingView @JvmOverloads constructor(
             strokeCap = Paint.Cap.ROUND
         }
         
-        // Setup guide lines paint
+        // Setup guide lines paint - darker and more subtle
         guidePaint.apply {
-            color = Color.GRAY
+            color = Color.DKGRAY
             strokeWidth = 2f
             style = Paint.Style.STROKE
-            pathEffect = DashPathEffect(floatArrayOf(15f, 15f), 0f) // More visible dotted line
+            pathEffect = DashPathEffect(floatArrayOf(15f, 15f), 0f) // Dotted line
             isAntiAlias = true
-            alpha = 128 // Semi-transparent
+            alpha = 60 // Very subtle for less visibility
         }
     }
 
@@ -265,7 +266,7 @@ class DrawingView @JvmOverloads constructor(
                 Bitmap.Config.ARGB_8888
             )
             val canvas = Canvas(croppedBitmap)
-            canvas.drawColor(Color.WHITE) // Set background to white
+            canvas.drawColor(Color.WHITE) // Keep white for model input
 
             // 3) Translate the canvas to center the cropped content and draw the paths
             val matrix = Matrix()

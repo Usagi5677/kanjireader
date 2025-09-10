@@ -288,7 +288,9 @@ class PhrasesTabFragment : Fragment() {
         // Stop skeleton animations if showing error
         skeletonAdapter.stopAllAnimations()
         phrasesRecyclerView.adapter = phrasesAdapter
-        errorMessageText.text = message
+        
+        // Show user-friendly error message instead of technical details
+        errorMessageText.text = "Unable to load example sentences. Please try again later."
     }
     
     /**

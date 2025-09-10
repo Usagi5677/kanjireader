@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.View
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.LinearLayout
 import androidx.activity.result.contract.ActivityResultContracts
@@ -207,6 +208,11 @@ class GallerySelectionActivity : AppCompatActivity() {
 
         drawerLayout = findViewById(R.id.drawerLayout)
         navigationView = findViewById(R.id.navigationView)
+        
+        // Apply light mode green color to processing ProgressBar in both modes
+        val processingProgress = findViewById<ProgressBar>(R.id.processingProgress)
+        val progressBarColor = ColorStateList.valueOf(android.graphics.Color.parseColor("#00695C"))
+        processingProgress?.indeterminateTintList = progressBarColor
     }
 
     private fun setupClickListeners() {
@@ -562,6 +568,11 @@ class GallerySelectionActivity : AppCompatActivity() {
                 R.id.nav_dictionary -> {
                     val intent = Intent(this, DictionaryActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    startActivity(intent)
+                    drawerLayout.closeDrawer(GravityCompat.START)
+                }
+                R.id.nav_settings -> {
+                    val intent = Intent(this, SettingsActivity::class.java)
                     startActivity(intent)
                     drawerLayout.closeDrawer(GravityCompat.START)
                 }

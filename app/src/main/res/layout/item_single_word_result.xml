@@ -11,7 +11,7 @@
         android:layout_height="wrap_content"
         android:text="Dictionary entry:"
         android:textSize="16sp"
-        android:textColor="@android:color/black"
+        android:textColor="@color/text_primary_color"
         android:paddingBottom="12dp"
         android:visibility="gone" />
 
@@ -22,7 +22,7 @@
         android:layout_height="wrap_content"
         android:text="漢字"
         android:textSize="32sp"
-        android:textColor="@android:color/black"
+        android:textColor="@color/text_primary_color"
         android:gravity="center"
         android:paddingVertical="16dp"
         android:visibility="gone" />
@@ -47,7 +47,7 @@
         android:text="Meanings:"
         android:textSize="16sp"
         android:textStyle="bold"
-        android:textColor="@android:color/black"
+        android:textColor="@color/text_primary_color"
         android:paddingBottom="8dp" />
 
     <!-- Meanings Content -->
@@ -57,7 +57,7 @@
         android:layout_height="wrap_content"
         android:text="1. Chinese character\n2. Kanji"
         android:textSize="16sp"
-        android:textColor="@android:color/black"
+        android:textColor="@color/text_primary_color"
         android:paddingStart="8dp"
         android:paddingBottom="16dp"
         android:lineSpacingExtra="4dp" />

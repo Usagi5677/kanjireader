@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.kanjireader.DictionaryRepository
 import android.content.Intent
+import android.content.res.ColorStateList
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
@@ -62,6 +63,14 @@ class DictionaryActivity : AppCompatActivity() {
         
         // Handle append to search intent
         handleAppendToSearchIntent()
+        
+        // Fix: Clear search bar after theme change to prevent expansion bug
+        if (savedInstanceState != null) {
+            // Theme was switched, clear the search bar to avoid expansion issues
+            binding.searchEditText.post {
+                binding.searchEditText.setText("")
+            }
+        }
 
     }
 
@@ -148,6 +157,17 @@ class DictionaryActivity : AppCompatActivity() {
     }
 
     private fun setupNavigationDrawer() {
+        // Set navigation view colors programmatically
+        val navColors = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+            intArrayOf(
+                ContextCompat.getColor(this, R.color.teal_900), // selected
+                ContextCompat.getColor(this, R.color.text_primary_color) // unselected - uses theme-aware color
+            )
+        )
+        binding.navigationView.itemTextColor = navColors
+        binding.navigationView.itemIconTintList = navColors
+        
         binding.navigationView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.nav_camera -> {
@@ -172,6 +192,11 @@ class DictionaryActivity : AppCompatActivity() {
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 }
                 R.id.nav_dictionary -> {
+                    binding.drawerLayout.closeDrawer(GravityCompat.START)
+                }
+                R.id.nav_settings -> {
+                    val intent = Intent(this, SettingsActivity::class.java)
+                    startActivity(intent)
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 }
             }

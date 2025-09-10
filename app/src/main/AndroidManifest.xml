@@ -45,7 +45,8 @@
         <activity
             android:name=".ImageAnnotationActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="portrait"
+            android:configChanges="uiMode" />
 
 
 
@@ -118,6 +119,12 @@
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value=".DictionaryActivity" />
         </activity>
+
+        <activity
+            android:name=".SettingsActivity"
+            android:label="@string/settings"
+            android:screenOrientation="portrait"
+            android:exported="false" />
 
     </application>
 

@@ -8,10 +8,14 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.kanjireader.viewmodel.WordListViewModel
 import com.example.kanjireader.database.SavedWordEntity
+import com.google.android.material.navigation.NavigationView
 
 class WordListDetailActivity : AppCompatActivity() {
 
@@ -24,6 +28,8 @@ class WordListDetailActivity : AppCompatActivity() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var noResultsLayout: LinearLayout
     private lateinit var searchView: SearchView
+    private lateinit var drawerLayout: DrawerLayout
+    private lateinit var navigationView: NavigationView
 
     private lateinit var wordsAdapter: UnifiedDictionaryAdapter
     private val wordListViewModel: WordListViewModel by viewModels()
@@ -53,6 +59,8 @@ class WordListDetailActivity : AppCompatActivity() {
         recyclerView = findViewById(R.id.recyclerViewWords)
         noResultsLayout = findViewById(R.id.noResultsLayout)
         searchView = findViewById(R.id.searchView)
+        drawerLayout = findViewById(R.id.drawerLayout)
+        navigationView = findViewById(R.id.navigationView)
     }
 
     private fun setupToolbar() {
@@ -60,9 +68,40 @@ class WordListDetailActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = listName
         
-        // Ensure the navigation icon is white
-        toolbar.navigationIcon?.setTint(getColor(android.R.color.white))
-        toolbar.setNavigationOnClickListener { finish() }
+        // Set the navigation icon color to white for toolbar
+        toolbar.navigationIcon?.setTint(ContextCompat.getColor(this, R.color.toolbar_icon_text_color))
+        
+        // Set up navigation drawer toggle instead of back navigation
+        toolbar.setNavigationOnClickListener {
+            drawerLayout.openDrawer(GravityCompat.START)
+        }
+        
+        // Setup navigation drawer
+        setupNavigationDrawer()
+    }
+
+    private fun setupNavigationDrawer() {
+        navigationView.setNavigationItemSelectedListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.nav_camera -> {
+                    startActivity(Intent(this, MainActivity::class.java))
+                }
+                R.id.nav_gallery -> {
+                    startActivity(Intent(this, GallerySelectionActivity::class.java))
+                }
+                R.id.nav_saved_words -> {
+                    startActivity(Intent(this, ReadingsListActivity::class.java))
+                }
+                R.id.nav_dictionary -> {
+                    startActivity(Intent(this, DictionaryActivity::class.java))
+                }
+                R.id.nav_settings -> {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                }
+            }
+            drawerLayout.closeDrawer(GravityCompat.START)
+            true
+        }
     }
 
     private fun setupRecyclerView() {

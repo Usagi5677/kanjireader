@@ -32,7 +32,7 @@
                 android:text="My Vocabulary"
                 android:textSize="20sp"
                 android:textStyle="bold"
-                android:textColor="@android:color/black" />
+                android:textColor="@color/text_primary_color" />
 
             <!-- Edit Icon -->
             <ImageButton
@@ -44,6 +44,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Edit list name"
                 android:src="@android:drawable/ic_menu_edit"
+                app:tint="@color/text_secondary_color"
                 android:padding="4dp" />
 
         </RelativeLayout>
@@ -65,7 +66,7 @@
             android:layout_height="wrap_content"
             android:text="Created Dec 15, 2024"
             android:textSize="14sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="@color/text_secondary_color"
             android:layout_marginTop="8dp" />
 
     </LinearLayout>

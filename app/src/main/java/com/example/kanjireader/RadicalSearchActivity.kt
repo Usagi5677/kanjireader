@@ -1,16 +1,21 @@
 package com.example.kanjireader
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
 import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.navigation.NavigationView
 import kotlinx.coroutines.launch
 
 class RadicalSearchActivity : AppCompatActivity() {
@@ -20,6 +25,8 @@ class RadicalSearchActivity : AppCompatActivity() {
     }
 
     // UI Components
+    private lateinit var drawerLayout: DrawerLayout
+    private lateinit var navigationView: NavigationView
     private lateinit var toolbar: Toolbar
     private lateinit var clearButton: Button
     private lateinit var drawButton: Button
@@ -46,11 +53,14 @@ class RadicalSearchActivity : AppCompatActivity() {
 
         initializeViews()
         setupToolbar()
+        setupNavigationDrawer()
         setupRecyclerViews()
         loadInitialData()
     }
 
     private fun initializeViews() {
+        drawerLayout = findViewById(R.id.drawerLayout)
+        navigationView = findViewById(R.id.navigationView)
         toolbar = findViewById(R.id.toolbar)
         clearButton = findViewById(R.id.clearButton)
         drawButton = findViewById(R.id.drawButton)
@@ -62,10 +72,11 @@ class RadicalSearchActivity : AppCompatActivity() {
     private fun setupToolbar() {
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setHomeAsUpIndicator(R.drawable.ic_menu)
         supportActionBar?.title = "Kanji search"
 
         toolbar.setNavigationOnClickListener {
-            finish()
+            drawerLayout.openDrawer(GravityCompat.START)
         }
 
         clearButton.setOnClickListener {
@@ -76,6 +87,66 @@ class RadicalSearchActivity : AppCompatActivity() {
             Log.d(TAG, "Draw button clicked - launching KanjiDrawingActivity")
             val intent = Intent(this, KanjiDrawingActivity::class.java)
             startActivity(intent)
+        }
+    }
+    
+    private fun setupNavigationDrawer() {
+        // Set navigation view colors programmatically
+        val navColors = ColorStateList(
+            arrayOf(
+                intArrayOf(android.R.attr.state_checked), // selected
+                intArrayOf() // unselected
+            ),
+            intArrayOf(
+                ContextCompat.getColor(this, R.color.teal_900), // selected
+                ContextCompat.getColor(this, R.color.text_primary_color) // unselected
+            )
+        )
+        navigationView.itemTextColor = navColors
+        navigationView.itemIconTintList = navColors
+        
+        navigationView.setNavigationItemSelectedListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.nav_camera -> {
+                    val intent = Intent(this, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    startActivity(intent)
+                    finish()
+                    drawerLayout.closeDrawer(GravityCompat.START)
+                }
+                R.id.nav_gallery -> {
+                    val intent = Intent(this, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    intent.putExtra("action", "open_gallery")
+                    startActivity(intent)
+                    drawerLayout.closeDrawer(GravityCompat.START)
+                }
+                R.id.nav_saved_words -> {
+                    val intent = Intent(this, ReadingsListActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    startActivity(intent)
+                    drawerLayout.closeDrawer(GravityCompat.START)
+                }
+                R.id.nav_dictionary -> {
+                    val intent = Intent(this, DictionaryActivity::class.java)
+                    startActivity(intent)
+                    drawerLayout.closeDrawer(GravityCompat.START)
+                }
+                R.id.nav_settings -> {
+                    val intent = Intent(this, SettingsActivity::class.java)
+                    startActivity(intent)
+                    drawerLayout.closeDrawer(GravityCompat.START)
+                }
+            }
+            true
+        }
+    }
+    
+    override fun onBackPressed() {
+        if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
+            drawerLayout.closeDrawer(GravityCompat.START)
+        } else {
+            super.onBackPressed()
         }
     }
 

@@ -4,6 +4,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.Toast
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.recyclerview.widget.RecyclerView
 
 class WordCardAdapter(
@@ -110,6 +114,7 @@ class WordCardAdapter(
                 highlightIndicator.visibility = View.GONE
                 itemView.alpha = 0.0f // Make completely transparent
                 itemView.setOnClickListener(null)
+                itemView.setOnLongClickListener(null)
             } else {
                 // Show real cards normally
                 itemView.visibility = View.VISIBLE
@@ -129,6 +134,20 @@ class WordCardAdapter(
                 itemView.setOnClickListener {
                     onWordCardClick(wordCard, adapterPosition)
                     // Removed: onWordCardScroll(adapterPosition) - no more click highlighting
+                }
+                
+                // Add long click listener to copy the word title
+                itemView.setOnLongClickListener {
+                    val wordToCopy = wordCard.word
+                    if (wordToCopy.isNotBlank()) {
+                        val clipboard = itemView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Word", wordToCopy)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(itemView.context, "Copied!", Toast.LENGTH_SHORT).show()
+                        true // Indicate the long click was handled
+                    } else {
+                        false // Let the system handle it
+                    }
                 }
             }
         }

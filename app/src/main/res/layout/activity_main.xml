@@ -39,14 +39,14 @@
         app:layout_constraintStart_toStartOf="parent"
         app:fabSize="mini"
         app:backgroundTint="#80000000"
-        app:tint="@android:color/white" />
+        app:tint="@color/toolbar_icon_text_color" />
 
     <TextView
         android:id="@+id/zoomIndicator"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="1.0x"
-        android:textColor="@android:color/white"
+        android:textColor="@color/text_secondary_color"
         android:textSize="14sp"
         android:background="#80000000"
         android:paddingHorizontal="12dp"
@@ -86,8 +86,8 @@
             android:layout_marginEnd="32dp"
             android:src="@drawable/ic_list"
             android:contentDescription="@string/readings_list"
-            app:tint="@android:color/white"
-            app:backgroundTint="@color/teal_500" />
+            app:tint="@color/toolbar_icon_text_color"
+            app:backgroundTint="?attr/colorPrimary" />
 
         <!-- Capture Button -->
         <com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -97,8 +97,8 @@
             android:layout_marginHorizontal="16dp"
             android:src="@drawable/ic_camera"
             android:contentDescription="@string/capture_photo"
-            app:tint="@android:color/white"
-            app:backgroundTint="@color/teal_700"
+            app:tint="@color/toolbar_icon_text_color"
+            app:backgroundTint="?attr/colorPrimary"
             app:fabSize="normal" />
 
         <!-- Flash Toggle Button -->
@@ -109,8 +109,8 @@
             android:layout_marginStart="32dp"
             android:src="@drawable/ic_flash_off"
             android:contentDescription="@string/toggle_flash"
-            app:tint="@android:color/white"
-            app:backgroundTint="@color/teal_500"
+            app:tint="@color/toolbar_icon_text_color"
+            app:backgroundTint="?attr/colorPrimary"
             app:fabSize="mini" />
 
     </LinearLayout>
@@ -136,16 +136,18 @@
             android:background="@drawable/rounded_background">
 
             <ProgressBar
+                android:id="@+id/processingProgress"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:layout_gravity="center"
-                android:layout_marginBottom="16dp" />
+                android:layout_marginBottom="16dp"
+                android:indeterminateTint="@color/teal_500" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/processing_image"
-                android:textColor="@android:color/white"
+                android:textColor="#80CBC4"
                 android:textSize="16sp"
                 android:layout_gravity="center" />
 
@@ -189,7 +191,7 @@
                 android:text="@string/app_title"
                 android:textSize="20sp"
                 android:textStyle="bold"
-                android:textColor="@color/teal_700"
+                android:textColor="?attr/colorPrimary"
                 android:layout_marginBottom="8dp"
                 android:gravity="center" />
 

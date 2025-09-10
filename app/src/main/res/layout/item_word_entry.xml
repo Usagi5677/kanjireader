@@ -26,7 +26,7 @@
             android:layout_height="wrap_content"
             android:text="漢字 (かんじ)"
             android:textSize="18sp"
-            android:textColor="@android:color/black"
+            android:textColor="@color/text_primary_color"
             android:textStyle="bold" />
 
     </LinearLayout>
@@ -50,7 +50,7 @@
         android:layout_height="wrap_content"
         android:text="Type: Ichidan verb"
         android:textSize="12sp"
-        android:textColor="@android:color/darker_gray"
+        android:textColor="@color/text_secondary_color"
         android:paddingStart="48dp"
         android:paddingTop="4dp"
         android:visibility="gone" />

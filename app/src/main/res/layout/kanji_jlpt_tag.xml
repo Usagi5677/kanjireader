@@ -14,7 +14,7 @@
         android:text="見"
         android:textSize="16sp"
         android:textStyle="bold"
-        android:textColor="@android:color/black"
+        android:textColor="@color/text_primary_color"
         android:paddingEnd="4dp" />  <!-- Reduced from 8dp -->
 
     <!-- Separator -->
@@ -23,7 +23,7 @@
         android:layout_height="wrap_content"
         android:text="|"
         android:textSize="14sp"
-        android:textColor="@android:color/darker_gray"
+        android:textColor="@color/text_secondary_color"
         android:paddingHorizontal="4dp" />  <!-- Reduced from 8dp -->
 
     <!-- JLPT Chip -->

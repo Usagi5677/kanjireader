@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5">
+    android:background="@color/background_color">
 
     <!-- Variants RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView
@@ -32,14 +32,14 @@
             android:src="@drawable/ic_book"
             android:alpha="0.3"
             android:layout_marginBottom="16dp"
-            app:tint="@android:color/darker_gray" />
+            app:tint="@color/text_secondary_color" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="No variants found"
             android:textSize="18sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="@color/text_secondary_color"
             android:layout_marginBottom="8dp" />
 
         <TextView
@@ -47,7 +47,7 @@
             android:layout_height="wrap_content"
             android:text="This word has no alternative kanji forms"
             android:textSize="14sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="@color/text_secondary_color"
             android:gravity="center"
             android:paddingHorizontal="32dp" />
 
@@ -73,7 +73,7 @@
             android:layout_height="wrap_content"
             android:text="Loading variants..."
             android:textSize="16sp"
-            android:textColor="@android:color/darker_gray" />
+            android:textColor="@color/text_secondary_color" />
 
     </LinearLayout>
 

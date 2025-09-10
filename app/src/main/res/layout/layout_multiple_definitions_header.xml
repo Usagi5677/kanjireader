@@ -4,5 +4,5 @@
     android:layout_height="wrap_content"
     android:text="Multiple definitions found:"
     android:textSize="16sp"
-    android:textColor="@android:color/black"
+    android:textColor="@color/text_primary_color"
     android:paddingBottom="16dp" />

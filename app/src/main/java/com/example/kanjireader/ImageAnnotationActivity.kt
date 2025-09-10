@@ -17,6 +17,10 @@ import androidx.core.content.ContextCompat
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.text.SpannableString
+import android.text.Spannable
+import android.text.style.ForegroundColorSpan
+import android.content.res.Configuration
 import android.widget.Toast
 import android.content.Intent
 import android.view.ViewGroup
@@ -87,6 +91,9 @@ class ImageAnnotationActivity : AppCompatActivity() {
     // Word cards data
     private var extractedWordCards = listOf<WordCardInfo>()
     private var currentHighlightedCardIndex = -1
+    
+    // State restoration tracking
+    private var savedStateRestored = false
 
     private var deinflectionEngine: TenTenStyleDeinflectionEngine? = null
 
@@ -444,6 +451,11 @@ class ImageAnnotationActivity : AppCompatActivity() {
                     startActivity(intent)
                     drawerLayout.closeDrawer(GravityCompat.START)
                 }
+                R.id.nav_settings -> {
+                    val intent = Intent(this, SettingsActivity::class.java)
+                    startActivity(intent)
+                    drawerLayout.closeDrawer(GravityCompat.START)
+                }
             }
             true
         }
@@ -503,7 +515,14 @@ class ImageAnnotationActivity : AppCompatActivity() {
     }
 
     private fun loadAndDisplayImage() {
-        // Get data from Intent - MainActivity sends file paths
+        // Check if state was restored from theme change (either with or without OCR text)
+        if (savedStateRestored) {
+            Log.d(TAG, "State already restored (OCR text ${originalOcrText.length} chars), skipping file loading")
+            // UI already updated in onRestoreInstanceState
+            return
+        }
+        
+        // Normal flow: Get data from Intent - MainActivity sends file paths
         val bitmapFilePath = intent.getStringExtra("bitmap_path")
         val ocrDataFilePath = intent.getStringExtra("ocr_data_path")
 
@@ -866,31 +885,7 @@ class ImageAnnotationActivity : AppCompatActivity() {
     }
 
     private fun showTranslationDialog(originalText: String, translatedText: String) {
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Translation")
-            .setMessage(translatedText)
-            .setPositiveButton("Copy") { _, _ ->
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("Translation", translatedText)
-                clipboard.setPrimaryClip(clip)
-                Toast.makeText(this, "Translation copied to clipboard", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Close", null)
-            .create()
-        
-        // Set rounded corners background
-        dialog.window?.setBackgroundDrawableResource(R.drawable.dialog_rounded_background)
-        
-        dialog.show()
-        
-        // Style the buttons after showing
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
-            setTextColor(ContextCompat.getColor(this@ImageAnnotationActivity, R.color.teal_700))
-        }
-        
-        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
-            setTextColor(ContextCompat.getColor(this@ImageAnnotationActivity, android.R.color.darker_gray))
-        }
+        TranslationDialogHelper.showTranslationDialog(this, originalText, translatedText)
     }
 
     // Aggressive duplicate prevention
@@ -933,6 +928,60 @@ class ImageAnnotationActivity : AppCompatActivity() {
         super.onResume()  
         // Reset flags when activity resumes to prevent stuck states
         resetAllFlags("activity resume")
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        
+        // Save OCR text and current settings for recreation
+        outState.putString("original_ocr_text", originalOcrText)
+        outState.putBoolean("japanese_only_mode", isJapaneseOnlyMode)
+        outState.putBoolean("furigana_mode", isFuriganaMode)
+        
+        // Save UI state to preserve "no text detected" message
+        outState.putBoolean("has_been_initialized", true)
+        
+        Log.d(TAG, "Saved instance state: OCR text ${originalOcrText.length} chars, initialized: true")
+    }
+
+    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
+        super.onRestoreInstanceState(savedInstanceState)
+        
+        // Check if this activity was previously initialized
+        val wasInitialized = savedInstanceState.getBoolean("has_been_initialized", false)
+        
+        if (wasInitialized) {
+            // Restore OCR text and settings
+            val savedOcrText = savedInstanceState.getString("original_ocr_text", "")
+            originalOcrText = savedOcrText
+            isJapaneseOnlyMode = savedInstanceState.getBoolean("japanese_only_mode", true)
+            isFuriganaMode = savedInstanceState.getBoolean("furigana_mode", false)
+            
+            // Mark that state was restored
+            savedStateRestored = true
+            
+            Log.d(TAG, "Restored instance state: OCR text ${originalOcrText.length} chars")
+            
+            // Update UI with restored data (works for both empty and non-empty text)
+            updateOcrTextDisplay()
+            updateJapaneseToggleAppearance()
+            updateFuriganaToggleAppearance()
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        
+        // Check if theme changed (night mode configuration)
+        val currentNightMode = newConfig.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        Log.d(TAG, "Configuration changed, night mode: $currentNightMode")
+        
+        // Theme changes require activity recreation to properly apply new colors
+        Log.d(TAG, "Theme change detected, saving state and recreating activity")
+        
+        // Use recreate() to properly recreate the activity with the new theme
+        // The state will be preserved through onSaveInstanceState/onRestoreInstanceState
+        recreate()
     }
     
     private fun resetAllFlags(reason: String) {

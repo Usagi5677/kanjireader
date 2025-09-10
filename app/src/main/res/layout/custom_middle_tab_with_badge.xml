@@ -20,14 +20,14 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="6dp"
-        android:background="@drawable/circular_badge_background"
+        android:background="@drawable/tab_badge_background"
         android:gravity="center"
         android:minWidth="20dp"
         android:minHeight="20dp"
         android:paddingHorizontal="4dp"
         android:text="0"
         android:textColor="@color/teal_900"
-        android:textSize="10sp"
+        android:textSize="12sp"
         android:textStyle="bold"
         android:visibility="gone" />
 

@@ -259,6 +259,17 @@ class MainActivity : AppCompatActivity() {
         // Drawer is unlocked from the start since SQLite is ready immediately
         binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED)
 
+        // Set navigation view colors programmatically
+        val navColors = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+            intArrayOf(
+                ContextCompat.getColor(this, R.color.teal_900), // selected
+                ContextCompat.getColor(this, R.color.text_primary_color) // unselected - uses theme-aware color
+            )
+        )
+        binding.navigationView.itemTextColor = navColors
+        binding.navigationView.itemIconTintList = navColors
+        
         // Set navigation item listener
         binding.navigationView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
@@ -301,6 +312,17 @@ class MainActivity : AppCompatActivity() {
                     startActivity(intent)
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 }
+                R.id.nav_settings -> {
+                    try {
+                        Log.d(TAG, "Settings menu item clicked")
+                        val intent = Intent(this, SettingsActivity::class.java)
+                        startActivity(intent)
+                        binding.drawerLayout.closeDrawer(GravityCompat.START)
+                        Log.d(TAG, "Settings activity started successfully")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to open Settings activity", e)
+                    }
+                }
             }
             true
         }
@@ -318,6 +340,15 @@ class MainActivity : AppCompatActivity() {
         // Views are now accessed through binding
         // Setup click listeners (but they'll be disabled until dictionaries load)
         setupClickListeners()
+        
+        // Apply light mode green color to ProgressBars in both modes
+        val progressBarColor = ColorStateList.valueOf(android.graphics.Color.parseColor("#00695C"))
+        
+        // Processing overlay ProgressBar - dark green in both modes
+        binding.processingProgress.indeterminateTintList = progressBarColor
+        
+        // Loading overlay ProgressBar - dark green in both modes
+        binding.loadingProgress.indeterminateTintList = progressBarColor
     }
 
     private fun showLoadingScreen() {

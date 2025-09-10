@@ -11,7 +11,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/white"
+    android:background="@color/background_color"
     tools:context=".DictionaryActivity">
 
     <!-- Toolbar -->
@@ -22,9 +22,10 @@
         android:background="@color/teal_500"
         android:elevation="4dp"
         app:title="Dictionary"
-        app:titleTextColor="@android:color/white"
+        app:titleTextColor="@color/toolbar_icon_text_color"
+        app:subtitleTextColor="@color/subtitle_text_color"
         app:navigationIcon="@drawable/ic_arrow_back"
-        app:navigationIconTint="@android:color/white"
+        app:navigationIconTint="@color/toolbar_icon_text_color"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -61,11 +62,11 @@
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
-                    android:background="@android:color/white"
+                    android:background="@color/surface_color"
                     android:hint="Search..."
                     android:textSize="16sp"
-                    android:textColor="@android:color/black"
-                    android:textColorHint="@android:color/darker_gray"
+                    android:textColor="@color/text_primary_color"
+                    android:textColorHint="@color/text_secondary_color"
                     android:paddingStart="16dp"
                     android:paddingEnd="4dp"
                     android:paddingTop="0dp"
@@ -74,10 +75,11 @@
                     android:inputType="text|textNoSuggestions|textMultiLine"
                     android:imeOptions="actionNone|flagNoEnterAction"
                     android:maxLines="4"
-                    android:scrollbars="none"
+                    android:minLines="1"
                     android:lineSpacingMultiplier="1.0"
                     android:includeFontPadding="false"
-                    android:importantForAutofill="no" />
+                    android:importantForAutofill="no"
+                    android:saveEnabled="false" />
 
                 <ImageButton
                     android:id="@+id/clearButton"
@@ -88,6 +90,7 @@
                     android:layout_marginEnd="8dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:src="@drawable/ic_close"
+                    app:tint="@color/text_secondary_color"
                     android:contentDescription="Clear search"
                     android:padding="6dp"
                     android:visibility="gone" />
@@ -108,7 +111,7 @@
                 android:layout_height="48dp"
                 app:cardCornerRadius="8dp"
                 app:cardElevation="4dp"
-                app:cardBackgroundColor="@android:color/white">
+                app:cardBackgroundColor="@color/surface_color">
 
                 <TextView
                     android:id="@+id/radicalSearchButton"
@@ -117,8 +120,8 @@
                     android:text="字"
                     android:textSize="20sp"
                     android:textStyle="bold"
-                    android:textColor="@color/teal_700"
-                    android:background="@android:color/white"
+                    android:textColor="@color/search_button_color"
+                    android:background="@color/surface_color"
                     android:gravity="center"
                     android:clickable="true"
                     android:focusable="true"
@@ -138,7 +141,7 @@
                 android:foreground="?android:attr/selectableItemBackground"
                 app:cardCornerRadius="8dp"
                 app:cardElevation="4dp"
-                app:cardBackgroundColor="@android:color/white">
+                app:cardBackgroundColor="@color/surface_color">
 
                 <ImageView
                     android:layout_width="match_parent"
@@ -146,8 +149,8 @@
                     android:src="@drawable/ic_list"
                     android:padding="12dp"
                     android:scaleType="fitCenter"
-                    app:tint="@color/teal_700"
-                    android:background="@android:color/white"
+                    app:tint="@color/search_button_color"
+                    android:background="@color/surface_color"
                     android:contentDescription="Navigate words" />
 
             </androidx.cardview.widget.CardView>
@@ -198,7 +201,7 @@
             android:layout_height="wrap_content"
             android:text="@string/search_the_dictionary"
             android:textSize="20sp"
-            android:textColor="@android:color/black"
+            android:textColor="@color/text_primary_color"
             android:textStyle="bold"
             android:gravity="center"
             android:layout_marginBottom="8dp" />
@@ -208,7 +211,7 @@
             android:layout_height="wrap_content"
             android:text="@string/enter_japanese_or_english"
             android:textSize="14sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="@color/text_secondary_color"
             android:gravity="center" />
         <TextView
             android:id="@+id/searchHelpText"
@@ -250,7 +253,7 @@
             android:layout_height="wrap_content"
             android:text="@string/no_results_found"
             android:textSize="18sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="@color/text_secondary_color"
             android:gravity="center" />
 
         <TextView
@@ -258,7 +261,7 @@
             android:layout_height="wrap_content"
             android:text="@string/try_different_search"
             android:textSize="14sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="@color/text_secondary_color"
             android:gravity="center"
             android:layout_marginTop="8dp" />
 

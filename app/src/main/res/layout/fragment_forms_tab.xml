@@ -19,7 +19,7 @@
         android:layout_gravity="center"
         android:text="This word is not conjugatable"
         android:textSize="18sp"
-        android:textColor="@android:color/darker_gray"
+        android:textColor="@color/text_secondary_color"
         android:visibility="gone" />
 
 </FrameLayout>

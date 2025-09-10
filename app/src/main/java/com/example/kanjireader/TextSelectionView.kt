@@ -261,10 +261,10 @@ class TextSelectionView @JvmOverloads constructor(
         isFakeBoldText = true
     }
     
-    // Paint for non-word card text (grey)
+    // Paint for non-word card text (grey in light mode, black in dark mode)
     private val greyTextPaint = TextPaint().apply {
         textSize = 64f // Same as main text size
-        color = ContextCompat.getColor(context, android.R.color.darker_gray)
+        color = ContextCompat.getColor(context, R.color.subtitle_text_color)
         isAntiAlias = true
     }
     
@@ -277,13 +277,13 @@ class TextSelectionView @JvmOverloads constructor(
     init {
         textPaint = TextPaint().apply {
             textSize = 64f // Increased from 48f to 64f
-            color = ContextCompat.getColor(context, android.R.color.black)
+            color = ContextCompat.getColor(context, R.color.text_primary_color)
             isAntiAlias = true
         }
 
         furiganaPaint = TextPaint().apply {
             textSize = textPaint.textSize * FURIGANA_SIZE_RATIO
-            color = ContextCompat.getColor(context, android.R.color.black)
+            color = ContextCompat.getColor(context, R.color.text_primary_color)
             isAntiAlias = true
         }
         
@@ -448,6 +448,8 @@ class TextSelectionView @JvmOverloads constructor(
      */
     fun clearWordHighlight() {
         highlightedWordRange = null
+        // Clear word positions to prevent stale position references
+        wordPositions = emptyList()
         // Recreate layout without highlighting
         val width = width
         if (width > 0) {
@@ -462,6 +464,7 @@ class TextSelectionView @JvmOverloads constructor(
     fun getDisplayTextLength(): Int {
         return displayText.length
     }
+    
 
     private fun processFurigana() {
         if (displayText.isNotEmpty()) {
@@ -619,10 +622,10 @@ class TextSelectionView @JvmOverloads constructor(
     private fun buildSpannableTextForLayout(): SpannableStringBuilder {
         val spannable = SpannableStringBuilder()
         
-        // Grey text paint for non-word card text
+        // Grey text paint for non-word card text (grey in light mode, black in dark mode)
         val greyTextPaint = TextPaint().apply {
             textSize = textPaint.textSize
-            color = ContextCompat.getColor(context, android.R.color.darker_gray)
+            color = ContextCompat.getColor(context, R.color.subtitle_text_color)
         }
         
         if (!showFurigana || furiganaText == null) {
@@ -734,9 +737,9 @@ class TextSelectionView @JvmOverloads constructor(
                         }
                     }
                     spannable.setSpan(highlightSpan, segmentStart, segmentEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                } else if (!isInWordCard) {
-                    // Apply grey styling for non-word card text
-                    val greySpan = ForegroundColorSpan(ContextCompat.getColor(context, android.R.color.darker_gray))
+                } else if (!isInWordCard && wordPositions?.isNotEmpty() == true) {
+                    // Apply grey styling for non-word card text (grey in light mode, black in dark mode)
+                    val greySpan = ForegroundColorSpan(ContextCompat.getColor(context, R.color.subtitle_text_color))
                     spannable.setSpan(greySpan, segmentStart, segmentEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
             }
@@ -758,6 +761,7 @@ class TextSelectionView @JvmOverloads constructor(
             spannable.append(displayText)
             applyGreyStylingToPlainText(spannable)
             applyWordHighlighting(spannable)
+            
             return spannable
         }
 
@@ -908,13 +912,53 @@ class TextSelectionView @JvmOverloads constructor(
     private fun applyGreyStylingToPlainText(spannable: SpannableStringBuilder) {
         if (wordPositions.isEmpty()) return
         
+        val textLength = spannable.length
+        
+        // Filter out positions that are out of bounds and sort them
+        val validPositions = wordPositions
+            .filter { (start, end) -> start >= 0 && end <= textLength && start < end }
+            .sortedBy { it.first }
+        
+        if (validPositions.isEmpty()) return
+        
         // Create spans for each character range
         var currentPos = 0
-        val sortedPositions = wordPositions.sortedBy { it.first }
         
-        for ((start, end) in sortedPositions) {
+        for ((start, end) in validPositions) {
+            // Ensure positions are within bounds
+            val clampedStart = start.coerceAtLeast(0).coerceAtMost(textLength)
+            val clampedEnd = end.coerceAtLeast(0).coerceAtMost(textLength)
+            
+            if (clampedStart >= clampedEnd) continue
+            
             // Add grey span for text before this word card (if any)
-            if (currentPos < start) {
+            if (currentPos < clampedStart) {
+                val spanStart = currentPos.coerceAtLeast(0).coerceAtMost(textLength)
+                val spanEnd = clampedStart.coerceAtLeast(spanStart).coerceAtMost(textLength)
+                
+                if (spanStart < spanEnd) {
+                    val greySpan = object : ReplacementSpan() {
+                        override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
+                            return greyTextPaint.measureText(text, start, end).toInt()
+                        }
+                        override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+                            if (text != null) {
+                                canvas.drawText(text, start, end, x, y.toFloat(), greyTextPaint)
+                            }
+                        }
+                    }
+                    spannable.setSpan(greySpan, spanStart, spanEnd, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+            }
+            currentPos = maxOf(currentPos, clampedEnd)
+        }
+        
+        // Add grey span for remaining text after last word card (if any)
+        if (currentPos < textLength) {
+            val spanStart = currentPos.coerceAtLeast(0).coerceAtMost(textLength)
+            val spanEnd = textLength
+            
+            if (spanStart < spanEnd) {
                 val greySpan = object : ReplacementSpan() {
                     override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
                         return greyTextPaint.measureText(text, start, end).toInt()
@@ -925,24 +969,8 @@ class TextSelectionView @JvmOverloads constructor(
                         }
                     }
                 }
-                spannable.setSpan(greySpan, currentPos, start, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+                spannable.setSpan(greySpan, spanStart, spanEnd, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
-            currentPos = maxOf(currentPos, end)
-        }
-        
-        // Add grey span for remaining text after last word card (if any)
-        if (currentPos < spannable.length) {
-            val greySpan = object : ReplacementSpan() {
-                override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
-                    return greyTextPaint.measureText(text, start, end).toInt()
-                }
-                override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
-                    if (text != null) {
-                        canvas.drawText(text, start, end, x, y.toFloat(), greyTextPaint)
-                    }
-                }
-            }
-            spannable.setSpan(greySpan, currentPos, spannable.length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
     

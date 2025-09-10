@@ -20,7 +20,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="6dp"
-        android:background="@drawable/circular_badge_background"
+        android:background="@drawable/tab_badge_background"
         android:gravity="center"
         android:minWidth="24dp"
         android:minHeight="24dp"

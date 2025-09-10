@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/white">
+    android:background="@color/background_color">
 
     <!-- Meanings ScrollView -->
     <ScrollView
@@ -20,7 +20,7 @@
             android:text="1. to see; to look at\n2. to examine\n3. to look over"
             android:textSize="16sp"
             android:lineSpacingExtra="6dp"
-            android:textColor="@android:color/black" />
+            android:textColor="@color/text_primary_color" />
     
     </ScrollView>
 
@@ -40,14 +40,14 @@
             android:src="@drawable/ic_book"
             android:alpha="0.3"
             android:layout_marginBottom="16dp"
-            app:tint="@android:color/darker_gray" />
+            app:tint="@color/text_secondary_color" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="No meanings found"
             android:textSize="18sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="@color/text_secondary_color"
             android:layout_marginBottom="8dp" />
 
         <TextView
@@ -55,7 +55,7 @@
             android:layout_height="wrap_content"
             android:text="No definitions available for this word"
             android:textSize="14sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="@color/text_secondary_color"
             android:gravity="center"
             android:paddingHorizontal="32dp" />
 

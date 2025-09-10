@@ -36,7 +36,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textSize="16sp"
-        android:textColor="@android:color/darker_gray"
+        android:textColor="@color/text_secondary_color"
         android:layout_marginBottom="6dp"
         android:text="かんじ"
         android:visibility="gone" />
@@ -47,7 +47,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textSize="14sp"
-        android:textColor="@android:color/black"
+        android:textColor="@color/text_primary_color"
         android:lineSpacingExtra="2dp"
         android:text="Chinese character, kanji"
         android:visibility="gone" />
@@ -56,7 +56,8 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="#E0E0E0"
+        android:background="@color/text_secondary_color"
+        android:alpha="0.3"
         android:layout_marginTop="8dp" />
 
 </LinearLayout>

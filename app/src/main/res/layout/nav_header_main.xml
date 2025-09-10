@@ -12,14 +12,14 @@
         android:layout_width="64dp"
         android:layout_height="64dp"
         android:src="@drawable/ic_camera"
-        app:tint="@android:color/white" />
+        app:tint="@color/toolbar_icon_text_color" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingTop="8dp"
         android:text="Kanji Reader"
-        android:textColor="@android:color/white"
+        android:textColor="@color/toolbar_icon_text_color"
         android:textSize="20sp"
         android:textStyle="bold" />
 
@@ -27,7 +27,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Japanese OCR"
-        android:textColor="@android:color/white"
+        android:textColor="@color/toolbar_icon_text_color"
         android:textSize="14sp" />
 
 </LinearLayout>

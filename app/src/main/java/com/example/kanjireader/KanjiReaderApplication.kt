@@ -18,6 +18,9 @@ class KanjiReaderApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         
+        // Apply saved theme before anything else
+        ThemeManager.initTheme(this)
+        
         Log.d(TAG, "=== INITIALIZING IO.REQUERY SQLITE-ANDROID LIBRARY ===")
         
         // CRITICAL: Initialize io.requery sqlite-android library FIRST

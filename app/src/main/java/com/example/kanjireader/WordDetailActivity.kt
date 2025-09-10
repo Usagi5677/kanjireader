@@ -110,9 +110,9 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "Detail"  // Changed from "Word Detail" to "Detail"
         
-        // Set the navigation icon color to green for better visibility
+        // Set the navigation icon color to use green in light mode, grey in dark mode
         val navigationIcon = toolbar.navigationIcon
-        navigationIcon?.setTint(ContextCompat.getColor(this, R.color.green_700))
+        navigationIcon?.setTint(ContextCompat.getColor(this, R.color.teal_900))
         
         toolbar.setNavigationOnClickListener { finish() }
     }
@@ -652,19 +652,53 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
             }
         }.attach()
         
+        // Set TabLayout colors programmatically
+        tabLayout.setTabTextColors(
+            ContextCompat.getColor(this, android.R.color.darker_gray), // unselected
+            ContextCompat.getColor(this, R.color.teal_900) // selected
+        )
+        
         // Add tab selection listener to handle custom tab styling
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
-                if (tab?.position == 0) {
-                    // Kanji tab selected - use the same color as other tabs
-                    kanjiTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, R.color.teal_500))
+                when (tab?.position) {
+                    0 -> {
+                        // Kanji tab selected
+                        kanjiTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, R.color.teal_900))
+                    }
+                    1 -> {
+                        // Forms tab selected
+                        (tab.view.getChildAt(0) as? TextView)?.setTextColor(
+                            ContextCompat.getColor(this@WordDetailActivity, R.color.teal_900)
+                        )
+                    }
+                    2 -> {
+                        // Phrases tab selected
+                        (tab.view.getChildAt(0) as? TextView)?.setTextColor(
+                            ContextCompat.getColor(this@WordDetailActivity, R.color.teal_900)
+                        )
+                    }
                 }
             }
             
             override fun onTabUnselected(tab: TabLayout.Tab?) {
-                if (tab?.position == 0) {
-                    // Kanji tab unselected - make it grey
-                    kanjiTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, android.R.color.darker_gray))
+                when (tab?.position) {
+                    0 -> {
+                        // Kanji tab unselected
+                        kanjiTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, android.R.color.darker_gray))
+                    }
+                    1 -> {
+                        // Forms tab unselected
+                        (tab?.view?.getChildAt(0) as? TextView)?.setTextColor(
+                            ContextCompat.getColor(this@WordDetailActivity, android.R.color.darker_gray)
+                        )
+                    }
+                    2 -> {
+                        // Phrases tab unselected
+                        (tab?.view?.getChildAt(0) as? TextView)?.setTextColor(
+                            ContextCompat.getColor(this@WordDetailActivity, android.R.color.darker_gray)
+                        )
+                    }
                 }
             }
             
@@ -674,7 +708,7 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         })
         
         // Set initial color for Kanji tab (selected by default)
-        kanjiTabTitle?.setTextColor(ContextCompat.getColor(this, R.color.teal_500))
+        kanjiTabTitle?.setTextColor(ContextCompat.getColor(this, R.color.teal_900))
         
         // Add page change listener to trigger initial search when phrases tab is first accessed
         pageChangeCallback = ViewPagerCallback(wordForPhrases)
@@ -775,6 +809,12 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
             }
         }.attach()
         
+        // Set middle TabLayout colors programmatically
+        middleTabLayout.setTabTextColors(
+            ContextCompat.getColor(this, android.R.color.darker_gray), // unselected
+            ContextCompat.getColor(this, R.color.teal_900) // selected
+        )
+        
         // Preload variant count to show badge immediately
         preloadVariantCount(currentWord)
 
@@ -784,11 +824,11 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
                 when (tab?.position) {
                     0 -> {
                         // Meanings tab selected - make it green
-                        meaningsTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, R.color.teal_500))
+                        meaningsTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, R.color.teal_900))
                     }
                     1 -> {
                         // Variants tab selected - make it green
-                        variantsTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, R.color.teal_500))
+                        variantsTabTitle?.setTextColor(ContextCompat.getColor(this@WordDetailActivity, R.color.teal_900))
                     }
                 }
             }
@@ -812,7 +852,7 @@ class WordDetailActivity : AppCompatActivity(), KanjiTabFragment.OnKanjiCountLis
         })
         
         // Set initial colors for middle tabs (meanings selected by default)
-        meaningsTabTitle?.setTextColor(ContextCompat.getColor(this, R.color.teal_500))
+        meaningsTabTitle?.setTextColor(ContextCompat.getColor(this, R.color.teal_900))
         variantsTabTitle?.setTextColor(ContextCompat.getColor(this, android.R.color.darker_gray))
     }
 

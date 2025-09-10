@@ -11,7 +11,9 @@
         android:id="@+id/checkbox"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="12dp" />
+        android:layout_marginEnd="12dp"
+        android:backgroundTint="@color/teal_900"
+        android:drawableTint="@color/teal_200" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -25,7 +27,7 @@
             android:layout_height="wrap_content"
             android:text="Favorites"
             android:textSize="16sp"
-            android:textColor="@android:color/black"
+            android:textColor="@color/text_primary_color"
             android:textStyle="bold" />
 
         <TextView
@@ -34,7 +36,7 @@
             android:layout_height="wrap_content"
             android:text="12 words"
             android:textSize="12sp"
-            android:textColor="@android:color/darker_gray" />
+            android:textColor="@color/text_secondary_color" />
 
     </LinearLayout>
 

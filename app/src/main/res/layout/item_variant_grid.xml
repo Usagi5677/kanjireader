@@ -27,7 +27,7 @@
             android:text="観る"
             android:textSize="32sp"
             android:textStyle="bold"
-            android:textColor="@android:color/black"
+            android:textColor="@color/text_primary_color"
             android:gravity="center" />
 
         <!-- Hidden Reading (kept for compatibility) -->

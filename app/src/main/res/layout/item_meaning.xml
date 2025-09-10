@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:background="@android:color/white"
+    android:background="@color/surface_color"
     android:padding="12dp"
     android:layout_marginBottom="1dp">
 
@@ -14,6 +14,6 @@
         android:text="1. to see; to look at"
         android:textSize="16sp"
         android:lineSpacingExtra="4dp"
-        android:textColor="@android:color/black" />
+        android:textColor="@color/text_primary_color" />
 
 </LinearLayout>

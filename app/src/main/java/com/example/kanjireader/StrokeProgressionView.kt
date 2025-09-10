@@ -61,7 +61,7 @@ class StrokeProgressionView @JvmOverloads constructor(
             // SVG image showing strokes up to this point
             val imageView = ImageView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(72.dpToPx(), 72.dpToPx())
-                setBackgroundColor(Color.parseColor("#F5F5F5"))
+                setBackgroundColor(ContextCompat.getColor(context, R.color.stroke_order_background))
                 setPadding(4.dpToPx(), 4.dpToPx(), 4.dpToPx(), 4.dpToPx())
             }
 

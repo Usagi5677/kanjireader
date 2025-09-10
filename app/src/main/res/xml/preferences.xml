@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory 
+        android:title="Appearance"
+        app:iconSpaceReserved="false">
+
+        <ListPreference
+            android:key="theme"
+            android:title="Theme"
+            android:summary="%s"
+            android:entries="@array/theme_entries"
+            android:entryValues="@array/theme_values"
+            android:defaultValue="system"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+    <!-- Add more preference categories here for future settings -->
+    <!--
+    <PreferenceCategory 
+        android:title="Dictionary"
+        app:iconSpaceReserved="false">
+        
+    </PreferenceCategory>
+
+    <PreferenceCategory 
+        android:title="Export &amp; Backup"
+        app:iconSpaceReserved="false">
+        
+    </PreferenceCategory>
+    -->
+
+</PreferenceScreen>

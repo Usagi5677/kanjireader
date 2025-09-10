@@ -15,7 +15,7 @@
         android:layout_weight="1"
         android:text="Past"
         android:textSize="14sp"
-        android:textColor="@android:color/darker_gray" />
+        android:textColor="@color/text_secondary_color" />
 
     <!-- Conjugation Column -->
     <LinearLayout
@@ -43,7 +43,7 @@
             android:layout_height="wrap_content"
             android:text="みた"
             android:textSize="14sp"
-            android:textColor="@color/teal_700"
+            android:textColor="@color/teal_900"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:focusable="true"
@@ -60,7 +60,7 @@
         android:layout_weight="1.5"
         android:text="saw/looked"
         android:textSize="14sp"
-        android:textColor="@android:color/black"
+        android:textColor="@color/text_primary_color"
         android:textAlignment="textEnd" />
 
 </LinearLayout>

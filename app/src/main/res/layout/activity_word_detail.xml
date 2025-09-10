@@ -5,14 +5,14 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#F5F5F5">
+    android:background="@color/background_color">
 
     <!-- Toolbar -->
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@android:color/white"
+        android:background="@color/surface_color"
         android:elevation="2dp"
         app:navigationIcon="@drawable/ic_arrow_back" />
 
@@ -21,7 +21,7 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="3.3"
-        android:background="@android:color/white"
+        android:background="@color/surface_color"
         android:fillViewport="true">
 
         <LinearLayout
@@ -39,7 +39,7 @@
                 android:textSize="36sp"
                 android:textStyle="bold"
                 android:gravity="center"
-                android:textColor="@android:color/black" />
+                android:textColor="@color/text_primary_color" />
 
             <!-- Reading -->
             <TextView
@@ -49,7 +49,7 @@
                 android:text="みる"
                 android:textSize="20sp"
                 android:gravity="center"
-                android:textColor="@color/teal_700" />
+                android:textColor="@color/teal_900" />
 
             <!-- Pitch Accent Section (horizontal scrollable) -->
             <HorizontalScrollView
@@ -111,8 +111,7 @@
         android:layout_height="0dp"
         android:layout_weight="2.5"
         android:orientation="vertical"
-        android:background="@android:color/white"
-        android:layout_marginTop="1dp">
+        android:background="@color/surface_color">
 
         <!-- Middle Section Tab Layout -->
         <com.google.android.material.tabs.TabLayout
@@ -137,8 +136,7 @@
         android:layout_height="0dp"
         android:layout_weight="4.2"
         android:orientation="vertical"
-        android:background="@android:color/white"
-        android:layout_marginTop="1dp">
+        android:background="@color/surface_color">
 
         <!-- Tab Layout -->
         <com.google.android.material.tabs.TabLayout

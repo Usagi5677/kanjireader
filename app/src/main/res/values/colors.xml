@@ -2,6 +2,18 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- Theme-aware colors -->
+    <color name="surface_color">@android:color/white</color>
+    <color name="background_color">@android:color/white</color>
+    <color name="text_primary_color">#333333</color>
+    <color name="text_secondary_color">@android:color/darker_gray</color>
+    <color name="subtitle_text_color">@android:color/darker_gray</color>
+    <color name="button_icon_color">#000000</color>
+    <color name="toolbar_icon_text_color">#FFFFFF</color>
+    <color name="search_button_color">@color/teal_700</color>
+    <color name="stroke_order_background">#E8E8E8</color>
+    <color name="dialog_background">@android:color/white</color>
 
     <color name="purple_100">#E1BEE7</color>
     <color name="purple_200">#CE93D8</color>
@@ -19,7 +31,7 @@
     <color name="teal_600">#00897B</color>
     <color name="teal_700">#00796B</color>
     <color name="teal_800">#00695C</color>
-    <color name="teal_900">#004D40</color>
+    <color name="teal_900">#009688</color>
 
     <color name="green_100">#C8E6C9</color>  <!-- Light green -->
     <color name="green_500">#4CAF50</color>  <!-- Medium green -->
@@ -57,8 +69,8 @@
     <color name="tag_verb_godan_bg">#E8F5E9</color>        <!-- Light green -->
     <color name="tag_verb_godan_text">#1B5E20</color>      <!-- Dark green -->
     
-    <color name="tag_verb_ichidan_bg">#E0F2F1</color>      <!-- Light teal -->
-    <color name="tag_verb_ichidan_text">#004D40</color>    <!-- Dark teal -->
+    <color name="tag_verb_ichidan_bg">#E1BEE7</color>      <!-- Light purple -->
+    <color name="tag_verb_ichidan_text">#4A148C</color>    <!-- Dark purple -->
     
     <color name="tag_verb_transitive_bg">#FFF8E1</color>   <!-- Light amber -->
     <color name="tag_verb_transitive_text">#F57F17</color> <!-- Dark amber -->
